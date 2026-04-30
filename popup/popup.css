@@ -1,0 +1,769 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Popup Styles
+   ================================================== */
+
+/* ==================================================
+   Reset & Base
+   ================================================== */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --surface: #ffffff;
+    --surface-soft: #f7f9fc;
+    --surface-muted: #f3f6fb;
+    --border: #dce4ef;
+    --text-primary: #172b4d;
+    --text-secondary: #53637a;
+    --text-muted: #6f7f96;
+    --brand: #0b6ecf;
+    --brand-strong: #0857a5;
+    --success-bg: #dff5e7;
+    --success-text: #0b7a3a;
+    --danger-bg: #fff1f1;
+    --danger-text: #b4232f;
+}
+
+body {
+    width: 350px;
+    font-family: 'Manrope', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(180deg, #f3f6fc 0%, #eef3fa 100%);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+/* ==================================================
+   Header
+   ================================================== */
+.header {
+    background: linear-gradient(135deg, #0c5fb2 0%, #084786 100%);
+    color: white;
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.header-version {
+    font-size: 10px;
+    opacity: 0.68;
+    font-weight: 500;
+}
+
+.header-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.header-btn {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+    border-radius: 4px;
+    padding: 4px 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.header-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.header-btn:active {
+    background: rgba(255, 255, 255, 0.35);
+    transform: scale(0.95);
+}
+
+/* ==================================================
+   Connection Status Bar
+   ================================================== */
+.connection-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #f9fbfe;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    transition: background 0.3s, color 0.3s;
+}
+
+.connection-bar.connected {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.connection-bar.disconnected {
+    background: #ffeaea;
+    color: #c23934;
+}
+
+.connection-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ccc;
+    flex-shrink: 0;
+    transition: background 0.3s;
+}
+
+.connection-bar.connected .connection-dot {
+    background: #4caf50;
+}
+
+.connection-bar.disconnected .connection-dot {
+    background: #c23934;
+}
+
+/* ==================================================
+   Sections
+   ================================================== */
+.section {
+    background: var(--surface);
+    margin: 10px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 10px rgba(15, 41, 77, 0.04);
+    overflow: hidden;
+}
+
+.section-header {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    padding: 8px 14px;
+    background: var(--surface-soft);
+    border-bottom: 1px solid #edf2f8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.section-close {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.section-close:hover {
+    color: #c23934;
+}
+
+/* ==================================================
+   Salesforce Auth Panel
+   ================================================== */
+.auth-panel {
+    padding: 10px 14px 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.auth-identity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.auth-identity-text {
+    min-width: 0;
+}
+
+.auth-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid #c9d8ea;
+    background: linear-gradient(135deg, #eaf3ff 0%, #dfeeff 100%);
+    color: #1f5f9f;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.auth-avatar-fallback {
+    line-height: 1;
+}
+
+.auth-avatar-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.auth-status-line {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.2px;
+}
+
+.auth-user-line {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.auth-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.auth-actions .btn {
+    flex: 1;
+}
+
+/* ==================================================
+   Built-in note banner
+   ================================================== */
+.builtin-note {
+    margin: 10px 14px 0;
+    padding: 8px 10px;
+    background: #e3f2fd;
+    border: 1px solid #b6dafc;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #005fb2;
+    line-height: 1.45;
+}
+
+.builtin-note strong {
+    font-weight: 700;
+}
+
+/* ==================================================
+   Keyboard Shortcut Hints
+   ================================================== */
+kbd {
+    background: #eee;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 9px;
+    font-family: -apple-system, 'SF Mono', monospace;
+    color: #555;
+    box-shadow: 0 1px 0 #ccc;
+    line-height: 1.6;
+}
+
+.shortcut-hint {
+    font-size: 9px;
+    color: #aaa;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* ==================================================
+   Badges
+   ================================================== */
+.badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    display: inline-block;
+    transition: background 0.2s, color 0.2s;
+}
+
+.badge-success {
+    background: var(--success-bg);
+    color: var(--success-text);
+}
+
+.badge-empty {
+    background: #eef2f7;
+    color: #7a879b;
+}
+
+/* ==================================================
+   Option Rows (Toggle Switches)
+   ================================================== */
+.option-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid #eef2f7;
+    transition: background 0.15s;
+}
+
+.option-row:last-child {
+    border-bottom: none;
+}
+
+.option-row:hover {
+    background: var(--surface-soft);
+}
+
+.option-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.option-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.option-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+/* ==================================================
+   Toggle Switch
+   ================================================== */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #c1c7cd;
+    transition: background 0.25s;
+    border-radius: 20px;
+}
+
+.slider::before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background: white;
+    transition: transform 0.25s;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+input:checked + .slider {
+    background: var(--brand);
+}
+
+input:checked + .slider::before {
+    transform: translateX(16px);
+}
+
+input:focus-visible + .slider {
+    outline: 2px solid #0070d2;
+    outline-offset: 2px;
+}
+
+/* ==================================================
+   Dynamic Column Header
+   ================================================== */
+.table-context-header {
+    background: #eaf4ff;
+    color: #105ea8;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-bottom: 1px solid #d0e8fc;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* ==================================================
+   Drag and Drop List (Table Columns)
+   ================================================== */
+.sortable-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--surface-soft);
+}
+
+.sortable-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: grab;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: background 0.15s, box-shadow 0.15s;
+    user-select: none;
+}
+
+.sortable-item:last-child {
+    border-bottom: none;
+}
+
+.sortable-item:hover {
+    background: #f1f7ff;
+}
+
+.sortable-item:active {
+    cursor: grabbing;
+}
+
+.sortable-item.dragging {
+    opacity: 0.5;
+    background: #e3f2fd;
+}
+
+.sortable-handle {
+    margin-right: 10px;
+    color: #ccc;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.sortable-item:hover .sortable-handle {
+    color: #888;
+}
+
+/* ==================================================
+   Mappings
+   ================================================== */
+.mapping-container {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0 14px 10px;
+    background: var(--surface-soft);
+}
+
+.mapping-row {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mapping-row:last-child {
+    border-bottom: none;
+}
+
+.process-name {
+    font-size: 11px;
+    color: #444;
+    font-weight: 600;
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+select.map-select {
+    flex: 1;
+    font-size: 11px;
+    padding: 4px 6px;
+    border: 1px solid #cfd9e6;
+    border-radius: 4px;
+    background: white;
+    color: #333;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+select.map-select:focus {
+    border-color: var(--brand);
+    outline: none;
+}
+
+/* ==================================================
+   Quick Insert
+   ================================================== */
+.quick-insert {
+    padding: 10px 14px;
+}
+
+.quick-insert select {
+    width: 100%;
+    font-size: 12px;
+    padding: 7px 10px;
+    border: 1px solid #cfd9e6;
+    border-radius: 6px;
+    background: white;
+    color: #333;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+.quick-insert select:focus {
+    border-color: var(--brand);
+    outline: none;
+}
+
+.quick-insert-actions {
+    display: flex;
+    gap: 6px;
+}
+
+/* ==================================================
+   Preview
+   ================================================== */
+.preview-content {
+    margin: 0;
+    padding: 12px 14px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    line-height: 1.5;
+    color: #333;
+    background: #fafbfc;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* ==================================================
+   Buttons
+   ================================================== */
+.btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-primary {
+    background: var(--brand);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--brand-strong);
+}
+
+.btn-primary:focus-visible {
+    outline: 2px solid #0070d2;
+    outline-offset: 2px;
+}
+
+.btn-secondary {
+    background: #f2f5f9;
+    color: #344054;
+    border: 1px solid #d8e0ea;
+}
+
+.btn-secondary:hover {
+    background: #e8eef6;
+    border-color: #c7d2e0;
+}
+
+.btn-secondary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-danger {
+    background: none;
+    color: var(--danger-text);
+    border: 1px solid #efdadc;
+    padding: 5px 10px;
+    font-size: 11px;
+    margin-top: 8px;
+    width: 100%;
+}
+
+.btn-danger:hover {
+    background: var(--danger-bg);
+    border-color: var(--danger-text);
+}
+
+/* ==================================================
+   Upload Area
+   ================================================== */
+.upload-area {
+    margin: 0 14px 10px;
+    padding: 14px;
+    background: var(--surface-soft);
+    border-radius: 6px;
+    border: 2px dashed #cfdae8;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.upload-area.drag-over {
+    border-color: var(--brand);
+    background: #eaf4ff;
+}
+
+#folder-input {
+    display: none;
+}
+
+.upload-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: white;
+    border: 1px solid #cfd9e6;
+    padding: 7px 14px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--brand);
+    font-weight: 600;
+    transition: all 0.15s;
+}
+
+.upload-label:hover {
+    background: #f0f7ff;
+    border-color: var(--brand);
+}
+
+/* ==================================================
+   Status Message
+   ================================================== */
+.status-msg {
+    font-size: 11px;
+    margin-top: 8px;
+    min-height: 16px;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.status-success { color: #027e46; }
+.status-error   { color: #c23934; }
+.status-info    { color: #6b778c; }
+
+/* ==================================================
+   Empty State
+   ================================================== */
+.empty-state {
+    padding: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: #999;
+}
+
+/* ==================================================
+   Footer
+   ================================================== */
+.footer {
+    text-align: center;
+    padding: 8px;
+    font-size: 9px;
+    color: #7f8da2;
+    border-top: 1px solid #e6edf5;
+    background: #f5f8fc;
+}
+
+.footer-link {
+    color: #0070d2;
+    text-decoration: none;
+}
+
+.footer-link:hover {
+    text-decoration: underline;
+}
+
+/* ==================================================
+   Scrollbar (for mapping container, preview, sortable list)
+   ================================================== */
+.mapping-container::-webkit-scrollbar,
+.preview-content::-webkit-scrollbar,
+.sortable-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.mapping-container::-webkit-scrollbar-thumb,
+.preview-content::-webkit-scrollbar-thumb,
+.sortable-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 2px;
+}
+
+.mapping-container::-webkit-scrollbar-thumb:hover,
+.preview-content::-webkit-scrollbar-thumb:hover,
+.sortable-list::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+/* ==================================================
+   Shake Animation
+   ================================================== */
+@keyframes cyforShake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    10%, 50%, 90% {
+        transform: translateX(-3px);
+    }
+    30%, 70% {
+        transform: translateX(3px);
+    }
+}
