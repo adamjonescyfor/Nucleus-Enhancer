@@ -1,0 +1,75 @@
+{
+    "manifest_version": 3,
+    "name": "CYFOR Nucleus Enhancer",
+    "version": "2.3.0",
+    "description": "Right-click Date/Time, Record Navigation, Top-Aligned Notes Formatting, Context-Aware Table Column Reordering, Template Injection (incl. Forensic Strategy), Right-Click Template Menu, and more.",
+
+    "permissions": [
+        "activeTab",
+        "storage",
+        "downloads",
+        "cookies",
+        "scripting"
+    ],
+
+    "host_permissions": [
+        "https://*.lightning.force.com/*",
+        "https://*.my.salesforce.com/*",
+        "https://*.file.force.com/*",
+        "https://*.amazonaws.com/*"
+    ],
+
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_title": "CYFOR Nucleus Enhancer"
+    },
+
+    "background": {
+        "service_worker": "background.js"
+    },
+
+    "commands": {
+        "undo-insertion": {
+            "suggested_key": {
+                "default": "Alt+Z",
+                "mac": "Alt+Z"
+            },
+            "description": "Undo last template insertion"
+        }
+    },
+
+    "content_scripts": [
+        {
+            "matches": ["https://*.lightning.force.com/*"],
+            "run_at": "document_idle",
+            "js": [
+                "content/utils.js",
+                "content/config.js",
+                "content/toast.js",
+                "content/undo.js",
+                "content/builtin-templates.js",
+                "content/editor.js",
+                "content/datetime.js",
+                "content/navigation.js",
+                "content/autoend.js",
+                "content/columns.js",
+                "content/notes-data.js",
+                "content/notes.js",
+                "content/templates.js",
+                "content/context-menu.js",
+                "content/downloads.js",
+                "content/main.js"
+            ],
+            "css": [
+                "styles/base.css",
+                "styles/navigation.css",
+                "styles/notes.css",
+                "styles/templates.css",
+                "styles/toast.css",
+                "styles/autoend.css",
+                "styles/context-menu.css",
+                "styles/animations.css"
+            ]
+        }
+    ]
+}
