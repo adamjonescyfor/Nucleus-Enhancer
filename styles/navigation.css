@@ -1,0 +1,121 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Navigation Styles
+   Left/right arrow buttons and position counter.
+   ================================================== */
+
+/* ==================================================
+   Arrow Buttons
+   ================================================== */
+.cyfor-nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: var(--cyfor-z-nav);
+
+    /* Appearance */
+    background: var(--cyfor-primary);
+    color: white;
+    border: none;
+    padding: 14px 10px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+
+    /* Subtlety — buttons are unobtrusive until hovered */
+    opacity: 0.35;
+    transition:
+        opacity var(--cyfor-transition),
+        padding var(--cyfor-transition),
+        background-color var(--cyfor-transition),
+        box-shadow var(--cyfor-transition);
+
+    box-shadow: var(--cyfor-shadow);
+}
+
+/* Left button */
+.cyfor-nav-btn-left {
+    left: 0;
+    border-radius: 0 var(--cyfor-radius-lg) var(--cyfor-radius-lg) 0;
+}
+
+/* Right button */
+.cyfor-nav-btn-right {
+    right: 0;
+    border-radius: var(--cyfor-radius-lg) 0 0 var(--cyfor-radius-lg);
+}
+
+/* Hover state — buttons grow and become fully opaque */
+.cyfor-nav-btn:hover:not(:disabled) {
+    opacity: 1;
+    background: var(--cyfor-primary-dark);
+    padding: 20px 13px;
+    box-shadow: var(--cyfor-shadow-lg);
+}
+
+/* Active/click state */
+.cyfor-nav-btn:active:not(:disabled) {
+    transform: translateY(-50%) scale(0.95);
+    transition-duration: 0.05s;
+}
+
+/* Focus state — keyboard accessibility */
+.cyfor-nav-btn:focus-visible {
+    opacity: 1;
+    outline: 2px solid white;
+    outline-offset: -4px;
+    box-shadow: var(--cyfor-shadow-lg);
+}
+
+/* Disabled state — nearly invisible */
+.cyfor-nav-btn:disabled {
+    background: #888;
+    cursor: not-allowed;
+    opacity: 0.06;
+    box-shadow: none;
+    pointer-events: none;
+}
+
+/* ==================================================
+   Position Counter (e.g. "3 / 12")
+   ================================================== */
+#cyfor-nav-counter {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    z-index: var(--cyfor-z-nav);
+
+    /* Pill appearance */
+    background: rgba(0, 0, 0, 0.72);
+    color: white;
+    padding: 6px 18px;
+    border-radius: var(--cyfor-radius-pill);
+
+    /* Typography */
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--cyfor-font);
+    letter-spacing: 1.5px;
+
+    /* Frosted glass effect */
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+
+    /* Initially hidden */
+    opacity: 0;
+    transition:
+        opacity var(--cyfor-transition-smooth),
+        transform var(--cyfor-transition-smooth);
+}
+
+/* Visible state — slides up and fades in */
+#cyfor-nav-counter.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Fading out — slides down and fades */
+#cyfor-nav-counter.fading {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+}

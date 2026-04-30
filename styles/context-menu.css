@@ -1,0 +1,214 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Right-Click Template Menu
+   ================================================== */
+
+.cyfor-ctx-menu {
+    position: fixed;
+    z-index: var(--cyfor-z-toast);
+
+    background: var(--cyfor-surface);
+    border: 1px solid var(--cyfor-border);
+    border-radius: var(--cyfor-radius);
+    box-shadow: var(--cyfor-shadow-xl);
+
+    min-width: 260px;
+    max-width: 380px;
+    max-height: 460px;
+    overflow: hidden;
+
+    font-family: var(--cyfor-font);
+    user-select: none;
+
+    display: flex;
+    flex-direction: column;
+
+    animation: cyforCtxMenuIn 0.14s ease-out;
+}
+
+@keyframes cyforCtxMenuIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* ==================================================
+   Header
+   ================================================== */
+.cyfor-ctx-menu-header {
+    padding: 8px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--cyfor-text-muted);
+    background: var(--cyfor-surface-raised);
+    border-bottom: 1px solid var(--cyfor-border-light);
+    flex-shrink: 0;
+}
+
+/* ==================================================
+   Search
+   ================================================== */
+.cyfor-ctx-menu-search {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 12px;
+    font-family: var(--cyfor-font);
+    color: var(--cyfor-text);
+
+    border: none;
+    border-bottom: 2px solid var(--cyfor-border-light);
+    outline: none;
+    background: var(--cyfor-surface);
+    box-sizing: border-box;
+    flex-shrink: 0;
+
+    transition:
+        background-color var(--cyfor-transition-fast),
+        border-color var(--cyfor-transition-fast);
+}
+
+.cyfor-ctx-menu-search:focus {
+    background: var(--cyfor-surface-raised);
+    border-bottom-color: var(--cyfor-primary);
+}
+
+.cyfor-ctx-menu-search::placeholder {
+    color: #aaa;
+    font-weight: 400;
+}
+
+/* ==================================================
+   List
+   ================================================== */
+.cyfor-ctx-menu-list {
+    overflow-y: auto;
+    max-height: 340px;
+    flex-grow: 1;
+}
+
+.cyfor-ctx-menu-list::-webkit-scrollbar {
+    width: 5px;
+}
+.cyfor-ctx-menu-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+.cyfor-ctx-menu-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+.cyfor-ctx-menu-list::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+/* ==================================================
+   Items
+   ================================================== */
+.cyfor-ctx-menu-item {
+    padding: 9px 14px;
+    font-size: 12px;
+    color: var(--cyfor-text-secondary);
+    cursor: pointer;
+    border-bottom: 1px solid var(--cyfor-border-light);
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    transition:
+        background-color var(--cyfor-transition-fast),
+        color var(--cyfor-transition-fast),
+        padding-left var(--cyfor-transition-fast);
+}
+
+.cyfor-ctx-menu-item:last-child {
+    border-bottom: none;
+}
+
+.cyfor-ctx-menu-item:hover,
+.cyfor-ctx-menu-item:focus-visible {
+    background: var(--cyfor-primary-light);
+    color: var(--cyfor-primary);
+    padding-left: 18px;
+    font-weight: 600;
+    outline: none;
+}
+
+.cyfor-ctx-menu-item:active {
+    background: #dceefb;
+}
+
+.cyfor-ctx-menu-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.cyfor-ctx-menu-item-badge {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    background: var(--cyfor-primary-light);
+    color: var(--cyfor-primary);
+    padding: 2px 6px;
+    border-radius: var(--cyfor-radius-sm);
+    flex-shrink: 0;
+}
+
+.cyfor-ctx-menu-item:hover .cyfor-ctx-menu-item-badge,
+.cyfor-ctx-menu-item:focus-visible .cyfor-ctx-menu-item-badge {
+    background: white;
+}
+
+/* ==================================================
+   Undo Item
+   ================================================== */
+.cyfor-ctx-menu-undo {
+    color: var(--cyfor-primary);
+    background: var(--cyfor-primary-light);
+    font-weight: 500;
+    font-size: 11px;
+}
+
+.cyfor-ctx-menu-undo:hover,
+.cyfor-ctx-menu-undo:focus-visible {
+    background: #c8e1f8;
+    color: var(--cyfor-primary-dark);
+}
+
+/* ==================================================
+   Separator
+   ================================================== */
+.cyfor-ctx-menu-separator {
+    height: 1px;
+    background: var(--cyfor-border);
+    margin: 0;
+}
+
+/* ==================================================
+   Empty State
+   ================================================== */
+.cyfor-ctx-menu-empty {
+    padding: 16px 14px;
+    font-size: 11px;
+    color: var(--cyfor-text-muted);
+    text-align: center;
+    font-style: italic;
+}
+
+/* ==================================================
+   Reduced motion
+   ================================================== */
+@media (prefers-reduced-motion: reduce) {
+    .cyfor-ctx-menu {
+        animation: none;
+    }
+}

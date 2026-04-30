@@ -1,0 +1,148 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Toast Notifications
+   Fixed-position notification pills with variants.
+   ================================================== */
+
+/* ==================================================
+   Container (persistent, positioned)
+   ================================================== */
+#cyfor-toast-container {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--cyfor-z-toast);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ==================================================
+   Toast Element
+   ================================================== */
+.cyfor-toast {
+    padding: 10px 20px;
+    border-radius: var(--cyfor-radius-lg);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--cyfor-font);
+    line-height: 1.3;
+    white-space: nowrap;
+    pointer-events: auto;
+    cursor: pointer;
+
+    /* Layout */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    /* Entry animation state */
+    opacity: 0;
+    transform: translateY(16px) scale(0.95);
+    transition:
+        opacity var(--cyfor-transition-smooth),
+        transform var(--cyfor-transition-smooth);
+
+    /* Depth */
+    box-shadow: var(--cyfor-shadow-xl);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* Visible state */
+.cyfor-toast.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+/* Dismissing state */
+.cyfor-toast.dismissing {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+    pointer-events: none;
+}
+
+/* ==================================================
+   Icon Circle
+   ================================================== */
+.cyfor-toast-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+/* ==================================================
+   Message Text
+   ================================================== */
+.cyfor-toast-msg {
+    line-height: 1.3;
+}
+
+/* ==================================================
+   Action Button (e.g. "Undo")
+   ================================================== */
+.cyfor-toast-action {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--cyfor-font);
+    padding: 3px 10px;
+    border-radius: var(--cyfor-radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+        background-color var(--cyfor-transition-fast),
+        border-color var(--cyfor-transition-fast);
+    margin-left: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.cyfor-toast-action:hover {
+    background: rgba(255, 255, 255, 0.35);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.cyfor-toast-action:active {
+    background: rgba(255, 255, 255, 0.45);
+    transform: scale(0.95);
+}
+
+/* ==================================================
+   Variants
+   ================================================== */
+
+/* Success — deep green */
+.cyfor-toast-success {
+    background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+    color: #fff;
+}
+
+/* Error — deep red */
+.cyfor-toast-error {
+    background: linear-gradient(135deg, #b71c1c 0%, #c62828 100%);
+    color: #fff;
+}
+
+/* Info — deep blue */
+.cyfor-toast-info {
+    background: linear-gradient(135deg, #01579b 0%, #0277bd 100%);
+    color: #fff;
+}
+
+/* Warning — deep orange */
+.cyfor-toast-warning {
+    background: linear-gradient(135deg, #e65100 0%, #ef6c00 100%);
+    color: #fff;
+}

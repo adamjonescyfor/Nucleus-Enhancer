@@ -1,0 +1,78 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Auto-End Indicator
+   Fixed-position pill showing when auto-end is active.
+   ================================================== */
+
+/* ==================================================
+   Indicator Pill
+   ================================================== */
+#cyfor-autoend-indicator {
+    position: fixed;
+    bottom: 12px;
+    right: 12px;
+    z-index: var(--cyfor-z-overlay);
+
+    /* Pill shape */
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    padding: 5px 14px 5px 10px;
+    border-radius: var(--cyfor-radius-pill);
+
+    /* Typography */
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--cyfor-font);
+    letter-spacing: 0.02em;
+
+    /* Layout */
+    display: flex;
+    align-items: center;
+    gap: 7px;
+
+    /* Frosted glass */
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+
+    /* Subtle by default, fully visible on hover */
+    opacity: 0.5;
+    transition: opacity var(--cyfor-transition);
+
+    /* Prevent interference with page content */
+    pointer-events: auto;
+    user-select: none;
+    cursor: default;
+}
+
+#cyfor-autoend-indicator:hover {
+    opacity: 1;
+}
+
+/* ==================================================
+   Pulsing Dot
+   Green dot that gently pulses to indicate activity.
+   ================================================== */
+.cyfor-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4caf50;
+    display: inline-block;
+    flex-shrink: 0;
+    animation: cyforPulse 2s ease-in-out infinite;
+}
+
+/* Active state — brighter green */
+#cyfor-autoend-indicator:hover .cyfor-pulse-dot {
+    background: #66bb6a;
+}
+
+@keyframes cyforPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.35;
+        transform: scale(0.75);
+    }
+}

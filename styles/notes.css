@@ -1,0 +1,168 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Notes Formatting
+   Styles for formatted note cells in list views.
+   ================================================== */
+
+/* ==================================================
+   Row Alignment Fix (The "Top-Align" fix)
+   Forces all columns to stay at the top when the 
+   Notes column makes the row extremely tall.
+   ================================================== */
+body.cyfor-format-notes-enabled table.slds-table tbody tr > td,
+body.cyfor-format-notes-enabled table.slds-table tbody tr > th {
+    vertical-align: top !important;
+}
+
+/* Lightning uses a flex span inside the td that forces vertical centering. Override it. */
+body.cyfor-format-notes-enabled table.slds-table tbody tr .slds-grid {
+    align-items: flex-start !important;
+}
+
+body.cyfor-format-notes-enabled table.slds-table tbody tr lightning-primitive-cell-factory > span.slds-grid,
+body.cyfor-format-notes-enabled table.slds-table tbody tr lightning-primitive-custom-cell > span.slds-grid {
+    padding-top: 0.25rem !important; /* Slight padding to match header alignment */
+}
+
+/* Fix action dropdown menu button alignment so it doesn't look weirdly offset */
+body.cyfor-format-notes-enabled table.slds-table tbody tr .slds-dropdown-trigger {
+    margin-top: -0.25rem;
+}
+
+/* ==================================================
+   Cell Expansion
+   Override Salesforce's truncation so notes are readable.
+   Only active when the feature is enabled.
+   ================================================== */
+body.cyfor-format-notes-enabled td[data-label="Notes"] {
+    min-width: 450px !important;
+    white-space: normal !important;
+}
+
+body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-truncate,
+body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
+    white-space: normal !important;
+    overflow: visible !important;
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
+/* ==================================================
+   Note Container
+   ================================================== */
+.cyfor-note {
+    font-family: var(--cyfor-font);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--cyfor-text);
+    padding: 4px 0;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+/* ==================================================
+   Sections
+   Grouped content blocks, separated by whitespace.
+   ================================================== */
+.cyfor-note .cyfor-n-section {
+    margin-bottom: 10px;
+    padding-bottom: 2px;
+}
+
+.cyfor-note .cyfor-n-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* ==================================================
+   Section Headers
+   Bold labels that introduce a group of fields.
+   ================================================== */
+.cyfor-note .cyfor-n-header {
+    font-weight: 700;
+    color: var(--cyfor-text);
+    font-size: 12.5px;
+    padding: 8px 0 2px;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    border-bottom: none;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
+.cyfor-note .cyfor-n-section:first-child > .cyfor-n-header {
+    padding-top: 0;
+    margin-top: 0;
+}
+
+/* ==================================================
+   Key: Value Rows
+   ================================================== */
+.cyfor-note .cyfor-n-row {
+    padding: 1px 0;
+    line-height: 1.55;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 4px;
+}
+
+.cyfor-note .cyfor-n-key {
+    font-weight: 600;
+    color: var(--cyfor-text-secondary);
+    flex-shrink: 0;
+}
+
+.cyfor-note .cyfor-n-val {
+    font-weight: 400;
+    color: var(--cyfor-text);
+}
+
+/* ==================================================
+   Plain Text Lines & Dividers
+   ================================================== */
+.cyfor-note .cyfor-n-text {
+    padding: 2px 0;
+    line-height: 1.5;
+    color: var(--cyfor-text);
+}
+
+.cyfor-note .cyfor-n-divider {
+    border: 0;
+    height: 1px;
+    background: #dddbda;
+    margin: 14px 0;
+}
+
+/* ==================================================
+   Value Highlighting
+   Semantic coloring for YES/NO/N/A/PASS/FAIL/PENDING.
+   ================================================== */
+.cyfor-note .cyfor-val-yes {
+    font-weight: 700;
+    color: var(--cyfor-success);
+}
+
+.cyfor-note .cyfor-val-no {
+    font-weight: 700;
+    color: var(--cyfor-danger);
+}
+
+.cyfor-note .cyfor-val-na {
+    color: var(--cyfor-text-muted);
+    font-style: italic;
+}
+
+.cyfor-note .cyfor-val-pending {
+    font-weight: 600;
+    color: var(--cyfor-warning);
+}
+
+/* ==================================================
+   Hover Enhancement
+   Subtle background on row hover for readability.
+   ================================================== */
+.cyfor-note .cyfor-n-row:hover,
+.cyfor-note .cyfor-n-text:hover {
+    background: rgba(0, 0, 0, 0.015);
+    border-radius: var(--cyfor-radius-sm);
+}

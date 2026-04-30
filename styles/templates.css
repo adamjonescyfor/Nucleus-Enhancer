@@ -1,0 +1,258 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Template Button & Menu
+   Floating icon, dropdown menu, search, and items.
+   ================================================== */
+
+/* ==================================================
+   Floating Icon Button
+   ================================================== */
+.cyfor-template-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: var(--cyfor-z-dropdown);
+
+    /* Size & shape */
+    width: 28px;
+    height: 28px;
+    border-radius: var(--cyfor-radius);
+    border: 1px solid var(--cyfor-border);
+
+    /* Appearance */
+    background: rgba(255, 255, 255, 0.95);
+    cursor: pointer;
+    user-select: none;
+    pointer-events: auto;
+
+    /* Layout */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* Subtle by default */
+    opacity: 0.2;
+    transition:
+        opacity var(--cyfor-transition),
+        transform var(--cyfor-transition),
+        box-shadow var(--cyfor-transition),
+        border-color var(--cyfor-transition);
+}
+
+.cyfor-template-btn svg {
+    width: 15px;
+    height: 15px;
+    fill: var(--cyfor-primary);
+    pointer-events: none;
+    transition: fill var(--cyfor-transition);
+}
+
+/* Hover — grows and becomes fully visible */
+.cyfor-template-btn:hover {
+    opacity: 1;
+    transform: scale(1.08);
+    box-shadow: 0 2px 10px rgba(0, 112, 210, 0.3);
+    border-color: var(--cyfor-primary);
+}
+
+/* Active / pressed */
+.cyfor-template-btn:active {
+    transform: scale(0.95);
+    transition-duration: 0.05s;
+}
+
+/* Keyboard focus */
+.cyfor-template-btn:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--cyfor-primary);
+    outline-offset: 2px;
+}
+
+/* When menu is open */
+.cyfor-template-btn[aria-expanded="true"] {
+    opacity: 1;
+    background: var(--cyfor-primary-light);
+    border-color: var(--cyfor-primary);
+}
+.cyfor-template-btn[aria-expanded="true"] svg {
+    fill: var(--cyfor-primary-dark);
+}
+
+/* ==================================================
+   Dropdown Menu
+   ================================================== */
+.cyfor-template-menu {
+    display: none;
+    position: absolute;
+    top: 36px;
+    right: 4px;
+    z-index: var(--cyfor-z-dropdown);
+
+    /* Appearance */
+    background: var(--cyfor-surface);
+    border: 1px solid var(--cyfor-border);
+    border-radius: var(--cyfor-radius);
+    box-shadow: var(--cyfor-shadow-lg);
+
+    /* Sizing */
+    min-width: 260px;
+    max-width: 360px;
+    max-height: 380px;
+    overflow-y: auto;
+
+    /* Interaction */
+    user-select: none;
+}
+
+.cyfor-template-menu.visible {
+    display: block;
+    animation: cyforMenuSlideIn 0.18s ease-out;
+}
+
+/* ==================================================
+   Search Box
+   ================================================== */
+.cyfor-template-search {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 12px;
+    font-family: var(--cyfor-font);
+    color: var(--cyfor-text);
+
+    border: none;
+    border-bottom: 2px solid var(--cyfor-border-light);
+    border-radius: var(--cyfor-radius) var(--cyfor-radius) 0 0;
+    outline: none;
+    background: var(--cyfor-surface-raised);
+    box-sizing: border-box;
+
+    transition:
+        background-color var(--cyfor-transition-fast),
+        border-color var(--cyfor-transition-fast);
+}
+
+.cyfor-template-search:focus {
+    background: var(--cyfor-surface);
+    border-bottom-color: var(--cyfor-primary);
+}
+
+.cyfor-template-search::placeholder {
+    color: #aaa;
+    font-weight: 400;
+}
+
+/* ==================================================
+   Menu Items
+   ================================================== */
+.cyfor-template-item {
+    padding: 9px 14px;
+    font-size: 12px;
+    font-family: var(--cyfor-font);
+    color: var(--cyfor-text-secondary);
+    cursor: pointer;
+    border-bottom: 1px solid var(--cyfor-border-light);
+
+    transition:
+        background-color var(--cyfor-transition-fast),
+        color var(--cyfor-transition-fast),
+        padding-left var(--cyfor-transition-fast);
+
+    position: relative;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cyfor-template-item:last-child {
+    border-bottom: none;
+}
+
+/* Hover — slides right slightly, highlights */
+.cyfor-template-item:hover {
+    background: var(--cyfor-primary-light);
+    color: var(--cyfor-primary);
+    padding-left: 18px;
+    font-weight: 600;
+}
+
+.cyfor-template-item:active {
+    background: #dceefb;
+}
+
+/* Focus for keyboard navigation */
+.cyfor-template-item:focus-visible {
+    outline: 2px solid var(--cyfor-primary);
+    outline-offset: -2px;
+    background: var(--cyfor-primary-light);
+}
+
+/* Disabled state (empty message) */
+.cyfor-template-item.disabled {
+    color: var(--cyfor-text-muted);
+    cursor: default;
+    text-align: center;
+    font-size: 11px;
+    padding: 16px 14px;
+    white-space: normal;
+}
+
+.cyfor-template-item.disabled:hover {
+    background: transparent;
+    color: var(--cyfor-text-muted);
+    font-weight: normal;
+    padding-left: 14px;
+}
+
+/* ==================================================
+   Undo Item (special styling)
+   ================================================== */
+.cyfor-template-undo {
+    color: var(--cyfor-primary);
+    font-weight: 500;
+    background: var(--cyfor-primary-light);
+    font-size: 11px;
+}
+
+.cyfor-template-undo:hover {
+    background: #c8e1f8;
+    color: var(--cyfor-primary-dark);
+}
+
+/* ==================================================
+   Separator
+   ================================================== */
+.cyfor-template-separator {
+    height: 1px;
+    background: var(--cyfor-border);
+    margin: 0;
+}
+
+/* ==================================================
+   Scrollbar
+   ================================================== */
+.cyfor-template-menu::-webkit-scrollbar {
+    width: 5px;
+}
+.cyfor-template-menu::-webkit-scrollbar-track {
+    background: transparent;
+}
+.cyfor-template-menu::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+.cyfor-template-menu::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+/* ==================================================
+   Menu Slide-In Animation
+   ================================================== */
+@keyframes cyforMenuSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
