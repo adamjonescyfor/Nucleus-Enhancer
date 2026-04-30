@@ -1,0 +1,112 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Base Styles
+   CSS custom properties, resets, and shared utilities.
+   ================================================== */
+
+:root {
+    /* Brand */
+    --cyfor-primary: #0070d2;
+    --cyfor-primary-dark: #005fb2;
+    --cyfor-primary-light: #e3f2fd;
+
+    /* Semantic */
+    --cyfor-success: #027e46;
+    --cyfor-success-bg: #d4edda;
+    --cyfor-danger: #c23934;
+    --cyfor-danger-bg: #ffeaea;
+    --cyfor-warning: #e65100;
+    --cyfor-warning-bg: #fff3cd;
+    --cyfor-info: #01579b;
+    --cyfor-info-bg: #d1ecf1;
+
+    /* Neutral */
+    --cyfor-text: #181818;
+    --cyfor-text-secondary: #3e3e3c;
+    --cyfor-text-muted: #706e6b;
+    --cyfor-border: #dddbda;
+    --cyfor-border-light: #f0f0f0;
+    --cyfor-surface: #ffffff;
+    --cyfor-surface-raised: #fafbfc;
+
+    /* Layout */
+    --cyfor-radius-sm: 4px;
+    --cyfor-radius: 6px;
+    --cyfor-radius-lg: 8px;
+    --cyfor-radius-pill: 20px;
+
+    /* Shadows */
+    --cyfor-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --cyfor-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    --cyfor-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
+    --cyfor-shadow-xl: 0 12px 36px rgba(0, 0, 0, 0.2);
+
+    /* Typography */
+    --cyfor-font: 'Salesforce Sans', -apple-system, BlinkMacSystemFont,
+        'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    --cyfor-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas,
+        'Courier New', monospace;
+
+    /* Transitions */
+    --cyfor-transition-fast: 0.15s ease;
+    --cyfor-transition: 0.2s ease;
+    --cyfor-transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Z-index scale */
+    --cyfor-z-dropdown: 10000;
+    --cyfor-z-overlay: 99999;
+    --cyfor-z-nav: 999999;
+    --cyfor-z-toast: 9999999;
+}
+
+/* ==================================================
+   Visual Feedback — Flash Animation
+   ================================================== */
+.cyfor-flash {
+    animation: cyforFlashAnim 0.8s ease;
+}
+
+@keyframes cyforFlashAnim {
+    0% {
+        box-shadow: inset 0 0 0 0 transparent;
+    }
+    25% {
+        box-shadow: inset 0 0 0 2px var(--cyfor-success);
+        background-color: var(--cyfor-success-bg);
+    }
+    100% {
+        box-shadow: inset 0 0 0 0 transparent;
+        background-color: transparent;
+    }
+}
+
+/* ==================================================
+   Screen Reader Only — Accessible Hidden Text
+   ================================================== */
+.cyfor-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ==================================================
+   Scrollbar Styling (shared across components)
+   ================================================== */
+.cyfor-scrollable::-webkit-scrollbar {
+    width: 5px;
+}
+.cyfor-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+.cyfor-scrollable::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+.cyfor-scrollable::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
