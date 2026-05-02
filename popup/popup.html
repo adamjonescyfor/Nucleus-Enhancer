@@ -48,6 +48,47 @@
         </div>
     </section>
 
+    <!-- Salesforce Templates (OAuth + Sync) -->
+    <section class="section">
+        <div class="section-header">
+            <span>Salesforce Templates</span>
+            <span class="badge badge-empty" id="sf-templates-badge">Not connected</span>
+        </div>
+        <div class="sf-templates-panel">
+            <div class="sf-status-text" id="sf-connected-name">Connect to sync official templates from Salesforce.</div>
+            <div class="auth-actions" style="margin-top:8px">
+                <button id="btn-sf-oauth-connect" class="btn btn-primary">Connect via Salesforce OAuth</button>
+                <button id="btn-sf-oauth-disconnect" class="btn btn-secondary" style="display:none">Disconnect</button>
+            </div>
+            <div id="sf-sync-row" style="display:none; margin-top:8px; align-items:center; gap:8px">
+                <span id="sf-sync-status" class="sf-sync-status"></span>
+                <button id="btn-sf-sync-now" class="btn btn-secondary" style="margin-left:auto">Sync Now</button>
+            </div>
+            <div id="sf-template-count" class="sf-sync-status" style="display:none"></div>
+        </div>
+    </section>
+
+    <!-- Salesforce Configuration (collapsible) -->
+    <details class="section collapsible-section" id="sf-config-section">
+        <summary class="section-header">
+            <span>Salesforce Configuration</span>
+            <span class="collapse-indicator" aria-hidden="true">▾</span>
+        </summary>
+        <div class="sf-config-panel">
+            <label class="sf-config-label" for="sf-client-id">Consumer Key (Client ID)</label>
+            <input type="text" id="sf-client-id" class="sf-config-input" placeholder="3MVG9..." autocomplete="off">
+            <label class="sf-config-label" for="sf-instance-url">Instance URL</label>
+            <input type="text" id="sf-instance-url" class="sf-config-input" placeholder="https://cyfor.my.salesforce.com" autocomplete="off">
+            <label class="sf-config-label">OAuth Callback URL <small>(add this to your Connected App)</small></label>
+            <div class="sf-redirect-row">
+                <input type="text" id="sf-redirect-url" class="sf-config-input" readonly>
+                <button id="btn-copy-redirect" class="btn btn-secondary">Copy</button>
+            </div>
+            <button id="btn-sf-config-save" class="btn btn-primary" style="margin-top:10px">Save</button>
+            <div id="sf-config-status" class="status-msg"></div>
+        </div>
+    </details>
+
     <!-- Core Features -->
     <section class="section">
         <div class="section-header">
@@ -220,6 +261,7 @@
     <script src="popup-auth.js"></script>
     <script src="popup-columns.js"></script>
     <script src="popup-templates.js"></script>
+    <script src="popup-sf-templates.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>

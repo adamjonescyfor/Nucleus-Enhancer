@@ -4,6 +4,12 @@
 // and manages extension lifecycle events.
 // ==================================================
 
+try {
+    importScripts('background/sf-oauth.js', 'background/sf-templates.js');
+} catch (e) {
+    console.error('[CYFOR] Failed to load OAuth modules:', e);
+}
+
 const DEFAULT_COLUMN_ORDER = [
     'Process Ref', 'Record Type', 'Type', 'Exhibit',
     'Exhibit Type', 'Status', 'Start Date/Time',
@@ -32,7 +38,18 @@ chrome.runtime.onInstalled.addListener((details) => {
             nucleusTemplates: {},
             processMap: {},
             templateCount: 0,
-            downloadFolder: 'CYFOR Photographs'
+            downloadFolder: 'CYFOR Photographs',
+            sfOAuthConfig: {
+                clientId: '',
+                instanceUrl: '',
+                templateObject: 'NucleusTemplate__c',
+                contentField:   'Content__c',
+                categoryField:  'Category__c',
+                activeField:    'IsActive__c',
+                apiVersion:     'v62.0'
+            },
+            sfRemoteTemplates: {},
+            sfTemplatesSyncedAt: null
         });
     } else if (details.reason === 'update') {
         // Ensure new toggle has a value on upgrade
@@ -75,6 +92,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 console.warn('[CYFOR] getSalesforceIdentity error:', err);
                 sendResponse({ ok: false, error: err.message || 'Identity fetch failed' });
             });
+        return true;
+    }
+
+    // Launch Salesforce OAuth PKCE flow
+    if (message.action === 'sfOAuth.connect') {
+        if (!self.SfOAuth) { sendResponse({ ok: false, error: 'OAuth module not loaded' }); return true; }
+        self.SfOAuth.launchOAuthFlow()
+            .then((result) => sendResponse(result))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Disconnect (clear tokens + revoke)
+    if (message.action === 'sfOAuth.disconnect') {
+        if (!self.SfOAuth) { sendResponse({ ok: false }); return true; }
+        self.SfOAuth.disconnectOAuth()
+            .then(() => sendResponse({ ok: true }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Return the stable OAuth callback URL for display in settings
+    if (message.action === 'sfOAuth.getRedirectUrl') {
+        sendResponse({ ok: true, redirectUrl: chrome.identity.getRedirectURL('sf-oauth') });
+        return true;
+    }
+
+    // Fetch/sync templates from Salesforce
+    if (message.action === 'sfTemplates.sync') {
+        if (!self.SfTemplates) { sendResponse({ ok: false, error: 'Templates module not loaded' }); return true; }
+        self.SfTemplates.fetchRemoteTemplates(message.forceRefresh === true)
+            .then((result) => sendResponse(result))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
         return true;
     }
 

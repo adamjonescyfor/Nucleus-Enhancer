@@ -66,6 +66,7 @@ Cyfor.downloads = {
             Cyfor.toast.warning('Download already in progress', 2000);
             return;
         }
+        this._downloading = true;
 
         // 1. Locate the scrollable table container
         var tableWrapper = scopeRoot.querySelector('.table-wrapper');
@@ -75,18 +76,21 @@ Cyfor.downloads = {
         }
         if (!tableWrapper) {
             Cyfor.toast.error('Could not find scrollable table container.', 3000);
+            this._downloading = false;
             return;
         }
 
         var tbody = tableWrapper.querySelector('tbody');
         if (!tbody) {
             Cyfor.toast.error('Table body not found.', 3000);
+            this._downloading = false;
             return;
         }
 
         var initialImages = tbody.querySelectorAll('img.thumbnail-image');
         if (initialImages.length === 0) {
             Cyfor.toast.warning('No photographs found', 2500);
+            this._downloading = false;
             return;
         }
 
@@ -94,14 +98,21 @@ Cyfor.downloads = {
         Cyfor.toast.info(
             'Ready to download photographs. If Chrome asks to allow multiple downloads, click Allow.',
             0,
-            { label: 'Start Download', onClick: function () { self._startDownload(btn, tableWrapper, tbody); } }
+            { label: 'Start Download', onClick: function () { self._startDownload(btn, tableWrapper); } }
         );
     },
 
-    _startDownload: async function (btn, tableWrapper, tbody) {
-        if (this._downloading) return;
-        this._downloading = true;
+    _startDownload: async function (btn, tableWrapper) {
         this._setBtnState(btn, 'Downloading…', true);
+
+        // Re-query tbody fresh to avoid stale DOM references
+        var tbody = tableWrapper.querySelector('tbody');
+        if (!tbody) {
+            Cyfor.toast.error('Table body not found — please try again.', 3000);
+            this._setBtnState(btn, 'Download All', false);
+            this._downloading = false;
+            return;
+        }
 
         try {
             // 2. THE AUTO-SCROLLING MACRO

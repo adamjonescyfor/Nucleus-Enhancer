@@ -64,25 +64,38 @@ Cyfor.builtinTemplates = {
 };
 
 /**
- * Merge built-in templates with user-uploaded templates.
- * User templates take precedence on name collision.
+ * 3-tier merge: built-ins → Salesforce remote → user uploads.
+ * Higher tier wins on name collision.
  *
- * @param {object} userTemplates - templates loaded from chrome.storage
- * @returns {object} merged templates
+ * @param {object} userTemplates      - from chrome.storage.nucleusTemplates
+ * @param {object} sfRemoteTemplates  - from chrome.storage.sfRemoteTemplates ({ name: { content, category } })
+ * @returns {object} merged map of name → content string
  */
-Cyfor.getMergedTemplates = function (userTemplates) {
-    const merged = Object.create(null);
-    const builtins = Cyfor.builtinTemplates || {};
+Cyfor.getMergedTemplates = function (userTemplates, sfRemoteTemplates) {
+    var merged  = Object.create(null);
+    var builtins = Cyfor.builtinTemplates || {};
 
-    // Built-ins first
-    for (const key of Object.keys(builtins)) {
-        merged[key] = builtins[key];
+    // Tier 3 (lowest): built-ins
+    var builtinKeys = Object.keys(builtins);
+    for (var i = 0; i < builtinKeys.length; i++) {
+        merged[builtinKeys[i]] = builtins[builtinKeys[i]];
     }
 
-    // User templates override built-ins of the same name
+    // Tier 2: Salesforce remote templates
+    if (sfRemoteTemplates) {
+        var remoteKeys = Object.keys(sfRemoteTemplates);
+        for (var j = 0; j < remoteKeys.length; j++) {
+            var entry = sfRemoteTemplates[remoteKeys[j]];
+            // Entry may be { content, category } or a plain string
+            merged[remoteKeys[j]] = (entry && typeof entry === 'object') ? entry.content : entry;
+        }
+    }
+
+    // Tier 1 (highest): user-uploaded templates
     if (userTemplates) {
-        for (const key of Object.keys(userTemplates)) {
-            merged[key] = userTemplates[key];
+        var userKeys = Object.keys(userTemplates);
+        for (var k = 0; k < userKeys.length; k++) {
+            merged[userKeys[k]] = userTemplates[userKeys[k]];
         }
     }
 

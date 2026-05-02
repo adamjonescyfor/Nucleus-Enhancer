@@ -10,7 +10,8 @@
         "storage",
         "downloads",
         "cookies",
-        "scripting"
+        "scripting",
+        "identity"
     ],
 
     "host_permissions": [
@@ -18,7 +19,8 @@
         "https://*.my.salesforce.com/*",
         "https://*.file.force.com/*",
         "https://*.content.force.com/*",
-        "https://*.documentforce.com/*"
+        "https://*.documentforce.com/*",
+        "https://*.salesforce.com/*"
     ],
 
     "action": {

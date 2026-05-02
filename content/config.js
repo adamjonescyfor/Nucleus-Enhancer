@@ -26,8 +26,9 @@ Cyfor.config = {
     enableAutoInsert: false,
     enableContextMenu: true,
     tableColumnPrefs: {}, // Context-aware column ordering map
-    templates: {},        // merged (built-ins + user)
+    templates: {},        // merged (built-ins + remote + user)
     userTemplates: {},    // raw user-uploaded only
+    sfRemoteTemplates: {},// Salesforce-managed templates { name: { content, category } }
     processMap: {},
     recentTemplates: []   // MRU top 3 (L-3)
 };
@@ -133,7 +134,8 @@ Cyfor.config.load = function (onReady) {
         'enableDate', 'enableNav', 'enableFormatNotes',
         'enableAutoInsert', 'enableContextMenu',
         'tableColumnPrefs',
-        'nucleusTemplates', 'processMap', 'recentTemplates'
+        'nucleusTemplates', 'processMap', 'recentTemplates',
+        'sfRemoteTemplates'
     ];
 
     chrome.storage.local.get(keys, function (result) {
@@ -150,7 +152,8 @@ Cyfor.config.load = function (onReady) {
         Cyfor.config.enableContextMenu = r.enableContextMenu !== false;
         Cyfor.config.tableColumnPrefs  = r.tableColumnPrefs || {};
         Cyfor.config.userTemplates     = r.nucleusTemplates || {};
-        Cyfor.config.templates         = Cyfor.getMergedTemplates(Cyfor.config.userTemplates);
+        Cyfor.config.sfRemoteTemplates = r.sfRemoteTemplates || {};
+        Cyfor.config.templates         = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
         Cyfor.config.processMap        = r.processMap || {};
         Cyfor.config.recentTemplates   = r.recentTemplates || [];
 
@@ -173,7 +176,8 @@ Cyfor.config.onChange = {
     tableColumnPrefs: [],
     nucleusTemplates: [],
     processMap: [],
-    recentTemplates: []
+    recentTemplates: [],
+    sfRemoteTemplates: []
 };
 
 Cyfor.config.startListening = function () {
@@ -188,7 +192,8 @@ Cyfor.config.startListening = function () {
         tableColumnPrefs: 'tableColumnPrefs',
         nucleusTemplates: 'userTemplates',
         processMap: 'processMap',
-        recentTemplates: 'recentTemplates'
+        recentTemplates: 'recentTemplates',
+        sfRemoteTemplates: 'sfRemoteTemplates'
     };
 
     var handler = function (changes, namespace) {
@@ -205,7 +210,11 @@ Cyfor.config.startListening = function () {
 
             if (storageKey === 'nucleusTemplates') {
                 Cyfor.config.userTemplates = newValue || {};
-                Cyfor.config.templates = Cyfor.getMergedTemplates(Cyfor.config.userTemplates);
+                Cyfor.config.templates = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
+                chrome.storage.local.set({ mergedTemplates: Cyfor.config.templates });
+            } else if (storageKey === 'sfRemoteTemplates') {
+                Cyfor.config.sfRemoteTemplates = newValue || {};
+                Cyfor.config.templates = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
                 chrome.storage.local.set({ mergedTemplates: Cyfor.config.templates });
             } else if (storageKey === 'processMap') {
                 Cyfor.config.processMap = newValue || {};

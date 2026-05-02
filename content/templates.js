@@ -458,6 +458,7 @@ Cyfor.templates = {
 
         // React to template changes — subscribed ONCE
         Cyfor.config.onChange.nucleusTemplates.push(() => this._refreshAllMenus());
+        Cyfor.config.onChange.sfRemoteTemplates.push(() => this._refreshAllMenus());
 
         // Listen for Quick Insert messages from popup — registered ONCE
         try {

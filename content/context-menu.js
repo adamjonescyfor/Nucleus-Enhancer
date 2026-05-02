@@ -61,6 +61,9 @@ Cyfor.contextMenu = {
             // If menu is open, just close it — user can reopen
             this.hide();
         });
+        Cyfor.config.onChange.sfRemoteTemplates.push(() => {
+            this.hide();
+        });
 
         Cyfor.cleanup.register(() => this.hide());
     },
@@ -223,10 +226,20 @@ Cyfor.contextMenu = {
                 label.textContent = key;
                 item.appendChild(label);
 
+                const isRemote = !isBuiltIn &&
+                    Cyfor.config.sfRemoteTemplates &&
+                    Object.prototype.hasOwnProperty.call(Cyfor.config.sfRemoteTemplates, key) &&
+                    !Object.prototype.hasOwnProperty.call(Cyfor.config.userTemplates || {}, key);
+
                 if (isBuiltIn) {
                     const badge = document.createElement('span');
                     badge.className = 'cyfor-ctx-menu-item-badge';
                     badge.textContent = 'Built-in';
+                    item.appendChild(badge);
+                } else if (isRemote) {
+                    const badge = document.createElement('span');
+                    badge.className = 'cyfor-ctx-menu-item-badge cyfor-ctx-menu-item-badge--official';
+                    badge.textContent = 'Official';
                     item.appendChild(badge);
                 }
 

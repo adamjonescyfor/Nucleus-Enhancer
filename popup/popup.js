@@ -102,8 +102,23 @@ document.addEventListener('DOMContentLoaded', function () {
         authAvatarImg:      document.getElementById('auth-avatar-img'),
         authStatus:         document.getElementById('auth-status'),
         authUser:           document.getElementById('auth-user'),
-        authSignInBtn:      document.getElementById('btn-sf-sign-in'),
-        authSignOutBtn:     document.getElementById('btn-sf-sign-out')
+        authSignInBtn:          document.getElementById('btn-sf-sign-in'),
+        authSignOutBtn:         document.getElementById('btn-sf-sign-out'),
+        sfTemplatesBadge:       document.getElementById('sf-templates-badge'),
+        sfConnectedName:        document.getElementById('sf-connected-name'),
+        sfSyncRow:              document.getElementById('sf-sync-row'),
+        sfTemplateCount:        document.getElementById('sf-template-count'),
+        sfSyncStatus:           document.getElementById('sf-sync-status'),
+        sfClientId:             document.getElementById('sf-client-id'),
+        sfInstanceUrl:          document.getElementById('sf-instance-url'),
+        sfRedirectUrl:          document.getElementById('sf-redirect-url'),
+        sfConfigStatus:         document.getElementById('sf-config-status'),
+        sfOAuthConnectBtn:      document.getElementById('btn-sf-oauth-connect'),
+        sfOAuthDisconnectBtn:   document.getElementById('btn-sf-oauth-disconnect'),
+        sfSyncNowBtn:           document.getElementById('btn-sf-sync-now'),
+        sfConfigSaveBtn:        document.getElementById('btn-sf-config-save'),
+        btnCopyRedirect:        document.getElementById('btn-copy-redirect'),
+        sfConfigSection:        document.getElementById('sf-config-section')
     };
 
     els.versionLabel.textContent = 'v' + chrome.runtime.getManifest().version;
@@ -163,6 +178,7 @@ function loadSettings(settingsStore) {
             initTemplates(savedMap);
             bindColumnEvents();
             bindAuthActions();
+            loadSfTemplatesSection();
 
             renderAuthFromState(r[AUTH_STORAGE_KEY]);
             refreshSalesforceAuth(false);

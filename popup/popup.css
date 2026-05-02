@@ -184,7 +184,7 @@ body {
    ================================================== */
 .auth-panel {
     padding: 10px 14px 12px;
-    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface) 100%);
 }
 
 .auth-identity {
@@ -201,7 +201,7 @@ body {
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    border: 1px solid #c9d8ea;
+    border: 1px solid var(--border);
     background: linear-gradient(135deg, #eaf3ff 0%, #dfeeff 100%);
     color: #1f5f9f;
     font-size: 12px;
@@ -789,6 +789,80 @@ select.map-select:focus {
 }
 
 /* ==================================================
+   Salesforce Templates Section
+   ================================================== */
+.sf-templates-panel {
+    padding: 10px 14px 12px;
+}
+
+.sf-status-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.sf-sync-status {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.sf-config-panel {
+    padding: 6px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sf-config-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.sf-config-label:first-child {
+    margin-top: 0;
+}
+
+.sf-config-label small {
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.sf-config-input {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-soft);
+    color: var(--text-primary);
+    font-size: 12px;
+    box-sizing: border-box;
+}
+
+.sf-config-input[readonly] {
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.sf-redirect-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.sf-redirect-row .sf-config-input {
+    flex: 1;
+}
+
+/* Official badge for Salesforce-managed templates */
+.cyfor-ctx-menu-item-badge--official {
+    background: #e8f4ff;
+    color: #0070d2;
+    border: 1px solid #b3d6f5;
+}
+
+/* ==================================================
    Dark Mode (L-6)
    ================================================== */
 @media (prefers-color-scheme: dark) {
@@ -824,6 +898,32 @@ select.map-select:focus {
 
     .sortable-item {
         background: var(--surface-soft);
+    }
+
+    .auth-panel {
+        background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-muted) 100%);
+    }
+
+    .auth-avatar {
+        background: linear-gradient(135deg, var(--surface-muted) 0%, var(--surface) 100%);
+        color: var(--brand);
+        border-color: var(--border);
+    }
+
+    .sf-config-input {
+        background: var(--surface-soft);
+        color: var(--text-primary);
+        border-color: var(--border);
+    }
+
+    .sf-config-input[readonly] {
+        color: var(--text-muted);
+    }
+
+    .cyfor-ctx-menu-item-badge--official {
+        background: #0a2540;
+        color: #4da6ff;
+        border-color: #1a4a80;
     }
 }
 
