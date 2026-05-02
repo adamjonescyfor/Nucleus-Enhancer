@@ -6,7 +6,7 @@
 
 Cyfor.undo = {
     _stack: [],
-    _maxSize: 20,
+    get _maxSize() { return Cyfor.constants.UNDO_STACK_MAX; },
 
     /**
      * Save the current state of an editor before modifying it.

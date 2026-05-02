@@ -256,3 +256,25 @@
         transform: translateY(0) scale(1);
     }
 }
+/* Recently used section label (L-3) */
+.cyfor-template-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cyfor-text-muted);
+    padding: 6px 10px 2px;
+    opacity: 0.75;
+}
+
+.cyfor-template-item-recent {
+    font-style: italic;
+}
+
+/* Search highlight (L-4) */
+.cyfor-template-item mark {
+    background: rgba(0, 112, 210, 0.15);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+}

@@ -141,7 +141,10 @@ Cyfor.columns = {
         }
 
         if (!table._cyforDesiredOrder || force) {
-            const userOrder = (Cyfor.config.tableColumnPrefs[contextId] || []).map(s => s.trim().toLowerCase());
+            // Support both legacy string[] and new { default: string[], presets: [] } format (L-7)
+            const stored = Cyfor.config.tableColumnPrefs[contextId] || [];
+            const orderArr = Array.isArray(stored) ? stored : (stored.default || []);
+            const userOrder = orderArr.map(s => s.trim().toLowerCase());
             
             // If the user hasn't customized THIS table type, do nothing.
             if (userOrder.length === 0) {
@@ -225,11 +228,17 @@ Cyfor.columns = {
             }
         }
 
-        // Apply changes: appendChild moves an existing node to the end automatically
+        // Disconnect observer before DOM mutations to avoid feedback loop
         if (needsUpdate) {
+            const obs = Cyfor.observer;
+            if (obs) obs.disconnect();
             for (const cell of newOrder) {
                 row.appendChild(cell);
             }
+            if (obs) obs.observe(
+                Cyfor.observerTarget || document.body,
+                Cyfor.observerOptions || { subtree: true, childList: true }
+            );
         }
     }
 };

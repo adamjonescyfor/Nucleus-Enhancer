@@ -26,7 +26,6 @@ chrome.runtime.onInstalled.addListener((details) => {
             enableDate: true,
             enableContextMenu: true,
             enableNav: true,
-            enableAutoEnd: false,
             enableFormatNotes: true,
             enableAutoInsert: false,
             tableColumnPrefs: {},
@@ -453,47 +452,37 @@ async function getSalesforceIdentity(tabId, tabUrl) {
                         }
                     } catch (e) { log('Profile button error:', e.message); }
 
-                    // ── 8. Broader DOM search: user name in profile links/headers ──
+                    // ── 7. Broader DOM search: user name in profile links/headers ──
                     try {
-                        const findUserNameInDOM = (root, depth) => {
+                        const walkUserLinks = (root, depth) => {
                             if (depth > 20) return null;
-                            
-                            // Look for profile links with /User/ in href
                             const profileLinks = root.querySelectorAll('a[href*="/User/"]');
                             for (const link of profileLinks) {
                                 const text = (link.textContent || '').trim();
-                                // Skip common UI chrome like "View profile"
                                 if (text && !/^(view profile|profile)$/i.test(text) && /^[A-Z].*[a-z]/.test(text) && text.length > 2 && text.length < 100) {
                                     log('Found user in profile link:', text);
                                     return text;
                                 }
                             }
-                            
-                            // Look in any element with user-like class/id names
                             const userEls = root.querySelectorAll('[class*="user"], [class*="profile"], [id*="user"], [id*="profile"]');
                             for (const el of userEls) {
                                 const text = (el.textContent || '').trim();
-                                if (text && /^[A-Z].*[a-z]/.test(text) && text.length > 2 && text.length < 100) {
-                                    // Try to filter out noise like button labels and UI chrome
-                                    if (!/^(profile|user|settings|home|menu|help|search|notification|logout|sign|account|view profile)$/i.test(text)) {
-                                        log('Found user in profile element:', text);
-                                        return text;
-                                    }
+                                if (text && /^[A-Z].*[a-z]/.test(text) && text.length > 2 && text.length < 100 &&
+                                    !/^(profile|user|settings|home|menu|help|search|notification|logout|sign|account|view profile)$/i.test(text)) {
+                                    log('Found user in profile element:', text);
+                                    return text;
                                 }
                             }
-                            
-                            // Recurse into shadow roots
                             const allEls = root.querySelectorAll('*');
                             for (const el of allEls) {
                                 if (el.shadowRoot) {
-                                    const found = findUserNameInDOM(el.shadowRoot, depth + 1);
+                                    const found = walkUserLinks(el.shadowRoot, depth + 1);
                                     if (found) return found;
                                 }
                             }
                             return null;
                         };
-                        
-                        const domUserName = findUserNameInDOM(document, 0);
+                        const domUserName = walkUserLinks(document, 0);
                         if (domUserName) {
                             return {
                                 ok: true, source: 'dom-user-link',
@@ -505,45 +494,8 @@ async function getSalesforceIdentity(tabId, tabUrl) {
                             };
                         }
                     } catch (e) { log('DOM user search error:', e.message); }
-                    try {
-                        const walk = (root, depth) => {
-                            if (depth > 15) return null;
-                            const sels = [
-                                '[title^="View profile for "]',
-                                '[aria-label^="View profile for "]'
-                            ];
-                            for (const sel of sels) {
-                                const found = root.querySelectorAll(sel);
-                                for (const el of found) {
-                                    const raw = el.getAttribute('title') || el.getAttribute('aria-label') || '';
-                                    const name = raw.replace(/^View profile for\s+/i, '').trim();
-                                    if (name && name.length > 1) return name;
-                                }
-                            }
-                            const allEls = root.querySelectorAll('*');
-                            for (const el of allEls) {
-                                if (el.shadowRoot) {
-                                    const found = walk(el.shadowRoot, depth + 1);
-                                    if (found) return found;
-                                }
-                            }
-                            return null;
-                        };
-                        const domName = walk(document, 0);
-                        log('DOM profile name:', domName);
-                        if (domName) {
-                            return {
-                                ok: true, source: 'dom',
-                                user: {
-                                    id: '', fullName: domName, username: '',
-                                    email: '', profilePhotoUrl: findProfilePhotoUrl(document, 0), organizationId: '',
-                                    domain: location.hostname, instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('DOM walk error:', e.message); }
 
-                    // ── 7. Log all window keys that look user-related for diagnostics ──
+                    // ── 8. Log all window keys that look user-related for diagnostics ──
                     try {
                         const suspects = Object.keys(window).filter(k =>
                             /user|context|principal|identity|session|account/i.test(k)
@@ -596,10 +548,13 @@ async function augmentIdentityWithProfilePhoto(identityResult) {
     return identityResult;
 }
 
+const SALESFORCE_CDN_REGEX = /^[a-z0-9-]+\.(file\.force\.com|content\.force\.com|salesforce\.com|documentforce\.com|static\.salesforceusercontent\.com)$/i;
+
 async function fetchProfilePhotoAsDataUrl(photoUrl) {
     try {
         const parsed = new URL(photoUrl);
-        if (!/^https?:$/i.test(parsed.protocol)) return '';
+        if (!/^https:$/i.test(parsed.protocol)) return '';
+        if (!SALESFORCE_CDN_REGEX.test(parsed.hostname)) return '';
 
         const response = await fetch(parsed.toString(), {
             credentials: 'include',

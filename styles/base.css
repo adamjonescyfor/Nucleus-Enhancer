@@ -110,3 +110,42 @@
 .cyfor-scrollable::-webkit-scrollbar-thumb:hover {
     background: #aaa;
 }
+
+/* ==================================================
+   Download Progress Bar (L-5)
+   ================================================== */
+.cyfor-btn-progress {
+    position: relative;
+    overflow: hidden;
+}
+.cyfor-btn-progress::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: var(--cyfor-dl-progress, 0%);
+    background: var(--brand-primary, #0070d2);
+    transition: width 0.3s ease;
+    border-radius: 0 0 3px 3px;
+}
+
+/* ==================================================
+   Dark Mode (L-6)
+   ================================================== */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --cyfor-text: #e8e8e8;
+        --cyfor-text-secondary: #c0bebe;
+        --cyfor-text-muted: #9e9ea0;
+        --cyfor-border: #3e3e40;
+        --cyfor-border-light: #2a2a2c;
+        --cyfor-surface: #1c1c1e;
+        --cyfor-surface-raised: #242426;
+        --cyfor-primary-light: #0a2540;
+        --cyfor-success-bg: #0a2e1a;
+        --cyfor-danger-bg: #2e0a0a;
+        --cyfor-warning-bg: #2a1a00;
+        --cyfor-info-bg: #0a1e30;
+    }
+}

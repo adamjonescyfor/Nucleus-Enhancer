@@ -20,22 +20,12 @@ Cyfor.notes = {
         }
     },
 
-    /**
-     * Simple interval-based scanning.
-     */
     _startScanning() {
-        this._stopScanning();
-        this.formatAll(); // Format immediately
-        this._intervalId = Cyfor.cleanup.setInterval(() => {
-            this.formatAll();
-        }, 2000);
+        this.formatAll();
     },
 
     _stopScanning() {
-        if (this._intervalId != null) {
-            Cyfor.cleanup.clearInterval(this._intervalId);
-            this._intervalId = null;
-        }
+        // interval removed — formatAll is now triggered by _onDomChange
     },
 
     /**
@@ -64,23 +54,23 @@ Cyfor.notes = {
         // Preserve the original raw text, dynamically reading HTML paragraphs to prevent glued text.
         let raw = cell.getAttribute('data-cyfor-raw');
         if (!raw) {
-            // Clone the cell so we can manipulate it to find line breaks without breaking the UI
-            const clone = cell.cloneNode(true);
-            
-            // Replace <br> tags with explicit newlines
-            const brs = clone.querySelectorAll('br');
-            for (const br of brs) {
-                br.replaceWith('\n');
+            // Walk the live cell DOM without cloning, extracting text with newlines for block elements
+            const walker = document.createTreeWalker(cell, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+            let text = '';
+            let node = walker.nextNode();
+            while (node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    text += node.textContent;
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tag = node.tagName;
+                    if (tag === 'BR') {
+                        text += '\n';
+                    } else if (tag === 'P' || tag === 'DIV' || tag === 'LI') {
+                        if (text.length > 0 && !text.endsWith('\n')) text += '\n';
+                    }
+                }
+                node = walker.nextNode();
             }
-            
-            // Pad block tags with newlines so they don't glue together when textContent runs
-            const blocks = clone.querySelectorAll('p, div, li');
-            for (const block of blocks) {
-                block.prepend('\n');
-                block.append('\n');
-            }
-
-            let text = clone.textContent || '';
             
             // Fallback: Salesforce sometimes puts perfectly formatted text inside the hover title attribute
             const spanWithTitle = cell.querySelector('span[title]');
@@ -226,12 +216,14 @@ Cyfor.notes = {
                 regex: /(:)([A-Z0-9])/g,
                 offsetFn: (m) => m.index + 1,
                 filter: (m, txt) => {
-                    // Prevent splitting timestamps: If there's a number AFTER the colon, 
-                    // check if there's a number BEFORE the colon. If yes, it's a time (e.g. 12:02) — DO NOT SPLIT.
+                    // Don't split timestamps: number before colon → it's a time (e.g. 12:02)
                     if (/[0-9]/.test(m[2])) {
                         const charBefore = m.index > 0 ? txt[m.index - 1] : '';
                         if (/[0-9]/.test(charBefore)) return false;
                     }
+                    // Don't split forensic codes like REF:, HASH:, CASE:, SHA1: (M-11)
+                    const prefix = txt.substring(Math.max(0, m.index - 6), m.index);
+                    if (/\b[A-Z]{2,6}$/.test(prefix)) return false;
                     return true;
                 }
             },

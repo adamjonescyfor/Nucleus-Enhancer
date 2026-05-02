@@ -643,6 +643,12 @@ select.map-select:focus {
     border-color: var(--danger-text);
 }
 
+.btn-danger-confirm {
+    background: var(--danger-bg);
+    border-color: var(--danger-text);
+    font-weight: 600;
+}
+
 /* ==================================================
    Upload Area
    ================================================== */
@@ -683,6 +689,20 @@ select.map-select:focus {
 .upload-label:hover {
     background: #f0f7ff;
     border-color: var(--brand);
+}
+
+.template-file-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.template-file-actions .btn {
+    flex: 1;
+    font-size: 11px;
+    padding: 5px 8px;
+    cursor: pointer;
 }
 
 /* ==================================================
@@ -766,4 +786,130 @@ select.map-select:focus {
     30%, 70% {
         transform: translateX(3px);
     }
+}
+
+/* ==================================================
+   Dark Mode (L-6)
+   ================================================== */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --surface: #1c1c1e;
+        --surface-soft: #242426;
+        --surface-muted: #2a2a2c;
+        --border: #3e3e40;
+        --text-primary: #e8e8e8;
+        --text-secondary: #b0b0b4;
+        --text-muted: #8a8a8e;
+        --brand: #4da6ff;
+        --brand-strong: #2d8ff0;
+        --success-bg: #0a2e1a;
+        --success-text: #4ade80;
+        --danger-bg: #2e0a0a;
+        --danger-text: #ff6b70;
+    }
+
+    body {
+        background: linear-gradient(180deg, #1a1a1c 0%, #141416 100%);
+    }
+
+    .header {
+        background: linear-gradient(135deg, #0a2540 0%, #0d3060 100%);
+    }
+
+    input, select, textarea {
+        background: var(--surface-soft);
+        color: var(--text-primary);
+        border-color: var(--border);
+    }
+
+    .sortable-item {
+        background: var(--surface-soft);
+    }
+}
+
+/* ==================================================
+   Template Editor (L-9)
+   ================================================== */
+.template-editor-textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-soft);
+    color: var(--text-primary);
+    font-family: var(--cyfor-font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.5;
+    resize: vertical;
+    margin: 8px 0;
+}
+
+.template-editor-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.template-editor-actions .btn {
+    flex: 1;
+}
+
+.cyfor-template-section-label,
+.cyfor-ctx-menu-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cyfor-text-muted);
+    padding: 4px 10px 2px;
+    opacity: 0.7;
+}
+
+/* ==================================================
+   Collapsible Sections (L-10)
+   ================================================== */
+.collapsible-section > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.collapsible-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.collapsible-section .collapse-indicator {
+    font-size: 12px;
+    transition: transform 0.2s;
+    display: inline-block;
+    color: var(--text-muted);
+}
+
+.collapsible-section[open] .collapse-indicator {
+    transform: rotate(180deg);
+}
+
+/* ==================================================
+   Column Presets (L-7)
+   ================================================== */
+.column-presets-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-soft);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.preset-select {
+    flex: 1;
+    min-width: 80px;
+    font-size: 11px;
+    padding: 3px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-primary);
 }

@@ -212,3 +212,63 @@
         animation: none;
     }
 }
+
+/* Recently used section label (L-3) */
+.cyfor-ctx-menu-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cyfor-text-muted);
+    padding: 6px 10px 2px;
+    opacity: 0.75;
+}
+
+.cyfor-ctx-menu-item-recent .cyfor-ctx-menu-item-label {
+    font-style: italic;
+}
+
+/* Search highlight (L-4) */
+.cyfor-ctx-menu-item-label mark {
+    background: rgba(0, 112, 210, 0.15);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* Template Preview Overlay (L-12) */
+.cyfor-ctx-menu-preview {
+    position: fixed;
+    z-index: var(--cyfor-z-overlay, 99999);
+    background: var(--cyfor-surface, #fff);
+    border: 1px solid var(--cyfor-border, #ddd);
+    border-radius: var(--cyfor-radius, 6px);
+    box-shadow: var(--cyfor-shadow-lg, 0 8px 24px rgba(0,0,0,0.15));
+    max-width: 280px;
+    max-height: 300px;
+    overflow: hidden;
+    padding: 0;
+    pointer-events: none;
+}
+
+.cyfor-ctx-menu-preview-title {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 10px 4px;
+    color: var(--cyfor-text, #181818);
+    border-bottom: 1px solid var(--cyfor-border-light, #f0f0f0);
+    background: var(--cyfor-surface-raised, #fafbfc);
+}
+
+.cyfor-ctx-menu-preview-content {
+    font-family: var(--cyfor-font-mono, monospace);
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--cyfor-text-secondary, #3e3e3c);
+    padding: 8px 10px;
+    margin: 0;
+    overflow-y: auto;
+    max-height: 240px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

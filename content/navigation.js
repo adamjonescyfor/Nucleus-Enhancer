@@ -37,7 +37,7 @@ Cyfor.navigation = {
         const ids = [];
         for (const row of rows) {
             const id = row.getAttribute('data-row-key-value');
-            if (id && id.startsWith('a2R')) {
+            if (id) {
                 ids.push(Cyfor.utils.normalizeId(id));
             }
         }

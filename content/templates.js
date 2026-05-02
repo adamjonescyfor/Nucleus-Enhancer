@@ -16,24 +16,11 @@ Cyfor.templates = {
      * multiple times (e.g. after tab visibility changes).
      */
     start() {
-        this.stop();
-
-        // Initial scan
         this._scanEditors();
-
-        this._intervalId = Cyfor.cleanup.setInterval(() => {
-            this._scanEditors();
-        }, 1500);
     },
 
-    /**
-     * Stop scanning for editors.
-     */
     stop() {
-        if (this._intervalId != null) {
-            Cyfor.cleanup.clearInterval(this._intervalId);
-            this._intervalId = null;
-        }
+        // interval removed — _scanEditors is now triggered by _onDomChange
     },
 
     /**
@@ -151,6 +138,43 @@ Cyfor.templates = {
             ? this._sortKeysForensicFirst(allKeys)
             : allKeys;
 
+        // Recently used (top 3) — rendered above search box (L-3)
+        const recentKeys = (Cyfor.config.recentTemplates || []).filter(k => templates[k]);
+        if (recentKeys.length > 0) {
+            const recentLabel = document.createElement('div');
+            recentLabel.className = 'cyfor-template-section-label';
+            recentLabel.textContent = 'Recently used';
+            menu.appendChild(recentLabel);
+            for (const key of recentKeys) {
+                const item = document.createElement('div');
+                item.className = 'cyfor-template-item cyfor-template-item-recent';
+                item.textContent = key;
+                item.title = `Insert "${key}"`;
+                item.setAttribute('role', 'menuitem');
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('data-template-key', key);
+                item.addEventListener('mousedown', (e) => e.stopPropagation());
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    Cyfor.editor.insertIntoContainer(container, templates[key], key)
+                        .then((success) => {
+                            if (success) {
+                                Cyfor.toast.success(`"${key}" inserted`, 3000, {
+                                    label: 'Undo',
+                                    onClick: () => Cyfor.undo.undo()
+                                });
+                            }
+                        });
+                    this._closeAllMenus();
+                });
+                menu.appendChild(item);
+            }
+            const sep = document.createElement('div');
+            sep.className = 'cyfor-template-separator';
+            menu.appendChild(sep);
+        }
+
         // Search box (4+ templates)
         if (keys.length >= 4) {
             const search = document.createElement('input');
@@ -161,9 +185,20 @@ Cyfor.templates = {
             search.setAttribute('role', 'searchbox');
 
             search.addEventListener('input', () => {
-                const q = search.value.toLowerCase();
-                menu.querySelectorAll('.cyfor-template-item').forEach(item => {
-                    item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+                const q = search.value.trim();
+                const qLow = q.toLowerCase();
+                menu.querySelectorAll('.cyfor-template-item[role="menuitem"]').forEach(item => {
+                    const name = item.getAttribute('data-template-key') || '';
+                    const matches = name.toLowerCase().includes(qLow);
+                    item.style.display = matches ? '' : 'none';
+                    // Highlight match in item text (L-4)
+                    if (q && matches) {
+                        const escaped = Cyfor.utils.escapeHtml(name);
+                        const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
+                        item.innerHTML = escaped.replace(re, '<mark>$1</mark>');
+                    } else {
+                        item.textContent = name;
+                    }
                 });
             });
 
@@ -173,6 +208,10 @@ Cyfor.templates = {
                 if (e.key === 'Escape') {
                     this._closeAllMenus();
                     e.stopPropagation();
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const first = menu.querySelector('.cyfor-template-item[role="menuitem"]:not([style*="display: none"])');
+                    if (first) first.focus();
                 }
             });
 
@@ -214,6 +253,20 @@ Cyfor.templates = {
             return;
         }
 
+        // Arrow key navigation across items (M-7)
+        menu.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+            const items = Array.from(menu.querySelectorAll('.cyfor-template-item[role="menuitem"]'))
+                .filter(el => el.style.display !== 'none');
+            if (items.length === 0) return;
+            const idx = items.indexOf(document.activeElement);
+            e.preventDefault();
+            if (e.key === 'ArrowDown') items[(idx + 1) % items.length].focus();
+            else if (e.key === 'ArrowUp') items[(idx - 1 + items.length) % items.length].focus();
+            else if (e.key === 'Home') items[0].focus();
+            else if (e.key === 'End') items[items.length - 1].focus();
+        });
+
         // Template items
         for (const key of keys) {
             const item = document.createElement('div');
@@ -221,6 +274,8 @@ Cyfor.templates = {
             item.textContent = key;
             item.title = `Insert "${key}"`;
             item.setAttribute('role', 'menuitem');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('data-template-key', key);
 
             item.addEventListener('mousedown', (e) => e.stopPropagation());
             item.addEventListener('click', (e) => {
@@ -412,7 +467,13 @@ Cyfor.templates = {
                     sendResponse({ ok: true });
                     return true;
                 }
-                // Don't respond to messages we don't own
+                if (msg.action === 'open-template-menu') {
+                    // Click the first visible template button (Alt+T shortcut — L-8)
+                    const btn = document.querySelector('.cyfor-template-btn');
+                    if (btn) btn.click();
+                    sendResponse({ ok: !!btn });
+                    return true;
+                }
             };
             chrome.runtime.onMessage.addListener(handler);
             Cyfor.cleanup.register(() => {

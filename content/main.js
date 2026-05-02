@@ -10,6 +10,7 @@ Cyfor.main = {
     _debouncedHandler: null,
     _scrapeDebounced: null,
     _lastCachedProfileName: '',
+    _identityCached: false,
 
     boot: function () {
         var self = this;
@@ -48,9 +49,33 @@ Cyfor.main = {
         var self = this;
         this._debouncedHandler = Cyfor.utils.throttle(function () {
             self._onDomChange();
-        }, 300);
+        }, Cyfor.constants.OBSERVER_THROTTLE_MS);
 
-        this._observer = new MutationObserver(this._debouncedHandler);
+        this._columnScanDebounced = Cyfor.utils.debounce(function () {
+            Cyfor.columns.processAll();
+        }, Cyfor.constants.COLUMN_SCAN_DEBOUNCE_MS);
+
+        this._observer = new MutationObserver(function (mutations) {
+            self._debouncedHandler();
+
+            // Re-scan columns only when a lightning-datatable is newly inserted
+            var prefs = Cyfor.config && Cyfor.config.tableColumnPrefs;
+            if (prefs && Object.keys(prefs).length > 0) {
+                for (var i = 0; i < mutations.length; i++) {
+                    var added = mutations[i].addedNodes;
+                    for (var j = 0; j < added.length; j++) {
+                        var node = added[j];
+                        if (node.nodeType !== 1) continue;
+                        var tag = node.tagName ? node.tagName.toLowerCase() : '';
+                        if (tag === 'lightning-datatable' ||
+                            (node.querySelector && node.querySelector('lightning-datatable'))) {
+                            self._columnScanDebounced();
+                            return;
+                        }
+                    }
+                }
+            }
+        });
 
         this._observer.observe(document.body, {
             subtree: true,
@@ -58,9 +83,12 @@ Cyfor.main = {
         });
 
         Cyfor.observer = this._observer;
+        Cyfor.observerTarget = document.body;
+        Cyfor.observerOptions = { subtree: true, childList: true };
         Cyfor.cleanup.register(function () {
             self._observer.disconnect();
             self._debouncedHandler.cancel();
+            if (self._columnScanDebounced) self._columnScanDebounced.cancel();
         });
     },
 
@@ -87,12 +115,17 @@ Cyfor.main = {
         Cyfor.downloads.scan();
         this._cacheProfileIdentity();
 
-        // Trigger table updates whenever DOM structure significantly mutates
-        Cyfor.columns.processAll(); 
+        if (Cyfor.config.enableFormatNotes) {
+            Cyfor.notes.formatAll();
+        }
+
+        Cyfor.templates._scanEditors();
     },
 
     _onNavigate: function () {
+        this._identityCached = false;
         Cyfor.navigation.handlePageChange();
+        Cyfor.columns.processAll();
 
         if (Cyfor.config.enableFormatNotes) {
             Cyfor.notes.formatAll();
@@ -100,7 +133,6 @@ Cyfor.main = {
 
         Cyfor.downloads._processed = new WeakSet();
 
-        // Close any open context menu when navigating
         if (Cyfor.contextMenu) Cyfor.contextMenu.hide();
     },
 
@@ -113,7 +145,7 @@ Cyfor.main = {
                 if (!Cyfor.utils.isContextInvalid()) {
                     Cyfor.navigation.scrapeProcessList(r);
                 }
-            }, 1000);
+            }, Cyfor.constants.SCRAPE_DEBOUNCE_MS);
 
             Cyfor.cleanup.register(function () {
                 this._scrapeDebounced.cancel();
@@ -143,15 +175,10 @@ Cyfor.main = {
                 console.log('[CYFOR] Context invalidated \u2014 cleaning up');
                 Cyfor.cleanup.destroyAll();
             }
-        }, 10000);
+        }, Cyfor.constants.CONTEXT_CHECK_INTERVAL_MS);
     },
 
     _onTabHidden: function () {
-        if (Cyfor.notes._intervalId != null) {
-            Cyfor.cleanup.clearInterval(Cyfor.notes._intervalId);
-            Cyfor.notes._intervalId = null;
-        }
-        Cyfor.templates.stop();
         if (Cyfor.contextMenu) Cyfor.contextMenu.hide();
     },
 
@@ -163,6 +190,8 @@ Cyfor.main = {
     },
 
     _cacheProfileIdentity: function () {
+        if (this._identityCached) return;
+
         var selectors = [
             'a.profile-link-label[href*="/lightning/r/User/"]',
             'a.profile-link-label[href*="/User/"]',
@@ -199,6 +228,7 @@ Cyfor.main = {
         if (!profileName || profileName === this._lastCachedProfileName) return;
 
         this._lastCachedProfileName = profileName;
+        this._identityCached = true;
         chrome.storage.local.set({
             salesforceIdentityCache: {
                 domain: location.hostname,
@@ -246,111 +276,6 @@ try {
         try { chrome.runtime.onMessage.removeListener(pingHandler); } catch (e) {}
     });
 } catch (e) {}
-
-async function getSalesforceIdentity() {
-    try {
-        var origins = [location.origin];
-        if (location.hostname.indexOf('.lightning.force.com') !== -1) {
-            origins.push('https://' + location.hostname.replace('.lightning.force.com', '.my.salesforce.com'));
-        }
-
-        var lastErr = null;
-        for (var i = 0; i < origins.length; i++) {
-            try {
-                var restResult = await fetchIdentityFromOrigin(origins[i]);
-                restResult.source = 'rest';
-                return restResult;
-            } catch (err) {
-                console.log('[CYFOR] REST identity failed for', origins[i], ':', err.message);
-                lastErr = err;
-            }
-        }
-
-        for (var j = 0; j < origins.length; j++) {
-            try {
-                var oauthResult = await fetchOAuthUserInfoFromOrigin(origins[j]);
-                oauthResult.source = 'oauth';
-                return oauthResult;
-            } catch (err2) {
-                console.log('[CYFOR] OAuth userinfo failed for', origins[j], ':', err2.message);
-                lastErr = err2;
-            }
-        }
-
-        if (lastErr && (lastErr.code === 401 || lastErr.code === 403)) {
-            return { ok: false, error: 'Salesforce session expired. Please sign in again.' };
-        }
-
-        var domIdentity = extractIdentityFromDom();
-        console.log('[CYFOR] DOM identity result:', domIdentity);
-        if (domIdentity.fullName || domIdentity.username || domIdentity.email) {
-            return {
-                ok: true,
-                source: 'dom',
-                user: {
-                    id: '',
-                    fullName: domIdentity.fullName || '',
-                    username: domIdentity.username || '',
-                    email: domIdentity.email || '',
-                    organizationId: '',
-                    domain: location.hostname,
-                    instanceUrl: location.origin
-                },
-                partial: true
-            };
-        }
-
-        // All API methods failed — still treat active Lightning session as connected.
-        console.log('[CYFOR] All identity methods failed, using session-only fallback.');
-        return {
-            ok: true,
-            source: 'session',
-            user: {
-                id: '',
-                fullName: '',
-                username: '',
-                email: '',
-                organizationId: '',
-                domain: location.hostname,
-                instanceUrl: location.origin
-            },
-            partial: true
-        };
-    } catch (e) {
-        return {
-            ok: false,
-            error: (e && e.message) || 'Could not verify Salesforce session.'
-        };
-    }
-}
-
-async function fetchOAuthUserInfoFromOrigin(origin) {
-    var res = await fetch(origin + '/services/oauth2/userinfo', {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' }
-    });
-
-    if (!res.ok) {
-        var oauthErr = new Error('Salesforce OAuth userinfo failed (' + res.status + ')');
-        oauthErr.code = res.status;
-        throw oauthErr;
-    }
-
-    var user = await res.json();
-    return {
-        ok: true,
-        user: {
-            id: user.user_id || '',
-            fullName: user.name || '',
-            username: user.preferred_username || '',
-            email: user.email || '',
-            organizationId: user.organization_id || '',
-            domain: (new URL(origin)).hostname,
-            instanceUrl: origin
-        },
-        partial: true
-    };
-}
 
 function extractIdentityFromDom() {
     var exactSelectors = [
@@ -433,6 +358,7 @@ function resolveSalesforceIdentityFromDom() {
 }
 
 function sanitizeUserLabel(text) {
+
     var value = (text || '')
         .replace(/^View profile for\s+/i, '')
         .replace(/\s+/g, ' ')
@@ -444,50 +370,6 @@ function sanitizeUserLabel(text) {
     if (BLOCKLIST.test(value)) return '';
     if (value.length < 2) return '';
     return value;
-}
-
-async function fetchIdentityFromOrigin(origin) {
-    var versionsRes = await fetch(origin + '/services/data/', {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' }
-    });
-
-    if (!versionsRes.ok) {
-        var versionsErr = new Error('Salesforce API endpoint not reachable (' + versionsRes.status + ')');
-        versionsErr.code = versionsRes.status;
-        throw versionsErr;
-    }
-
-    var versions = await versionsRes.json();
-    var latestVersion = '60.0';
-    if (Array.isArray(versions) && versions.length > 0 && versions[versions.length - 1].version) {
-        latestVersion = versions[versions.length - 1].version;
-    }
-
-    var meRes = await fetch(origin + '/services/data/v' + latestVersion + '/chatter/users/me', {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' }
-    });
-
-    if (!meRes.ok) {
-        var meErr = new Error('Salesforce user lookup failed (' + meRes.status + ')');
-        meErr.code = meRes.status;
-        throw meErr;
-    }
-
-    var user = await meRes.json();
-    return {
-        ok: true,
-        user: {
-            id: user.id || '',
-            fullName: user.name || '',
-            username: user.username || '',
-            email: user.email || '',
-            organizationId: user.organizationId || '',
-            domain: (new URL(origin)).hostname,
-            instanceUrl: origin
-        }
-    };
 }
 
 // ========================================

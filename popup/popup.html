@@ -55,6 +55,13 @@
         </div>
         <div class="option-row">
             <div class="option-info">
+                <div class="option-label">Sync Settings Across Devices</div>
+                <div class="option-desc">Save toggles to Chrome Sync (templates stay local)</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-sync-settings"><span class="slider"></span></label>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
                 <div class="option-label">Right-Click Date/Time</div>
                 <div class="option-desc">Quick-fill with current date or time</div>
             </div>
@@ -93,6 +100,14 @@
         <ul id="column-list" class="sortable-list">
             <!-- Injected via JS dynamically based on page context -->
         </ul>
+        <!-- Column Presets (L-7) -->
+        <div id="column-presets-bar" class="column-presets-bar" style="display:none">
+            <select id="preset-select" class="preset-select" aria-label="Load column preset">
+                <option value="">Load preset…</option>
+            </select>
+            <button id="btn-save-preset" class="btn btn-secondary" style="font-size:11px; padding:4px 8px">Save Preset</button>
+            <button id="btn-delete-preset" class="btn btn-danger" style="font-size:11px; padding:4px 8px; display:none">Delete</button>
+        </div>
     </section>
 
     <!-- Templates -->
@@ -113,21 +128,22 @@
         </div>
     </section>
 
-    <!-- Mappings -->
-    <section class="section">
-        <div class="section-header">
+    <!-- Mappings (collapsible — L-10) -->
+    <details class="section collapsible-section">
+        <summary class="section-header">
             <span>Process → Template Mappings</span>
-        </div>
+            <span class="collapse-indicator" aria-hidden="true">▾</span>
+        </summary>
         <div class="mapping-container" id="mapping-list">
             <div class="empty-state">Upload templates to configure mappings</div>
         </div>
-    </section>
+    </details>
 
     <!-- Quick Insert -->
     <section class="section">
         <div class="section-header">
             <span>Quick Insert</span>
-            <span class="shortcut-hint"><kbd>Alt</kbd>+<kbd>Z</kbd> to undo</span>
+            <span class="shortcut-hint"><kbd>Alt</kbd>+<kbd>Z</kbd> to undo · <kbd>Alt</kbd>+<kbd>T</kbd> to open</span>
         </div>
         <div class="quick-insert">
             <select id="template-select" aria-label="Select template">
@@ -140,7 +156,26 @@
                 <button id="btn-preview" class="btn btn-secondary" aria-label="Preview template" disabled>
                     Preview
                 </button>
+                <button id="btn-edit-template" class="btn btn-secondary" aria-label="Edit selected template" disabled>
+                    Edit
+                </button>
             </div>
+        </div>
+    </section>
+
+    <!-- Template Editor (L-9) -->
+    <section class="section" id="template-editor-section" style="display:none">
+        <div class="section-header">
+            <span>Edit Template: <span id="template-editor-name"></span></span>
+            <button class="section-close" id="btn-editor-close" aria-label="Close template editor">✕</button>
+        </div>
+        <textarea id="template-editor-area" class="template-editor-textarea" rows="10" spellcheck="false" aria-label="Template content"></textarea>
+        <div class="template-editor-actions">
+            <button id="btn-editor-save" class="btn btn-primary">Save</button>
+            <button id="btn-editor-cancel" class="btn btn-secondary">Cancel</button>
+        </div>
+        <div id="template-editor-builtin-note" class="builtin-note" style="display:none">
+            This is a built-in template. Saving will create a user override.
         </div>
     </section>
 
@@ -163,6 +198,15 @@
             <label for="folder-input" class="upload-label">
                 Select Template Folder
             </label>
+            <div class="template-file-actions">
+                <button id="btn-export-templates" class="btn btn-secondary" aria-label="Export templates as JSON">
+                    Export JSON
+                </button>
+                <label class="btn btn-secondary" aria-label="Import templates from JSON">
+                    Import JSON
+                    <input type="file" id="json-import-input" accept=".json" style="display:none">
+                </label>
+            </div>
             <div id="status-msg" class="status-msg"></div>
             <button id="btn-clear" class="btn btn-danger" style="display:none" aria-label="Clear all templates">
                 Clear All Templates
@@ -173,6 +217,9 @@
     <!-- Footer -->
     <footer class="footer">CYFOR Nucleus Tools</footer>
 
+    <script src="popup-auth.js"></script>
+    <script src="popup-columns.js"></script>
+    <script src="popup-templates.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>

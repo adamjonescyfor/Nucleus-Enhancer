@@ -84,6 +84,21 @@ Cyfor.editor = {
     },
 
     /**
+     * Update the recently-used template list in storage (L-3).
+     * Keeps the last 3 unique names in MRU order.
+     */
+    _trackRecentTemplate(templateName) {
+        try {
+            chrome.storage.local.get(['recentTemplates'], (res) => {
+                let recent = (res.recentTemplates || []).filter(n => n !== templateName);
+                recent.unshift(templateName);
+                if (recent.length > 3) recent = recent.slice(0, 3);
+                chrome.storage.local.set({ recentTemplates: recent });
+            });
+        } catch {}
+    },
+
+    /**
      * Find the active Quill or contenteditable editor inside a container.
      */
     findEditor(container) {
@@ -109,32 +124,60 @@ Cyfor.editor = {
             // Click the placeholder to trigger lazy init
             const standin = container.querySelector('.standin');
             const textarea = container.querySelector('.slds-rich-text-editor__textarea');
-            if (standin) {
-                standin.click();
-            } else if (textarea) {
-                textarea.click();
-            }
+            if (standin) standin.click();
+            else if (textarea) textarea.click();
 
-            let attempts = 0;
-            const maxAttempts = 12;
+            const timeoutId = Cyfor.cleanup.setTimeout(() => {
+                obs.disconnect();
+                reject(new Error('Could not activate editor'));
+            }, Cyfor.constants.EDITOR_ACTIVATE_TIMEOUT_MS);
 
-            const poll = Cyfor.cleanup.setInterval(() => {
-                attempts++;
+            const obs = new MutationObserver(() => {
                 const editor = this.findEditor(container);
-
                 if (editor) {
-                    Cyfor.cleanup.clearInterval(poll);
+                    obs.disconnect();
+                    Cyfor.cleanup.clearTimeout(timeoutId);
                     editor.focus();
                     resolve(editor);
-                    return;
                 }
-
-                if (attempts >= maxAttempts) {
-                    Cyfor.cleanup.clearInterval(poll);
-                    reject(new Error('Could not activate editor'));
-                }
-            }, 200);
+            });
+            obs.observe(container, { subtree: true, childList: true });
         });
+    },
+
+    /**
+     * Substitute template variables: {{date}}, {{examiner}}, {{caseRef}}.
+     * Unresolved variables become [variableName] placeholders.
+     */
+    substituteVariables(text) {
+        const today = new Date();
+        const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+        const examiner = (Cyfor.main && Cyfor.main._lastCachedProfileName)
+            || ((Cyfor.config && Cyfor.config._cachedIdentity && Cyfor.config._cachedIdentity.fullName))
+            || '[examiner]';
+
+        let caseRef = '[caseRef]';
+        try {
+            const headerSelectors = [
+                'h1.slds-page-header__title',
+                '.slds-page-header__title .slds-truncate',
+                'lightning-formatted-text.slds-page-header__title'
+            ];
+            for (const sel of headerSelectors) {
+                const el = document.querySelector(sel) ||
+                    (Cyfor.utils.querySelectorAllDeep(sel, document.body, 5)[0]);
+                if (el) {
+                    const t = (el.textContent || '').trim();
+                    if (t) { caseRef = t; break; }
+                }
+            }
+        } catch {}
+
+        return text
+            .replace(/\{\{date\}\}/gi, dateStr)
+            .replace(/\{\{examiner\}\}/gi, examiner)
+            .replace(/\{\{caseRef\}\}/gi, caseRef);
     },
 
     /**
@@ -147,6 +190,14 @@ Cyfor.editor = {
     insertText(editor, text, templateName) {
         if (!editor || !text) return false;
 
+        // Apply variable substitution before inserting (L-1)
+        text = this.substituteVariables(text);
+
+        // Track recently used templates (L-3)
+        if (templateName) {
+            this._trackRecentTemplate(templateName);
+        }
+
         // Save state for undo BEFORE modifying
         Cyfor.undo.push(editor, templateName);
 
@@ -157,7 +208,7 @@ Cyfor.editor = {
         // Method 1: execCommand (works with Quill's undo stack)
         try {
             inserted = document.execCommand('insertText', false, text);
-        } catch {}
+        } catch (e) { console.debug('[CYFOR] insertText method 1 failed:', e.message); }
 
         // Method 2: insertHTML with proper paragraph structure
         if (!inserted) {
@@ -166,13 +217,15 @@ Cyfor.editor = {
                     .map(line => `<p>${Cyfor.utils.escapeHtml(line) || '<br>'}</p>`)
                     .join('');
                 inserted = document.execCommand('insertHTML', false, html);
-            } catch {}
+            } catch (e) { console.debug('[CYFOR] insertText method 2 failed:', e.message); }
         }
 
         // Method 3: Direct DOM manipulation (last resort)
-        // Uses innerText += which preserves existing content
         if (!inserted) {
             editor.innerText += text;
+            // Trigger Quill normalisation immediately so innerHTML is consistent
+            // before Cyfor.undo captured the pre-insertion state is relied upon
+            editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             inserted = true;
         }
 

@@ -17,12 +17,17 @@
         "https://*.lightning.force.com/*",
         "https://*.my.salesforce.com/*",
         "https://*.file.force.com/*",
-        "https://*.amazonaws.com/*"
+        "https://*.content.force.com/*",
+        "https://*.documentforce.com/*"
     ],
 
     "action": {
         "default_popup": "popup/popup.html",
         "default_title": "CYFOR Nucleus Enhancer"
+    },
+
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'none'; worker-src 'self'"
     },
 
     "background": {
@@ -36,6 +41,13 @@
                 "mac": "Alt+Z"
             },
             "description": "Undo last template insertion"
+        },
+        "open-template-menu": {
+            "suggested_key": {
+                "default": "Alt+T",
+                "mac": "Alt+T"
+            },
+            "description": "Open template dropdown in active editor"
         }
     },
 
@@ -52,7 +64,6 @@
                 "content/editor.js",
                 "content/datetime.js",
                 "content/navigation.js",
-                "content/autoend.js",
                 "content/columns.js",
                 "content/notes-data.js",
                 "content/notes.js",
@@ -67,7 +78,6 @@
                 "styles/notes.css",
                 "styles/templates.css",
                 "styles/toast.css",
-                "styles/autoend.css",
                 "styles/context-menu.css",
                 "styles/animations.css"
             ]
