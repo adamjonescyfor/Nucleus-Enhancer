@@ -13,12 +13,21 @@ var CACHE_KEY    = 'sfRemoteTemplates';
 var SYNCED_AT_KEY = 'sfTemplatesSyncedAt';
 var CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
 
-function buildQuery(config) {
+function buildQuery(config, teamCode) {
     var obj      = config.templateObject || 'NucleusTemplate__c';
     var content  = config.contentField   || 'Content__c';
     var category = config.categoryField  || 'Category__c';
     var active   = config.activeField    || 'IsActive__c';
-    return 'SELECT Name, ' + content + ', ' + category + ' FROM ' + obj + ' WHERE ' + active + ' = true ORDER BY Name ASC';
+
+    var teamFilter = teamCode
+        ? "(Team__c = null OR Team__r.TeamCode__c = '" + teamCode + "')"
+        : 'Team__c = null';
+
+    return 'SELECT Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c'
+         + ' FROM ' + obj
+         + ' WHERE ' + active + ' = true'
+         + ' AND ' + teamFilter
+         + ' ORDER BY Name ASC';
 }
 
 async function fetchRemoteTemplates(forceRefresh) {
@@ -42,15 +51,17 @@ async function fetchRemoteTemplates(forceRefresh) {
         return { ok: false, error: e.message };
     }
 
-    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY]);
-    var config  = results[CONFIG_KEY] || {};
-    var tokens  = results[TOKENS_KEY] || {};
+    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser']);
+    var config  = results[CONFIG_KEY]    || {};
+    var tokens  = results[TOKENS_KEY]   || {};
+    var sfUser  = results['sfOAuthUser'] || {};
 
     var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) return { ok: false, error: 'No Salesforce instance URL configured.' };
 
+    var teamCode   = sfUser.teamCode || null;
     var apiVersion = config.apiVersion || 'v62.0';
-    var query      = buildQuery(config);
+    var query      = buildQuery(config, teamCode);
     var url        = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(query);
 
     var response = await doFetch(url, accessToken);
@@ -81,12 +92,14 @@ async function fetchRemoteTemplates(forceRefresh) {
     var sfRemoteTemplates = {};
     var records = data.records || [];
     for (var i = 0; i < records.length; i++) {
-        var record = records[i];
-        var name   = record.Name;
-        var body   = record[contentField] || '';
-        var cat    = record[categoryField] || '';
+        var record      = records[i];
+        var name        = record.Name;
+        var body        = record[contentField]  || '';
+        var cat         = record[categoryField] || '';
+        var recId       = record.Id             || '';
+        var recTeamCode = (record['Team__r'] && record['Team__r']['TeamCode__c']) || null;
         if (name && body) {
-            sfRemoteTemplates[name] = { content: body, category: cat };
+            sfRemoteTemplates[name] = { id: recId, content: body, category: cat, teamCode: recTeamCode };
         }
     }
 

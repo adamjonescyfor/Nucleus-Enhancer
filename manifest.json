@@ -28,6 +28,8 @@
         "default_title": "CYFOR Nucleus Enhancer"
     },
 
+    "options_page": "manager/manager.html",
+
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'none'; worker-src 'self'"
     },

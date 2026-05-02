@@ -5,7 +5,7 @@
 // ==================================================
 
 try {
-    importScripts('background/sf-oauth.js', 'background/sf-templates.js');
+    importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js');
 } catch (e) {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
 }
@@ -48,7 +48,8 @@ chrome.runtime.onInstalled.addListener((details) => {
                 activeField:    'IsActive__c',
                 apiVersion:     'v62.0'
             },
-            sfRemoteTemplates: {},
+            sfOAuthUser:        null,
+            sfRemoteTemplates:  {},
             sfTemplatesSyncedAt: null
         });
     } else if (details.reason === 'update') {
@@ -128,6 +129,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // List templates for the manager page (includes id, teamCode per entry)
+    if (message.action === 'sfTemplates.list') {
+        chrome.storage.local.get(['sfRemoteTemplates', 'sfOAuthUser'], function (r) {
+            sendResponse({
+                ok:        true,
+                templates: r.sfRemoteTemplates || {},
+                user:      r.sfOAuthUser       || {}
+            });
+        });
+        return true;
+    }
+
+    // Create a new template in Salesforce
+    if (message.action === 'sfTemplates.create') {
+        sfTemplateCrud('create', message.payload)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // Update an existing template in Salesforce
+    if (message.action === 'sfTemplates.update') {
+        sfTemplateCrud('update', message.payload)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // Delete a template from Salesforce
+    if (message.action === 'sfTemplates.delete') {
+        sfTemplateCrud('delete', message.payload)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
     // Open file explorer showing a specific download
     if (message.action === 'showDownload') {
         try {
@@ -143,6 +180,83 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 });
+
+/**
+ * Create, update, or delete a NucleusTemplate__c record via Salesforce REST API.
+ * Only proceeds if the stored sfOAuthUser has isTemplateAdmin === true.
+ */
+async function sfTemplateCrud(op, payload) {
+    var stored = await chrome.storage.local.get(['sfOAuthUser', 'sfOAuthConfig', 'sfOAuthTokens']);
+    var user   = stored['sfOAuthUser']  || {};
+    var config = stored['sfOAuthConfig']|| {};
+    var tokens = stored['sfOAuthTokens']|| {};
+
+    if (!user.isTemplateAdmin) throw new Error('PERMISSION_DENIED');
+
+    var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) throw new Error('No Salesforce instance URL');
+
+    var accessToken;
+    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
+    catch (e) { throw new Error('NOT_AUTHENTICATED'); }
+
+    var apiVersion = config.apiVersion || 'v62.0';
+    var baseUrl    = instanceUrl + '/services/data/' + apiVersion + '/sobjects/NucleusTemplate__c';
+
+    var response, errBody;
+
+    if (op === 'create') {
+        response = await fetch(baseUrl + '/', {
+            method:  'POST',
+            headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Name:        payload.name,
+                Content__c:  payload.content,
+                Category__c: payload.category || '',
+                IsActive__c: true,
+                Team__c:     user.teamId || null
+            })
+        });
+        if (!response.ok) {
+            errBody = await response.json().catch(function () { return [{}]; });
+            throw new Error(errBody[0] && errBody[0].message ? errBody[0].message : 'Create failed: ' + response.status);
+        }
+        var created = await response.json();
+        await self.SfTemplates.fetchRemoteTemplates(true);
+        return { ok: true, id: created.id };
+
+    } else if (op === 'update') {
+        response = await fetch(baseUrl + '/' + payload.id, {
+            method:  'PATCH',
+            headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Name:        payload.name,
+                Content__c:  payload.content,
+                Category__c: payload.category || ''
+            })
+        });
+        if (!response.ok) {
+            errBody = await response.json().catch(function () { return [{}]; });
+            throw new Error(errBody[0] && errBody[0].message ? errBody[0].message : 'Update failed: ' + response.status);
+        }
+        await self.SfTemplates.fetchRemoteTemplates(true);
+        return { ok: true };
+
+    } else if (op === 'delete') {
+        response = await fetch(baseUrl + '/' + payload.id, {
+            method:  'DELETE',
+            headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        if (!response.ok) {
+            errBody = await response.json().catch(function () { return [{}]; });
+            throw new Error(errBody[0] && errBody[0].message ? errBody[0].message : 'Delete failed: ' + response.status);
+        }
+        await self.SfTemplates.fetchRemoteTemplates(true);
+        return { ok: true };
+    }
+
+    throw new Error('Unknown CRUD operation: ' + op);
+}
 
 /**
  * Read Salesforce user identity by injecting into the page's MAIN world and

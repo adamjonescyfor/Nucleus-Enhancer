@@ -108,6 +108,13 @@ function bindSfTemplateActions() {
         saveBtn.addEventListener('click', saveSfConfig);
     }
 
+    var manageBtn = document.getElementById('btn-manage-templates');
+    if (manageBtn) {
+        manageBtn.addEventListener('click', function () {
+            chrome.tabs.create({ url: chrome.runtime.getURL('manager/manager.html') });
+        });
+    }
+
     if (copyBtn) {
         copyBtn.addEventListener('click', function () {
             var urlEl = document.getElementById('sf-redirect-url');
@@ -201,12 +208,19 @@ function renderSfTemplatesStatus(state) {
         var displayName = '';
         if (state.user) {
             displayName = state.user.fullName || state.user.email || state.user.username || '';
+            var teamPart = state.user.teamName ? ' · ' + state.user.teamName : '';
+            displayName = displayName + teamPart;
         }
         if (nameEl) nameEl.textContent = displayName ? 'Connected as ' + displayName : 'Connected to Salesforce';
 
         if (connectBtn)    { connectBtn.style.display    = 'none'; }
         if (disconnectBtn) { disconnectBtn.style.display = ''; }
         if (syncRow)       { syncRow.style.display       = ''; }
+
+        var manageBtn = document.getElementById('btn-manage-templates');
+        if (manageBtn) {
+            manageBtn.style.display = (state.user && state.user.isTemplateAdmin) ? '' : 'none';
+        }
     } else {
         badge.textContent = 'Not connected';
         badge.className   = 'badge badge-empty';
@@ -217,6 +231,9 @@ function renderSfTemplatesStatus(state) {
         if (connectBtn)    { connectBtn.style.display = ''; connectBtn.disabled = false; }
         if (disconnectBtn) { disconnectBtn.style.display = 'none'; }
         if (syncRow)       { syncRow.style.display = 'none'; }
+
+        var manageBtn = document.getElementById('btn-manage-templates');
+        if (manageBtn) { manageBtn.style.display = 'none'; }
     }
 }
 

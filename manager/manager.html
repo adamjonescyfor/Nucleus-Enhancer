@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CYFOR Template Manager</title>
+    <link rel="stylesheet" href="manager.css">
+</head>
+<body>
+
+    <header class="mgr-header">
+        <h1 class="mgr-title" id="mgr-title">CYFOR Template Manager</h1>
+        <div class="mgr-header-actions">
+            <button id="btn-new-template" class="mgr-btn mgr-btn-primary" disabled>+ New Template</button>
+            <button id="btn-back" class="mgr-btn mgr-btn-secondary">← Back to Extension</button>
+        </div>
+    </header>
+
+    <main class="mgr-main">
+
+        <!-- State panels -->
+        <div id="mgr-loading" class="mgr-state-msg">Loading…</div>
+
+        <div id="mgr-not-connected" class="mgr-state-msg" style="display:none">
+            <strong>Not connected to Salesforce.</strong><br>
+            Connect via the extension popup first, then re-open this page.
+        </div>
+
+        <div id="mgr-not-admin" class="mgr-state-msg" style="display:none">
+            <strong>Access denied.</strong><br>
+            You are not a template admin for your team. Contact your Salesforce administrator to request access.
+        </div>
+
+        <!-- Template list -->
+        <div id="mgr-list-panel" style="display:none">
+            <div class="mgr-list-header">
+                <p class="mgr-list-desc" id="mgr-list-desc"></p>
+            </div>
+            <div id="mgr-empty" class="mgr-state-msg" style="display:none">
+                No templates found for your team yet. Click <strong>+ New Template</strong> to create one.
+            </div>
+            <table class="mgr-table" id="mgr-template-table" style="display:none">
+                <thead>
+                    <tr>
+                        <th>Template Name</th>
+                        <th>Category</th>
+                        <th>Scope</th>
+                        <th class="mgr-col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="mgr-template-rows"></tbody>
+            </table>
+        </div>
+
+        <!-- Editor panel -->
+        <div id="mgr-editor-panel" class="mgr-editor-card" style="display:none">
+            <h2 class="mgr-editor-heading" id="mgr-editor-heading">New Template</h2>
+            <div class="mgr-field">
+                <label class="mgr-label" for="mgr-name">Name <span class="mgr-required">*</span></label>
+                <input type="text" id="mgr-name" class="mgr-input" placeholder="e.g. Forensic Strategy" autocomplete="off">
+            </div>
+            <div class="mgr-field">
+                <label class="mgr-label" for="mgr-category">Category</label>
+                <input type="text" id="mgr-category" class="mgr-input" placeholder="e.g. General, Notes, Report" autocomplete="off">
+            </div>
+            <div class="mgr-field">
+                <label class="mgr-label" for="mgr-content">Content <span class="mgr-required">*</span></label>
+                <textarea id="mgr-content" class="mgr-textarea" rows="20" spellcheck="false" placeholder="Template body…"></textarea>
+            </div>
+            <div class="mgr-editor-actions">
+                <button id="btn-editor-save" class="mgr-btn mgr-btn-primary">Save to Salesforce</button>
+                <button id="btn-editor-cancel" class="mgr-btn mgr-btn-secondary">Cancel</button>
+            </div>
+            <div id="mgr-editor-status" class="mgr-status-msg"></div>
+        </div>
+
+    </main>
+
+    <script src="manager.js"></script>
+</body>
+</html>

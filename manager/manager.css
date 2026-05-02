@@ -1,0 +1,346 @@
+/* ==================================================
+   CYFOR Template Manager — Styles
+   Self-contained; does not import popup.css.
+   ================================================== */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+:root {
+    --surface:        #ffffff;
+    --surface-soft:   #f7f9fc;
+    --surface-muted:  #eef2f7;
+    --border:         #d4dce8;
+    --text-primary:   #1a2637;
+    --text-secondary: #4a5568;
+    --text-muted:     #8796a5;
+    --brand:          #0070d2;
+    --brand-dark:     #005fb2;
+    --success-bg:     #f0fdf4;
+    --success-text:   #166534;
+    --danger-bg:      #fef2f2;
+    --danger-text:    #b91c1c;
+    --danger-border:  #fca5a5;
+    --radius:         6px;
+    --shadow:         0 1px 4px rgba(0,0,0,.10);
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--surface-soft);
+    min-height: 100vh;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+
+.mgr-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.mgr-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.mgr-header-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* ── Main content ───────────────────────────────────────────────────────────── */
+
+.mgr-main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 28px 48px;
+}
+
+/* ── State messages ─────────────────────────────────────────────────────────── */
+
+.mgr-state-msg {
+    padding: 32px 24px;
+    color: var(--text-muted);
+    font-style: italic;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.mgr-state-msg strong {
+    display: block;
+    font-style: normal;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-size: 15px;
+}
+
+/* ── List header description ────────────────────────────────────────────────── */
+
+.mgr-list-header {
+    margin-bottom: 16px;
+}
+
+.mgr-list-desc {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────────── */
+
+.mgr-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+.mgr-table th {
+    background: var(--surface-muted);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+
+.mgr-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    font-size: 13px;
+}
+
+.mgr-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.mgr-table tbody tr:hover td {
+    background: var(--surface-soft);
+}
+
+.mgr-col-actions {
+    width: 170px;
+    text-align: right;
+}
+
+.mgr-col-actions-cell {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+/* ── Scope badge ────────────────────────────────────────────────────────────── */
+
+.mgr-scope-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--surface-muted);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.mgr-scope-badge--team {
+    background: #e8f4ff;
+    color: #0070d2;
+    border-color: #b3d6f5;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+
+.mgr-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s, opacity 0.15s;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.mgr-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.mgr-btn-primary {
+    background: var(--brand);
+    color: #fff;
+    border-color: var(--brand);
+}
+
+.mgr-btn-primary:hover:not(:disabled) {
+    background: var(--brand-dark);
+    border-color: var(--brand-dark);
+}
+
+.mgr-btn-secondary {
+    background: var(--surface);
+    color: var(--text-secondary);
+    border-color: var(--border);
+}
+
+.mgr-btn-secondary:hover:not(:disabled) {
+    background: var(--surface-muted);
+}
+
+.mgr-btn-danger {
+    background: var(--surface);
+    color: var(--danger-text);
+    border-color: var(--danger-border);
+}
+
+.mgr-btn-danger:hover:not(:disabled) {
+    background: var(--danger-bg);
+}
+
+.mgr-btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* ── Editor card ────────────────────────────────────────────────────────────── */
+
+.mgr-editor-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    box-shadow: var(--shadow);
+}
+
+.mgr-editor-heading {
+    margin: 0 0 20px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.mgr-field {
+    margin-bottom: 16px;
+}
+
+.mgr-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.mgr-required {
+    color: var(--danger-text);
+}
+
+.mgr-input,
+.mgr-textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-soft);
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: border-color 0.15s;
+}
+
+.mgr-input:focus,
+.mgr-textarea:focus {
+    outline: none;
+    border-color: var(--brand);
+}
+
+.mgr-textarea {
+    font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    resize: vertical;
+}
+
+.mgr-editor-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+/* ── Status message ─────────────────────────────────────────────────────────── */
+
+.mgr-status-msg {
+    margin-top: 10px;
+    font-size: 13px;
+    min-height: 18px;
+}
+
+.mgr-status-msg.status-success { color: var(--success-text); }
+.mgr-status-msg.status-error   { color: var(--danger-text); }
+
+/* ── Dark mode ──────────────────────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --surface:        #1c1c1e;
+        --surface-soft:   #242426;
+        --surface-muted:  #2a2a2c;
+        --border:         #3e3e40;
+        --text-primary:   #e8e8e8;
+        --text-secondary: #b0b0b4;
+        --text-muted:     #8a8a8e;
+        --brand:          #4da6ff;
+        --brand-dark:     #2d8ff0;
+        --success-text:   #4ade80;
+        --danger-text:    #ff6b70;
+        --danger-border:  #7f1d1d;
+        --shadow:         0 1px 4px rgba(0,0,0,.4);
+    }
+
+    body {
+        background: #141416;
+    }
+
+    .mgr-scope-badge--team {
+        background: #0a2540;
+        color: #4da6ff;
+        border-color: #1a4a80;
+    }
+
+    .mgr-btn-primary {
+        background: #2563eb;
+        border-color: #2563eb;
+    }
+
+    .mgr-btn-primary:hover:not(:disabled) {
+        background: #1d4ed8;
+        border-color: #1d4ed8;
+    }
+}

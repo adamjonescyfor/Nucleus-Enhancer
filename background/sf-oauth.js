@@ -95,6 +95,17 @@ async function launchOAuthFlow() {
     await storeTokens(tokens);
 
     var user = await fetchSalesforceUserInfo(tokens.instanceUrl || instanceUrl, tokens.accessToken);
+
+    // Enrich user with team membership and admin status
+    if (self.SfTeam) {
+        var teamInfo = await self.SfTeam.fetchUserTeamInfo(
+            tokens.instanceUrl || instanceUrl,
+            tokens.accessToken,
+            user.id
+        );
+        user = Object.assign({}, user, teamInfo);
+    }
+
     var userPayload = {};
     userPayload[USER_KEY] = user;
     await chrome.storage.local.set(userPayload);
