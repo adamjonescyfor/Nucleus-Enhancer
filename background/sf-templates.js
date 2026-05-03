@@ -2,18 +2,26 @@
 // CYFOR Nucleus Enhancer — Salesforce Template Sync
 // Fetches templates from a Salesforce Custom Object
 // via REST API with TTL-based local caching.
+// Supports UKAS extended fields with graceful fallback.
 // Exported as self.SfTemplates for use by background.js.
 // ==================================================
 
 (function () {
 
-var CONFIG_KEY   = 'sfOAuthConfig';
-var TOKENS_KEY   = 'sfOAuthTokens';
-var CACHE_KEY    = 'sfRemoteTemplates';
+var CONFIG_KEY    = 'sfOAuthConfig';
+var TOKENS_KEY    = 'sfOAuthTokens';
+var CACHE_KEY     = 'sfRemoteTemplates';
 var SYNCED_AT_KEY = 'sfTemplatesSyncedAt';
-var CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+var UKAS_KEY      = 'sfUkasFieldsAvailable';
+var CACHE_TTL_MS  = 20 * 60 * 1000; // 20 minutes
 
-function buildQuery(config, teamCode) {
+var UKAS_FIELDS = [
+    'VersionLabel__c', 'Status__c', 'ChangeReason__c',
+    'EffectiveDate__c', 'ReviewDueDate__c', 'DocumentId__c',
+    'LastChangedByName__c', 'LastChangedByEmail__c'
+].join(', ');
+
+function buildQuery(config, teamCode, withUkas) {
     var obj      = config.templateObject || 'NucleusTemplate__c';
     var content  = config.contentField   || 'Content__c';
     var category = config.categoryField  || 'Category__c';
@@ -23,7 +31,10 @@ function buildQuery(config, teamCode) {
         ? "(Team__c = null OR Team__r.TeamCode__c = '" + teamCode + "')"
         : 'Team__c = null';
 
-    return 'SELECT Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c'
+    var fields = 'Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c';
+    if (withUkas) fields += ', ' + UKAS_FIELDS;
+
+    return 'SELECT ' + fields
          + ' FROM ' + obj
          + ' WHERE ' + active + ' = true'
          + ' AND ' + teamFilter
@@ -51,22 +62,31 @@ async function fetchRemoteTemplates(forceRefresh) {
         return { ok: false, error: e.message };
     }
 
-    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser']);
+    // On manual refresh, re-probe UKAS fields in case the admin has added them
+    if (forceRefresh) {
+        await chrome.storage.local.remove(UKAS_KEY);
+    }
+
+    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser', UKAS_KEY]);
     var config  = results[CONFIG_KEY]    || {};
     var tokens  = results[TOKENS_KEY]   || {};
     var sfUser  = results['sfOAuthUser'] || {};
+    var knownUkas = results[UKAS_KEY];   // undefined | true | false
 
     var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) return { ok: false, error: 'No Salesforce instance URL configured.' };
 
     var teamCode   = sfUser.teamCode || null;
     var apiVersion = config.apiVersion || 'v62.0';
-    var query      = buildQuery(config, teamCode);
-    var url        = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(query);
+
+    // Try with UKAS fields unless we already know they're unavailable
+    var tryUkas = (knownUkas !== false);
+    var query   = buildQuery(config, teamCode, tryUkas);
+    var url     = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(query);
 
     var response = await doFetch(url, accessToken);
 
-    // Auto-retry once on 401 (token might have been silently revoked)
+    // Auto-retry once on 401
     if (response.status === 401) {
         try {
             accessToken = await self.SfOAuth.refreshAccessToken();
@@ -74,6 +94,22 @@ async function fetchRemoteTemplates(forceRefresh) {
             return { ok: false, error: 'Authentication expired. Please reconnect in the extension popup.' };
         }
         response = await doFetch(url, accessToken);
+    }
+
+    // If UKAS fields don't exist in Salesforce yet, fall back to basic query
+    if (!response.ok && response.status === 400 && tryUkas) {
+        var errBody400 = await response.json().catch(function () { return []; });
+        var isInvalidField = Array.isArray(errBody400) && errBody400.some(function (e) {
+            return e.errorCode === 'INVALID_FIELD';
+        });
+        if (isInvalidField) {
+            await chrome.storage.local.set({ sfUkasFieldsAvailable: false });
+            knownUkas = false;
+            tryUkas   = false;
+            query    = buildQuery(config, teamCode, false);
+            url      = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(query);
+            response = await doFetch(url, accessToken);
+        }
     }
 
     if (!response.ok) {
@@ -85,6 +121,12 @@ async function fetchRemoteTemplates(forceRefresh) {
     }
 
     var data = await response.json();
+
+    // If we successfully queried with UKAS fields, mark as available
+    if (tryUkas) {
+        await chrome.storage.local.set({ sfUkasFieldsAvailable: true });
+        knownUkas = true;
+    }
 
     var contentField  = config.contentField  || 'Content__c';
     var categoryField = config.categoryField || 'Category__c';
@@ -99,13 +141,24 @@ async function fetchRemoteTemplates(forceRefresh) {
         var recId       = record.Id             || '';
         var recTeamCode = (record['Team__r'] && record['Team__r']['TeamCode__c']) || null;
         if (name && body) {
-            sfRemoteTemplates[name] = { id: recId, content: body, category: cat, teamCode: recTeamCode };
+            var entry = { id: recId, content: body, category: cat, teamCode: recTeamCode };
+            if (knownUkas) {
+                entry.versionLabel      = record.VersionLabel__c      || '1.0';
+                entry.status            = record.Status__c            || 'Active';
+                entry.changeReason      = record.ChangeReason__c      || '';
+                entry.effectiveDate     = record.EffectiveDate__c     || null;
+                entry.reviewDueDate     = record.ReviewDueDate__c     || null;
+                entry.documentId        = record.DocumentId__c        || '';
+                entry.lastChangedByName  = record.LastChangedByName__c  || '';
+                entry.lastChangedByEmail = record.LastChangedByEmail__c || '';
+            }
+            sfRemoteTemplates[name] = entry;
         }
     }
 
     var syncedAt = Date.now();
     var toStore  = {};
-    toStore[CACHE_KEY]    = sfRemoteTemplates;
+    toStore[CACHE_KEY]     = sfRemoteTemplates;
     toStore[SYNCED_AT_KEY] = syncedAt;
     await chrome.storage.local.set(toStore);
 

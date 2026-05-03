@@ -5,7 +5,7 @@
 // ==================================================
 
 try {
-    importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js');
+    importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js');
 } catch (e) {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
 }
@@ -129,7 +129,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // List templates for the manager page (includes id, teamCode per entry)
+    // List templates for the manager page (includes id, teamCode, UKAS fields per entry)
     if (message.action === 'sfTemplates.list') {
         chrome.storage.local.get(['sfRemoteTemplates', 'sfOAuthUser'], function (r) {
             sendResponse({
@@ -138,6 +138,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 user:      r.sfOAuthUser       || {}
             });
         });
+        return true;
+    }
+
+    // Fetch version history for a single template
+    if (message.action === 'sfTemplates.versions.get') {
+        if (!self.SfVersions) { sendResponse({ ok: false, error: 'Versions module not loaded' }); return true; }
+        self.SfVersions.getVersionHistory(message.templateId)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
         return true;
     }
 
@@ -184,12 +193,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 /**
  * Create, update, or delete a NucleusTemplate__c record via Salesforce REST API.
  * Only proceeds if the stored sfOAuthUser has isTemplateAdmin === true.
+ * When UKAS fields are available, includes version control data and archives
+ * the previous version to NucleusTemplateVersion__c before any update.
  */
 async function sfTemplateCrud(op, payload) {
-    var stored = await chrome.storage.local.get(['sfOAuthUser', 'sfOAuthConfig', 'sfOAuthTokens']);
-    var user   = stored['sfOAuthUser']  || {};
-    var config = stored['sfOAuthConfig']|| {};
-    var tokens = stored['sfOAuthTokens']|| {};
+    var stored = await chrome.storage.local.get(
+        ['sfOAuthUser', 'sfOAuthConfig', 'sfOAuthTokens', 'sfRemoteTemplates', 'sfUkasFieldsAvailable']
+    );
+    var user      = stored['sfOAuthUser']          || {};
+    var config    = stored['sfOAuthConfig']         || {};
+    var tokens    = stored['sfOAuthTokens']         || {};
+    var templates = stored['sfRemoteTemplates']     || {};
+    var ukas      = stored['sfUkasFieldsAvailable'] === true;
 
     if (!user.isTemplateAdmin) throw new Error('PERMISSION_DENIED');
 
@@ -206,16 +221,28 @@ async function sfTemplateCrud(op, payload) {
     var response, errBody;
 
     if (op === 'create') {
+        var createBody = {
+            Name:        payload.name,
+            Content__c:  payload.content,
+            Category__c: payload.category || '',
+            IsActive__c: true,
+            Team__c:     user.teamId || null
+        };
+        if (ukas) {
+            createBody.VersionLabel__c       = payload.versionLabel || '1.0';
+            createBody.Status__c             = payload.status       || 'Active';
+            createBody.ChangeReason__c       = payload.changeReason || 'Initial version';
+            createBody.DocumentId__c         = payload.documentId   || '';
+            createBody.LastChangedByName__c  = user.fullName        || '';
+            createBody.LastChangedByEmail__c = user.email           || '';
+            if (payload.effectiveDate) createBody.EffectiveDate__c  = payload.effectiveDate;
+            if (payload.reviewDueDate) createBody.ReviewDueDate__c  = payload.reviewDueDate;
+        }
+
         response = await fetch(baseUrl + '/', {
             method:  'POST',
             headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                Name:        payload.name,
-                Content__c:  payload.content,
-                Category__c: payload.category || '',
-                IsActive__c: true,
-                Team__c:     user.teamId || null
-            })
+            body:    JSON.stringify(createBody)
         });
         if (!response.ok) {
             errBody = await response.json().catch(function () { return [{}]; });
@@ -226,14 +253,47 @@ async function sfTemplateCrud(op, payload) {
         return { ok: true, id: created.id };
 
     } else if (op === 'update') {
+        // Archive the current version before overwriting (UKAS audit trail)
+        if (ukas && self.SfVersions) {
+            var currentTemplate = null;
+            var tNames = Object.keys(templates);
+            for (var i = 0; i < tNames.length; i++) {
+                if (templates[tNames[i]].id === payload.id) {
+                    currentTemplate = templates[tNames[i]];
+                    break;
+                }
+            }
+            if (currentTemplate) {
+                await self.SfVersions.archiveCurrentVersion({
+                    templateId:    payload.id,
+                    versionLabel:  currentTemplate.versionLabel  || '1.0',
+                    content:       currentTemplate.content       || '',
+                    changeReason:  payload.changeReason          || '',
+                    changedByName: user.fullName                 || '',
+                    changedByEmail: user.email                   || ''
+                });
+            }
+        }
+
+        var updateBody = {
+            Name:        payload.name,
+            Content__c:  payload.content,
+            Category__c: payload.category || ''
+        };
+        if (ukas) {
+            updateBody.VersionLabel__c       = payload.versionLabel || '1.1';
+            updateBody.Status__c             = payload.status       || 'Active';
+            updateBody.ChangeReason__c       = payload.changeReason || '';
+            updateBody.LastChangedByName__c  = user.fullName        || '';
+            updateBody.LastChangedByEmail__c = user.email           || '';
+            updateBody.EffectiveDate__c      = payload.effectiveDate || null;
+            updateBody.ReviewDueDate__c      = payload.reviewDueDate || null;
+        }
+
         response = await fetch(baseUrl + '/' + payload.id, {
             method:  'PATCH',
             headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                Name:        payload.name,
-                Content__c:  payload.content,
-                Category__c: payload.category || ''
-            })
+            body:    JSON.stringify(updateBody)
         });
         if (!response.ok) {
             errBody = await response.json().catch(function () { return [{}]; });
