@@ -12,7 +12,13 @@ var currentUser    = {};    // sfOAuthUser with team + admin fields
 
 document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-back').addEventListener('click', function () {
-        window.close();
+        chrome.tabs.getCurrent(function (tab) {
+            if (tab) {
+                chrome.tabs.remove(tab.id);
+            } else {
+                window.close();
+            }
+        });
     });
     document.getElementById('btn-new-template').addEventListener('click', openNewEditor);
     document.getElementById('btn-editor-save').addEventListener('click', saveTemplate);
