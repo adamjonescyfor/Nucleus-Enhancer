@@ -66,7 +66,7 @@ async function getProxyUrl() {
 
 async function launchOAuthFlow() {
     var proxyUrl    = await getProxyUrl();
-    var redirectUrl = chrome.identity.getRedirectURL('sf-oauth');
+    var redirectUrl = chrome.identity.getRedirectURL('oauth2');
 
     var codeVerifier  = await generateCodeVerifier();
     var codeChallenge = await generateCodeChallenge(codeVerifier);
