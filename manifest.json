@@ -20,7 +20,8 @@
         "https://*.file.force.com/*",
         "https://*.content.force.com/*",
         "https://*.documentforce.com/*",
-        "https://*.salesforce.com/*"
+        "https://*.salesforce.com/*",
+        "https://*.workers.dev/*"
     ],
 
     "action": {
