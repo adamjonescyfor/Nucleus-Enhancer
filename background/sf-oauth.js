@@ -84,6 +84,8 @@ async function launchOAuthFlow() {
     var urlData = await urlRes.json();
     if (!urlData.url) throw new Error('Proxy returned no auth URL');
 
+    console.log('[CYFOR] Auth URL:', urlData.url);
+
     var responseUrl = await chrome.identity.launchWebAuthFlow({
         url:         urlData.url,
         interactive: true
