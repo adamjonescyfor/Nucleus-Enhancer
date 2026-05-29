@@ -5,6 +5,13 @@
 // ==================================================
 
 try {
+    importScripts('config.js');
+} catch (e) {
+    // config.js is gitignored; fall back to empty defaults
+    self.CYFOR_CONFIG = { oauthProxyUrl: '' };
+}
+
+try {
     importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js');
 } catch (e) {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
@@ -40,8 +47,7 @@ chrome.runtime.onInstalled.addListener((details) => {
             templateCount: 0,
             downloadFolder: 'CYFOR Photographs',
             sfOAuthConfig: {
-                clientId: '',
-                instanceUrl: '',
+                oauthProxyUrl:  (self.CYFOR_CONFIG && self.CYFOR_CONFIG.oauthProxyUrl) || '',
                 templateObject: 'NucleusTemplate__c',
                 contentField:   'Content__c',
                 categoryField:  'Category__c',

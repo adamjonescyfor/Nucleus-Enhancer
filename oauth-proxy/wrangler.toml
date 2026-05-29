@@ -1,0 +1,10 @@
+name            = "cyfor-oauth-proxy"
+main            = "worker.js"
+compatibility_date = "2024-01-01"
+
+# After deploying, set secrets with:
+#   wrangler secret put SF_CLIENT_ID
+#   wrangler secret put SF_CLIENT_SECRET
+#   wrangler secret put SF_INSTANCE_URL
+#
+# These are stored encrypted in Cloudflare and never appear in code or git.

@@ -12,7 +12,7 @@ async function getVersionHistory(templateId) {
     var tokens = stored['sfOAuthTokens'] || {};
     var config = stored['sfOAuthConfig'] || {};
 
-    var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
+    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) return { ok: false, error: 'No instance URL configured.' };
 
     var accessToken;
@@ -59,7 +59,7 @@ async function archiveCurrentVersion(payload) {
     var tokens = stored['sfOAuthTokens'] || {};
     var config = stored['sfOAuthConfig'] || {};
 
-    var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
+    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) { console.warn('[CYFOR] archiveCurrentVersion: no instanceUrl'); return; }
 
     var accessToken;

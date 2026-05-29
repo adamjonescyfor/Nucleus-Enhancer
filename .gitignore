@@ -1,0 +1,11 @@
+# Salesforce OAuth configuration with real Consumer Key
+# Copy config.example.js to config.js and fill in your credentials
+config.js
+
+# Build artefacts and OS noise
+*.crx
+*.pem
+*.zip
+.DS_Store
+Thumbs.db
+node_modules/

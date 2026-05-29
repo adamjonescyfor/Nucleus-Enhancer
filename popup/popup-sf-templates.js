@@ -5,7 +5,7 @@
 // ==================================================
 
 function loadSfTemplatesSection() {
-    // Display the stable OAuth callback URL so admin can verify whitelist
+    // Display the stable OAuth callback URL so admin can register it in the Connected App
     chrome.runtime.sendMessage({ action: 'sfOAuth.getRedirectUrl' }, function (response) {
         if (chrome.runtime.lastError) return;
         var urlEl = document.getElementById('sf-redirect-url');
@@ -14,16 +14,31 @@ function loadSfTemplatesSection() {
         }
     });
 
-    // Populate saved config fields
+    // Populate saved config fields (fall back to compiled-in defaults from config.js)
     chrome.storage.local.get(['sfOAuthConfig', 'sfOAuthTokens', 'sfOAuthUser', 'sfRemoteTemplates', 'sfTemplatesSyncedAt'], function (r) {
-        var config  = r.sfOAuthConfig || {};
-        var tokens  = r.sfOAuthTokens || {};
-        var user    = r.sfOAuthUser   || null;
+        var config = r.sfOAuthConfig || {};
+        var tokens = r.sfOAuthTokens || {};
+        var user   = r.sfOAuthUser   || null;
 
-        var clientIdEl     = document.getElementById('sf-client-id');
-        var instanceUrlEl  = document.getElementById('sf-instance-url');
-        if (clientIdEl    && config.clientId)    clientIdEl.value    = config.clientId;
-        if (instanceUrlEl && config.instanceUrl) instanceUrlEl.value = config.instanceUrl;
+        // If proxy URL was never saved, apply the compiled default and persist it
+        var compiled  = (typeof CYFOR_CONFIG !== 'undefined') ? CYFOR_CONFIG : {};
+        var needsSave = false;
+        if (!config.oauthProxyUrl && compiled.oauthProxyUrl) {
+            config.oauthProxyUrl = compiled.oauthProxyUrl;
+            needsSave = true;
+        }
+        if (needsSave) {
+            chrome.storage.local.set({ sfOAuthConfig: Object.assign({
+                templateObject: 'NucleusTemplate__c',
+                contentField:   'Content__c',
+                categoryField:  'Category__c',
+                activeField:    'IsActive__c',
+                apiVersion:     'v62.0'
+            }, config) });
+        }
+
+        var proxyUrlEl = document.getElementById('sf-proxy-url');
+        if (proxyUrlEl && config.oauthProxyUrl) proxyUrlEl.value = config.oauthProxyUrl;
 
         var isConnected = !!(tokens.accessToken);
         renderSfTemplatesStatus({ connected: isConnected, user: user });
@@ -65,7 +80,7 @@ function bindSfTemplateActions() {
                 if (chrome.runtime.lastError || !response || !response.ok) {
                     var err = (response && response.error) || 'Connection failed';
                     if (err === 'NOT_CONFIGURED') {
-                        renderSfTemplatesStatus({ connected: false, error: 'Enter your Consumer Key and Instance URL below first.' });
+                        renderSfTemplatesStatus({ connected: false, error: 'Enter the OAuth Proxy URL below first.' });
                         var cfgSection = document.getElementById('sf-config-section');
                         if (cfgSection) cfgSection.open = true;
                     } else {
@@ -88,7 +103,6 @@ function bindSfTemplateActions() {
                 renderSfTemplatesStatus({ connected: false });
                 updateSfTemplateCount(0);
                 setSfSyncStatus('', '');
-                // Recompute merged templates without remote ones
                 chrome.storage.local.get(['mergedTemplates'], function (r) {
                     currentMergedTemplates = r.mergedTemplates || {};
                     populateDropdown(currentMergedTemplates);
@@ -133,28 +147,21 @@ function bindSfTemplateActions() {
 }
 
 function saveSfConfig() {
-    var clientId    = (document.getElementById('sf-client-id')    || {}).value || '';
-    var instanceUrl = (document.getElementById('sf-instance-url') || {}).value || '';
-    var statusEl    = document.getElementById('sf-config-status');
+    var proxyUrl = (document.getElementById('sf-proxy-url') || {}).value || '';
+    proxyUrl = proxyUrl.trim().replace(/\/$/, '');
 
-    clientId    = clientId.trim();
-    instanceUrl = instanceUrl.trim().replace(/\/$/, '');
-
-    if (!clientId || !instanceUrl) {
-        setSfConfigStatus('Consumer Key and Instance URL are both required.', 'error');
+    if (!proxyUrl) {
+        setSfConfigStatus('OAuth Proxy URL is required.', 'error');
         return;
     }
-    if (!/^https:\/\//i.test(instanceUrl)) {
-        setSfConfigStatus('Instance URL must start with https://', 'error');
+    if (!/^https:\/\//i.test(proxyUrl)) {
+        setSfConfigStatus('Proxy URL must start with https://', 'error');
         return;
     }
 
     chrome.storage.local.get(['sfOAuthConfig'], function (r) {
         var existing = r.sfOAuthConfig || {};
-        var updated  = Object.assign({}, existing, {
-            clientId:    clientId,
-            instanceUrl: instanceUrl
-        });
+        var updated  = Object.assign({}, existing, { oauthProxyUrl: proxyUrl });
         chrome.storage.local.set({ sfOAuthConfig: updated }, function () {
             setSfConfigStatus('Saved.', 'success');
         });
@@ -181,7 +188,6 @@ function syncSfTemplates(forceRefresh) {
         setSfSyncStatus(count + ' official template' + (count !== 1 ? 's' : '') + ' · ' + when, 'success');
         updateSfTemplateCount(count);
 
-        // Refresh the popup's template dropdown with the newly merged set
         chrome.storage.local.get(['mergedTemplates'], function (r) {
             currentMergedTemplates = r.mergedTemplates || {};
             populateDropdown(currentMergedTemplates);
@@ -245,8 +251,8 @@ function updateSfTemplateCount(count) {
 function setSfSyncStatus(msg, type) {
     var el = document.getElementById('sf-sync-status');
     if (!el) return;
-    el.textContent  = msg;
-    el.className    = 'sf-sync-status' + (type ? ' status-' + type : '');
+    el.textContent = msg;
+    el.className   = 'sf-sync-status' + (type ? ' status-' + type : '');
 }
 
 function setSfConfigStatus(msg, type) {

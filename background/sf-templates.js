@@ -73,8 +73,8 @@ async function fetchRemoteTemplates(forceRefresh) {
     var sfUser  = results['sfOAuthUser'] || {};
     var knownUkas = results[UKAS_KEY];   // undefined | true | false
 
-    var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
-    if (!instanceUrl) return { ok: false, error: 'No Salesforce instance URL configured.' };
+    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) return { ok: false, error: 'Not authenticated — connect via Salesforce OAuth first.' };
 
     var teamCode   = sfUser.teamCode || null;
     var apiVersion = config.apiVersion || 'v62.0';

@@ -80,11 +80,9 @@
             <span class="collapse-indicator" aria-hidden="true">▾</span>
         </summary>
         <div class="sf-config-panel">
-            <label class="sf-config-label" for="sf-client-id">Consumer Key (Client ID)</label>
-            <input type="text" id="sf-client-id" class="sf-config-input" placeholder="3MVG9..." autocomplete="off">
-            <label class="sf-config-label" for="sf-instance-url">Instance URL</label>
-            <input type="text" id="sf-instance-url" class="sf-config-input" placeholder="https://cyfor.my.salesforce.com" autocomplete="off">
-            <label class="sf-config-label">OAuth Callback URL <small>(add this to your Connected App)</small></label>
+            <label class="sf-config-label" for="sf-proxy-url">OAuth Proxy URL</label>
+            <input type="text" id="sf-proxy-url" class="sf-config-input" placeholder="https://cyfor-oauth-proxy.your-name.workers.dev" autocomplete="off">
+            <label class="sf-config-label">OAuth Callback URL <small>(add this to your Connected App in Salesforce)</small></label>
             <div class="sf-redirect-row">
                 <input type="text" id="sf-redirect-url" class="sf-config-input" readonly>
                 <button id="btn-copy-redirect" class="btn btn-secondary">Copy</button>
@@ -263,6 +261,7 @@
     <!-- Footer -->
     <footer class="footer">CYFOR Nucleus Tools</footer>
 
+    <script src="../config.js"></script>
     <script src="popup-auth.js"></script>
     <script src="popup-columns.js"></script>
     <script src="popup-templates.js"></script>

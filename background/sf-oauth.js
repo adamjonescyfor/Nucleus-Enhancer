@@ -1,15 +1,16 @@
 // ==================================================
 // CYFOR Nucleus Enhancer — Salesforce OAuth 2.0 (PKCE)
-// Handles token acquisition, refresh, and revocation.
-// Exported as self.SfOAuth for use by background.js.
+// All Consumer Key / Secret calls go through the OAuth
+// proxy (Cloudflare Worker).  This file never touches
+// those credentials directly.
 // ==================================================
 
 (function () {
 
-var TOKENS_KEY  = 'sfOAuthTokens';
-var CONFIG_KEY  = 'sfOAuthConfig';
-var USER_KEY    = 'sfOAuthUser';
-var EXPIRY_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
+var TOKENS_KEY       = 'sfOAuthTokens';
+var CONFIG_KEY       = 'sfOAuthConfig';
+var USER_KEY         = 'sfOAuthUser';
+var EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
 // ── PKCE helpers ──────────────────────────────────────────────────────────────
 
@@ -33,8 +34,8 @@ async function generateCodeVerifier() {
 
 async function generateCodeChallenge(verifier) {
     var encoder = new TextEncoder();
-    var data = encoder.encode(verifier);
-    var digest = await crypto.subtle.digest('SHA-256', data);
+    var data    = encoder.encode(verifier);
+    var digest  = await crypto.subtle.digest('SHA-256', data);
     return base64urlEncode(new Uint8Array(digest));
 }
 
@@ -51,34 +52,40 @@ async function getTokens() {
     return result[TOKENS_KEY] || null;
 }
 
+// ── Proxy URL helper ──────────────────────────────────────────────────────────
+
+async function getProxyUrl() {
+    var result = await chrome.storage.local.get(CONFIG_KEY);
+    var config = result[CONFIG_KEY] || {};
+    var url = (config.oauthProxyUrl || '').replace(/\/$/, '');
+    if (!url) throw new Error('NOT_CONFIGURED');
+    return url;
+}
+
 // ── Core OAuth flow ───────────────────────────────────────────────────────────
 
 async function launchOAuthFlow() {
-    var result = await chrome.storage.local.get(CONFIG_KEY);
-    var config = result[CONFIG_KEY] || {};
-
-    if (!config.clientId || !config.instanceUrl) {
-        throw new Error('NOT_CONFIGURED');
-    }
-
-    var clientId    = config.clientId.trim();
-    var instanceUrl = config.instanceUrl.replace(/\/$/, '');
+    var proxyUrl    = await getProxyUrl();
     var redirectUrl = chrome.identity.getRedirectURL('sf-oauth');
 
     var codeVerifier  = await generateCodeVerifier();
     var codeChallenge = await generateCodeChallenge(codeVerifier);
 
-    var authUrl = new URL(instanceUrl + '/services/oauth2/authorize');
-    authUrl.searchParams.set('response_type',          'code');
-    authUrl.searchParams.set('client_id',              clientId);
-    authUrl.searchParams.set('redirect_uri',           redirectUrl);
-    authUrl.searchParams.set('scope',                  'api refresh_token');
-    authUrl.searchParams.set('code_challenge',         codeChallenge);
-    authUrl.searchParams.set('code_challenge_method',  'S256');
-    authUrl.searchParams.set('prompt',                 'login');
+    // Ask proxy to construct the Salesforce auth URL (proxy injects Consumer Key)
+    var urlRes = await fetch(proxyUrl + '/auth-url', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ codeChallenge: codeChallenge, redirectUri: redirectUrl })
+    });
+    if (!urlRes.ok) {
+        var urlErr = await urlRes.json().catch(function () { return {}; });
+        throw new Error(urlErr.error || 'Proxy error building auth URL');
+    }
+    var urlData = await urlRes.json();
+    if (!urlData.url) throw new Error('Proxy returned no auth URL');
 
     var responseUrl = await chrome.identity.launchWebAuthFlow({
-        url:         authUrl.toString(),
+        url:         urlData.url,
         interactive: true
     });
 
@@ -91,15 +98,14 @@ async function launchOAuthFlow() {
     var code = parsed.searchParams.get('code');
     if (!code) throw new Error('No authorization code in callback URL');
 
-    var tokens = await exchangeCodeForTokens(instanceUrl, clientId, code, codeVerifier, redirectUrl);
+    var tokens = await exchangeCodeForTokens(proxyUrl, code, codeVerifier, redirectUrl);
     await storeTokens(tokens);
 
-    var user = await fetchSalesforceUserInfo(tokens.instanceUrl || instanceUrl, tokens.accessToken);
+    var user = await fetchSalesforceUserInfo(tokens.instanceUrl, tokens.accessToken);
 
-    // Enrich user with team membership and admin status
     if (self.SfTeam) {
         var teamInfo = await self.SfTeam.fetchUserTeamInfo(
-            tokens.instanceUrl || instanceUrl,
+            tokens.instanceUrl,
             tokens.accessToken,
             user.id
         );
@@ -113,24 +119,16 @@ async function launchOAuthFlow() {
     return { ok: true, user: user };
 }
 
-async function exchangeCodeForTokens(instanceUrl, clientId, code, codeVerifier, redirectUri) {
-    var body = new URLSearchParams({
-        grant_type:    'authorization_code',
-        code:          code,
-        client_id:     clientId,
-        redirect_uri:  redirectUri,
-        code_verifier: codeVerifier
-    });
-
-    var response = await fetch(instanceUrl + '/services/oauth2/token', {
+async function exchangeCodeForTokens(proxyUrl, code, codeVerifier, redirectUri) {
+    var response = await fetch(proxyUrl + '/token', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    body.toString()
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ code: code, codeVerifier: codeVerifier, redirectUri: redirectUri })
     });
 
     if (!response.ok) {
         var err = await response.json().catch(function () { return {}; });
-        throw new Error('Token exchange failed: ' + (err.error_description || response.status));
+        throw new Error('Token exchange failed: ' + (err.error || response.status));
     }
 
     var data = await response.json();
@@ -139,7 +137,7 @@ async function exchangeCodeForTokens(instanceUrl, clientId, code, codeVerifier, 
         refreshToken: data.refresh_token,
         tokenType:    data.token_type || 'Bearer',
         expiresAt:    Date.now() + (data.expires_in ? data.expires_in * 1000 : 7200 * 1000),
-        instanceUrl:  data.instance_url || instanceUrl
+        instanceUrl:  data.instance_url || ''
     };
 }
 
@@ -151,20 +149,14 @@ async function refreshAccessToken() {
     var tokens  = results[TOKENS_KEY] || {};
 
     if (!tokens.refreshToken) throw new Error('NO_REFRESH_TOKEN');
-    if (!config.clientId)     throw new Error('NOT_CONFIGURED');
 
-    var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
+    var proxyUrl = (config.oauthProxyUrl || '').replace(/\/$/, '');
+    if (!proxyUrl) throw new Error('NOT_CONFIGURED');
 
-    var body = new URLSearchParams({
-        grant_type:    'refresh_token',
-        refresh_token: tokens.refreshToken,
-        client_id:     config.clientId.trim()
-    });
-
-    var response = await fetch(instanceUrl + '/services/oauth2/token', {
+    var response = await fetch(proxyUrl + '/refresh', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    body.toString()
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ refreshToken: tokens.refreshToken })
     });
 
     if (!response.ok) {
@@ -173,14 +165,14 @@ async function refreshAccessToken() {
             throw new Error('REFRESH_TOKEN_EXPIRED');
         }
         var err = await response.json().catch(function () { return {}; });
-        throw new Error('Token refresh failed: ' + (err.error_description || response.status));
+        throw new Error('Token refresh failed: ' + (err.error || response.status));
     }
 
-    var data = await response.json();
+    var data    = await response.json();
     var updated = Object.assign({}, tokens, {
-        accessToken: data.access_token,
+        accessToken:  data.access_token,
         refreshToken: data.refresh_token || tokens.refreshToken,
-        expiresAt: Date.now() + (data.expires_in ? data.expires_in * 1000 : 7200 * 1000)
+        expiresAt:    Date.now() + (data.expires_in ? data.expires_in * 1000 : 7200 * 1000)
     });
 
     await storeTokens(updated);
@@ -226,13 +218,14 @@ async function disconnectOAuth() {
 
     await chrome.storage.local.remove([TOKENS_KEY, USER_KEY, 'sfRemoteTemplates', 'sfTemplatesSyncedAt']);
 
-    // Silently revoke token at Salesforce
-    if (tokens && tokens.accessToken && config.instanceUrl) {
+    // Best-effort: revoke token via proxy (keeps Consumer Key off the extension)
+    var proxyUrl = (config.oauthProxyUrl || '').replace(/\/$/, '');
+    if (tokens && tokens.accessToken && proxyUrl) {
         try {
-            await fetch(config.instanceUrl.replace(/\/$/, '') + '/services/oauth2/revoke', {
+            await fetch(proxyUrl + '/revoke', {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body:    new URLSearchParams({ token: tokens.accessToken })
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ token: tokens.accessToken, instanceUrl: tokens.instanceUrl || '' })
             });
         } catch (e) { /* silent */ }
     }
@@ -241,11 +234,11 @@ async function disconnectOAuth() {
 // ── Export ────────────────────────────────────────────────────────────────────
 
 self.SfOAuth = {
-    launchOAuthFlow:          launchOAuthFlow,
-    refreshAccessToken:       refreshAccessToken,
-    getValidAccessToken:      getValidAccessToken,
-    fetchSalesforceUserInfo:  fetchSalesforceUserInfo,
-    disconnectOAuth:          disconnectOAuth
+    launchOAuthFlow:         launchOAuthFlow,
+    refreshAccessToken:      refreshAccessToken,
+    getValidAccessToken:     getValidAccessToken,
+    fetchSalesforceUserInfo: fetchSalesforceUserInfo,
+    disconnectOAuth:         disconnectOAuth
 };
 
 }());
