@@ -20,11 +20,11 @@ function loadSfTemplatesSection() {
         var tokens = r.sfOAuthTokens || {};
         var user   = r.sfOAuthUser   || null;
 
-        // If proxy URL was never saved, apply the compiled default and persist it
+        // If proxy URL was never saved, apply compiled default or hardcoded fallback
         var compiled  = (typeof CYFOR_CONFIG !== 'undefined') ? CYFOR_CONFIG : {};
         var needsSave = false;
-        if (!config.oauthProxyUrl && compiled.oauthProxyUrl) {
-            config.oauthProxyUrl = compiled.oauthProxyUrl;
+        if (!config.oauthProxyUrl) {
+            config.oauthProxyUrl = compiled.oauthProxyUrl || 'https://cyfor-oauth-proxy.nucleusenhancer.workers.dev';
             needsSave = true;
         }
         if (needsSave) {

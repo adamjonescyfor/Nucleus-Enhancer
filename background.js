@@ -47,7 +47,7 @@ chrome.runtime.onInstalled.addListener((details) => {
             templateCount: 0,
             downloadFolder: 'CYFOR Photographs',
             sfOAuthConfig: {
-                oauthProxyUrl:  (self.CYFOR_CONFIG && self.CYFOR_CONFIG.oauthProxyUrl) || '',
+                oauthProxyUrl:  (self.CYFOR_CONFIG && self.CYFOR_CONFIG.oauthProxyUrl) || 'https://cyfor-oauth-proxy.nucleusenhancer.workers.dev',
                 templateObject: 'NucleusTemplate__c',
                 contentField:   'Content__c',
                 categoryField:  'Category__c',
