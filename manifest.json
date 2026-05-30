@@ -75,7 +75,9 @@
                 "content/templates.js",
                 "content/context-menu.js",
                 "content/downloads.js",
-                "content/main.js"
+                "content/main.js",
+                "report/disclosure-report.js",
+                "content/case-report.js"
             ],
             "css": [
                 "styles/base.css",
@@ -84,8 +86,16 @@
                 "styles/templates.css",
                 "styles/toast.css",
                 "styles/context-menu.css",
-                "styles/animations.css"
+                "styles/animations.css",
+                "styles/case-report.css"
             ]
+        }
+    ],
+
+    "web_accessible_resources": [
+        {
+            "resources": ["report/cyfor-logo.png"],
+            "matches": ["https://*.lightning.force.com/*"]
         }
     ]
 }

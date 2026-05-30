@@ -12,7 +12,7 @@ try {
 }
 
 try {
-    importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js');
+    importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js', 'report/case-report-fetch.js');
 } catch (e) {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
 }
@@ -192,6 +192,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.warn('[CYFOR] showDownload error:', e);
         }
         sendResponse({ ok: true });
+        return true;
+    }
+
+    // Live-fetch a Forensic Case bundle for the disclosure report generator
+    if (message.action === 'caseReport.fetch') {
+        if (!self.CaseReportFetch) { sendResponse({ ok: false, error: 'Case report module not loaded' }); return true; }
+        self.CaseReportFetch.fetchCaseBundle({ caseObject: message.caseObject, caseId: message.caseId })
+            .then((data) => sendResponse({ ok: true, data: data }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
         return true;
     }
 });

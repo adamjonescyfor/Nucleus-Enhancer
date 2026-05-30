@@ -1,0 +1,167 @@
+// ==================================================
+// CYFOR Nucleus Enhancer — Case Report (content script)
+// Injects an "Export Case Report" button on Forensic Case
+// record pages, fetches the case bundle from the background,
+// builds the sanitised disclosure HTML, and downloads it.
+// Also handles popup-triggered exports.
+// ==================================================
+
+(function () {
+    if (window.__cyforCaseReportLoaded) return;
+    window.__cyforCaseReportLoaded = true;
+
+    var BTN_ID = 'cyfor-export-case-btn';
+
+    // Parse /lightning/r/<ObjectApiName>/<RecordId>/view and accept Forensic Case pages.
+    function parseCasePage() {
+        var m = location.href.match(/\/lightning\/r\/([^/]+)\/([^/]+)\/view/);
+        if (!m) return null;
+        var obj = m[1], id = m[2];
+        if (!/forensic.*case/i.test(obj)) return null;
+        return { object: obj, id: id };
+    }
+
+    function ensureButton() {
+        var ctx = parseCasePage();
+        var btn = document.getElementById(BTN_ID);
+        if (!ctx) { if (btn) btn.remove(); return; }
+        if (btn) return;
+
+        btn = document.createElement('button');
+        btn.id = BTN_ID;
+        btn.type = 'button';
+        btn.className = 'cyfor-export-case-btn';
+        btn.textContent = 'Export Case Report';
+        btn.addEventListener('click', function () { runExport(btn); });
+        document.body.appendChild(btn);
+    }
+
+    function sendMessage(msg) {
+        return new Promise(function (resolve) {
+            try {
+                chrome.runtime.sendMessage(msg, function (r) {
+                    if (chrome.runtime.lastError) {
+                        resolve({ ok: false, error: chrome.runtime.lastError.message });
+                    } else {
+                        resolve(r);
+                    }
+                });
+            } catch (e) {
+                resolve({ ok: false, error: e.message });
+            }
+        });
+    }
+
+    function toast(msg, type) {
+        try {
+            if (typeof Cyfor !== 'undefined' && Cyfor.toast && Cyfor.toast.show) {
+                Cyfor.toast.show(msg, type || 'info', 5000);
+                return;
+            }
+        } catch (e) { /* ignore */ }
+        console.log('[CYFOR]', msg);
+    }
+
+    function blobToDataUri(blob) {
+        return new Promise(function (resolve, reject) {
+            var fr = new FileReader();
+            fr.onload = function () { resolve(fr.result); };
+            fr.onerror = reject;
+            fr.readAsDataURL(blob);
+        });
+    }
+
+    async function loadLogo() {
+        try {
+            var url = chrome.runtime.getURL('report/cyfor-logo.png');
+            var res = await fetch(url);
+            if (!res.ok) return null;
+            var blob = await res.blob();
+            if (!blob || !blob.size) return null;
+            return await blobToDataUri(blob);
+        } catch (e) {
+            return null; // builder falls back to a text wordmark
+        }
+    }
+
+    function downloadHtml(html, filename) {
+        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1500);
+    }
+
+    var running = false;
+
+    async function runExport(btn) {
+        if (running) return;
+        var ctx = parseCasePage();
+        if (!ctx) { toast('Open a Forensic Case record first.', 'warning'); return; }
+
+        running = true;
+        var original = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+        toast('Building disclosure report…', 'info');
+
+        try {
+            var resp = await sendMessage({ action: 'caseReport.fetch', caseObject: ctx.object, caseId: ctx.id });
+            if (!resp || !resp.ok) throw new Error((resp && resp.error) || 'Fetch failed');
+
+            var data = resp.data || {};
+            if (data.meta) {
+                console.log('[CYFOR] Case child relationships:', data.meta.childRelationships);
+                if (data.meta.warnings && data.meta.warnings.length) {
+                    console.warn('[CYFOR] Case report warnings:', data.meta.warnings);
+                }
+            }
+
+            if (!self.DisclosureReport) throw new Error('Report generator not loaded');
+
+            var logo = await loadLogo();
+            var now = new Date();
+            var html = self.DisclosureReport.build(Object.assign({}, data, { logoDataUri: logo, generatedDate: now }));
+            var filename = self.DisclosureReport.suggestFilename(data.caseRecord, now);
+
+            downloadHtml(html, filename);
+            toast('Disclosure report downloaded.', 'success');
+        } catch (e) {
+            console.error('[CYFOR] Case report error:', e);
+            var msg = e.message || String(e);
+            if (msg === 'NOT_AUTHENTICATED' || msg === 'NOT_CONFIGURED') {
+                msg = 'Connect via Salesforce OAuth in the extension first.';
+            }
+            toast('Export failed: ' + msg, 'error');
+        } finally {
+            running = false;
+            if (btn) { btn.disabled = false; btn.textContent = original || 'Export Case Report'; }
+        }
+    }
+
+    // Popup-triggered run + status query
+    chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+        if (!message) return;
+        if (message.action === 'caseReport.run') {
+            var ctx = parseCasePage();
+            if (!ctx) { sendResponse({ ok: false, error: 'NOT_CASE_PAGE' }); return true; }
+            runExport(document.getElementById(BTN_ID));
+            sendResponse({ ok: true });
+            return true;
+        }
+        if (message.action === 'caseReport.status') {
+            sendResponse({ ok: true, isCasePage: !!parseCasePage() });
+            return true;
+        }
+    });
+
+    // Lightning is a SPA — re-evaluate the button as the URL changes.
+    var lastHref = location.href;
+    setInterval(function () {
+        if (location.href !== lastHref) lastHref = location.href;
+        ensureButton();
+    }, 1000);
+    ensureButton();
+})();

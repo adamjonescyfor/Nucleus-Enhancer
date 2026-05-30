@@ -178,6 +178,7 @@ function loadSettings(settingsStore) {
             bindColumnEvents();
             bindAuthActions();
             loadSfTemplatesSection();
+            loadCaseReportSection();
 
             renderAuthFromState(r[AUTH_STORAGE_KEY]);
             refreshSalesforceAuth(false);
