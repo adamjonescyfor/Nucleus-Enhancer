@@ -401,22 +401,15 @@ function archiveSection(input, opts) {
 }
 
 function processSection(input, opts) {
-    var recs = input.records;
+    // Contemporaneous notes read as a timeline: flat, chronological by start.
+    // Record Type stays on each card header so the stage is still clear.
+    var recs = input.records.slice().sort(byStart);
     if (!recs.length) return '<p class="muted">No Records</p>';
-    var grouped = Object.create(null);
-    recs.forEach(function (r) { var g = fv('RecordTypeId', r) || 'General / Unspecified'; (grouped[g] = grouped[g] || []).push(r); });
-
-    var html = '';
-    Object.keys(grouped).sort().forEach(function (g) {
-        var list = grouped[g].slice().sort(byRef);
-        html += '<div class="group"><h3>' + escapeHtml(g) + ' <span class="count">' + list.length + ' records</span></h3>';
-        list.forEach(function (r) {
-            var subtitle = [fv('Start_Date_Time__c', r), fv('Exhibit__c', r), fv('Status__c', r)].filter(Boolean).join(' · ');
-            html += recordCard(r, subtitle, PROCESS_PREFERRED, opts, 'Notes__c');
-        });
-        html += '</div>';
-    });
-    return html;
+    return recs.map(function (r) {
+        var subtitle = [fv('RecordTypeId', r), fv('Start_Date_Time__c', r), fv('Exhibit__c', r), fv('Status__c', r)]
+            .filter(Boolean).join(' · ');
+        return recordCard(r, subtitle, PROCESS_PREFERRED, opts, 'Notes__c');
+    }).join('');
 }
 
 function timeSection(input) {

@@ -21,19 +21,65 @@
         return { object: obj, id: id };
     }
 
+    // Pierce shadow roots when looking for elements (newer Lightning uses LWC shadow DOM).
+    function deepQueryAll(selector) {
+        var out = [];
+        var stack = [document];
+        while (stack.length) {
+            var node = stack.pop();
+            if (node.querySelectorAll) {
+                var found = node.querySelectorAll(selector);
+                for (var i = 0; i < found.length; i++) out.push(found[i]);
+                var all = node.querySelectorAll('*');
+                for (var j = 0; j < all.length; j++) if (all[j].shadowRoot) stack.push(all[j].shadowRoot);
+            }
+        }
+        return out;
+    }
+
+    // Find the highlights action bar (Edit / Delete / Clone row) to dock the button in.
+    var HIGHLIGHT_HOSTS = 'records-highlights2, force-highlights2, .forceHighlightsPanel, .slds-page-header, runtime_platform_actions-actions-ribbon, .forceActionsContainer';
+    function ribbonInHost(lists) {
+        for (var i = 0; i < lists.length; i++) {
+            if (lists[i].closest && lists[i].closest(HIGHLIGHT_HOSTS)) return lists[i];
+        }
+        return null;
+    }
+    function findActionRibbon() {
+        // Prefer a button group that lives inside the highlights/actions panel.
+        var hit = ribbonInHost(document.querySelectorAll('ul.slds-button-group-list'));
+        if (hit) return hit;
+        var deep = deepQueryAll('ul.slds-button-group-list');
+        return ribbonInHost(deep) || deep[0] || null;
+    }
+
+    function removeButton() {
+        var b = document.getElementById(BTN_ID);
+        if (b) { var li = b.closest('li'); (li || b).remove(); }
+    }
+
     function ensureButton() {
         var ctx = parseCasePage();
-        var btn = document.getElementById(BTN_ID);
-        if (!ctx) { if (btn) btn.remove(); return; }
-        if (btn) return;
+        if (!ctx) { removeButton(); return; }
+        if (document.getElementById(BTN_ID)) return;
 
-        btn = document.createElement('button');
+        var ribbon = findActionRibbon();
+        if (!ribbon) return; // highlights not rendered yet — retried by the poll
+
+        var li = document.createElement('li');
+        li.className = 'slds-button-group-item';
+        li.setAttribute('data-cyfor-export', '1');
+
+        var btn = document.createElement('button');
         btn.id = BTN_ID;
         btn.type = 'button';
-        btn.className = 'cyfor-export-case-btn';
+        btn.className = 'slds-button slds-button_neutral cyfor-export-case-btn';
+        btn.title = 'Generate a sanitised disclosure report for this case';
         btn.textContent = 'Export Case Report';
         btn.addEventListener('click', function () { runExport(btn); });
-        document.body.appendChild(btn);
+
+        li.appendChild(btn);
+        ribbon.appendChild(li);
     }
 
     function sendMessage(msg) {
@@ -115,7 +161,7 @@
             if (data.meta) {
                 console.log('[CYFOR] Case child relationships:', data.meta.childRelationships);
                 if (data.meta.warnings && data.meta.warnings.length) {
-                    console.warn('[CYFOR] Case report warnings:', data.meta.warnings);
+                    console.log('[CYFOR] Report notes (non-fatal):', data.meta.warnings);
                 }
             }
 
