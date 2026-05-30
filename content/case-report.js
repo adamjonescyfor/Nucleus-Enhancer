@@ -37,20 +37,36 @@
         return out;
     }
 
+    // Only consider elements that are actually laid out (Lightning keeps hidden,
+    // cached copies of record views around — ignore those).
+    function visible(el) { return !!(el && el.getClientRects && el.getClientRects().length); }
+
     // Find the highlights action bar (Edit / Delete / Clone row) to dock the button in.
     var HIGHLIGHT_HOSTS = 'records-highlights2, force-highlights2, .forceHighlightsPanel, .slds-page-header, runtime_platform_actions-actions-ribbon, .forceActionsContainer';
+    var NOT_RIBBON = 'table, [role="grid"], .forceRelatedListContainer, .forceListViewManager, lightning-datatable, .uiVirtualDataTable';
+
     function ribbonInHost(lists) {
         for (var i = 0; i < lists.length; i++) {
-            if (lists[i].closest && lists[i].closest(HIGHLIGHT_HOSTS)) return lists[i];
+            var ul = lists[i];
+            if (ul.closest && ul.closest(HIGHLIGHT_HOSTS) && visible(ul)) return ul;
         }
         return null;
     }
     function findActionRibbon() {
-        // Prefer a button group that lives inside the highlights/actions panel.
-        var hit = ribbonInHost(document.querySelectorAll('ul.slds-button-group-list'));
+        // Prefer a visible button group inside the highlights/actions panel.
+        var light = document.querySelectorAll('ul.slds-button-group-list');
+        var hit = ribbonInHost(light);
         if (hit) return hit;
+        // Fallback: a visible group that isn't part of a related list / data table.
+        for (var i = 0; i < light.length; i++) {
+            if (visible(light[i]) && light[i].closest && !light[i].closest(NOT_RIBBON)) return light[i];
+        }
+        // Shadow DOM (newer LWC layouts).
         var deep = deepQueryAll('ul.slds-button-group-list');
-        return ribbonInHost(deep) || deep[0] || null;
+        var dh = ribbonInHost(deep);
+        if (dh) return dh;
+        for (var j = 0; j < deep.length; j++) if (visible(deep[j])) return deep[j];
+        return null;
     }
 
     function removeButton() {
@@ -61,10 +77,15 @@
     function ensureButton() {
         var ctx = parseCasePage();
         if (!ctx) { removeButton(); return; }
-        if (document.getElementById(BTN_ID)) return;
+
+        var existing = document.getElementById(BTN_ID);
+        if (existing) {
+            if (visible(existing)) return;       // already placed in the live bar
+            removeButton();                      // stale/hidden copy — drop and re-place
+        }
 
         var ribbon = findActionRibbon();
-        if (!ribbon) return; // highlights not rendered yet — retried by the poll
+        if (!ribbon) return; // highlights not rendered yet — retried by observer/poll
 
         var li = document.createElement('li');
         li.className = 'slds-button-group-item';
@@ -79,7 +100,7 @@
         btn.addEventListener('click', function () { runExport(btn); });
 
         li.appendChild(btn);
-        ribbon.appendChild(li);
+        ribbon.insertBefore(li, ribbon.firstChild); // first action — clean rounded-left join
     }
 
     function sendMessage(msg) {
@@ -203,7 +224,19 @@
         }
     });
 
-    // Lightning is a SPA — re-evaluate the button as the URL changes.
+    // Re-place the button promptly whenever Lightning re-renders the page
+    // (batched to one check per animation frame so it stays cheap).
+    var rafPending = false;
+    function scheduleEnsure() {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(function () { rafPending = false; ensureButton(); });
+    }
+    try {
+        new MutationObserver(scheduleEnsure).observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) { /* observer unavailable — poll still covers it */ }
+
+    // Backstop poll (also handles SPA URL changes with little DOM mutation).
     var lastHref = location.href;
     setInterval(function () {
         if (location.href !== lastHref) lastHref = location.href;
