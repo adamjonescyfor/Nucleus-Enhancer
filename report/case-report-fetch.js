@@ -26,55 +26,8 @@ var OBJECT_CANDIDATES = {
     continuity:        ['Continuity__c', 'Exhibit_Continuity__c', 'ExhibitContinuity__c']
 };
 
-// Fields requested per object (resolved to display names where they are lookups).
-var FIELDS = {
-    'case': [
-        'Name', 'Account__c', 'Submission_Reference__c', 'Access_Level__c',
-        'Access_Level_Name__c', 'Status__c', 'Job_Type__c', 'Case_Primary_Owner__c',
-        'Contact_Reference__c', 'OIC_eMail__c', 'Created_Date_Time__c', 'Start_Date_Time__c',
-        'Completed_Date_Time__c', 'Close_Date_Time__c', 'Returned_Date_Time__c',
-        'Due_Date_Time__c', 'Turnaround_Time_TRT__c', 'Estimated_Duration_hrs__c',
-        'Total_Logged_Time_hrs__c', 'Crime_Category__c', 'Specific_Crimes__c',
-        'Case_Background__c', 'Forensic_Strategy__c'
-    ],
-    exhibits: [
-        'Name', 'Forensic_Case__c', 'Type__c', 'Description__c', 'Parent_Exhibit__c',
-        'Property_Number__c', 'Barcode_Number__c', 'Original_Seal_Reference__c',
-        'ReSeal_Reference__c', 'Status__c', 'Forensic_Location__c', 'Receipt_Date_Time__c',
-        'Check_In_Date_Time__c', 'Re_Sealed_By__c', 'Re_Sealed_Date_Time__c',
-        'Exhibit_Notes__c', 'Custodian__c', 'To_Be_Destroyed__c'
-    ],
-    process: [
-        'Name', 'RecordTypeId', 'Forensic_Case__c', 'Exhibit__c', 'Exhibit_Type__c',
-        'Status__c', 'Type__c', 'Completed_By__c', 'Start_Date_Time__c', 'End_Date_Time__c',
-        'Notes__c', 'Damage_Details__c', 'Device_Colour__c', 'Manufacturer__c', 'Model__c',
-        'Operating_Sytem__c', 'Extraction_Method__c', 'Extraction_Software__c',
-        'Imaging_Software__c', 'Imaging_Workstation__c', 'Extraction_Workstation__c',
-        'MD5_Checksum__c', 'SHA1_Checksum__c', 'ICCID__c', 'IMEI_1__c', 'IMEI_2__c',
-        'IMSI__c', 'Network_Operator__c'
-    ],
-    timeEntries: [
-        'Name', 'Forensic_Case__c', 'Process_Step__c', 'Exhibit__c', 'Logged_Time_For__c',
-        'Duration_hrs__c', 'Start_Date_Time__c', 'End_Date_Time__c', 'Time_Summary__c',
-        'Type__c', 'Notes__c'
-    ],
-    generatedMaterial: [
-        'Name', 'Forensic_Case__c', 'Exhibit_Type__c', 'Description__c', 'Status__c',
-        'Location__c', 'Barcode_Number__c', 'Seal_Reference__c', 'Sealed_By__c',
-        'Sealed_Date_Time__c', 'Encryption_Type__c', 'Encryption_Password__c', 'Media_Size_GB__c'
-    ],
-    archive: [
-        'Name', 'Forensic_Case__c', 'Type__c', 'Media_Type__c', 'Location__c',
-        'Assigned_Staff__c', 'Conducted_By__c', 'Start_Date__c', 'Completed_Date__c',
-        'Archive_Until_Date__c', 'Next_Verification_Date__c', 'Exhibit_Reference__c',
-        'Seal_Number__c', 'Sealed_By__c', 'Seal_Date_Time__c', 'Notes__c'
-    ],
-    continuity: [
-        'Name', 'Exhibit__c', 'Location__c', 'Status__c', 'Requested_By__c',
-        'Decision_Maker__c', 'Approved_Declined_Date_Time__c', 'Previous_Continuity__c',
-        'CreatedDate'
-    ]
-};
+// Field types that cannot be selected directly in SOQL (compound / binary).
+var UNSELECTABLE_TYPES = { 'address': true, 'location': true, 'base64': true };
 
 // ── REST helpers ──────────────────────────────────────────────────────────────
 
@@ -110,22 +63,20 @@ async function describe(ctx, obj) {
     return d;
 }
 
-// Build a SELECT clause for the curated fields, resolving lookups to <rel>.Name.
-async function buildSelect(ctx, obj, fields, descOpt) {
+// Build a SELECT clause for ALL queryable fields, resolving lookups to <rel>.Name.
+// Selection order follows describe field order so the rendered detail follows it.
+async function buildSelectAll(ctx, obj, descOpt) {
     var d = descOpt || await describe(ctx, obj);
-    var byName = Object.create(null);
-    (d.fields || []).forEach(function (f) { byName[f.name.toLowerCase()] = f; });
+    var selects = [];
+    var relToField = Object.create(null);
 
-    var selects = ['Id'];
-    var refMap = Object.create(null);
-    fields.forEach(function (fld) {
-        var meta = byName[fld.toLowerCase()];
-        if (!meta) return;
-        if (meta.type === 'reference' && meta.relationshipName) {
-            selects.push(meta.relationshipName + '.Name');
-            refMap[meta.name] = meta.relationshipName;
+    (d.fields || []).forEach(function (f) {
+        if (UNSELECTABLE_TYPES[f.type]) return;
+        if (f.type === 'reference' && f.relationshipName) {
+            selects.push(f.relationshipName + '.Name');
+            relToField[f.relationshipName] = f.name;
         } else {
-            selects.push(meta.name);
+            selects.push(f.name);
         }
     });
 
@@ -136,19 +87,22 @@ async function buildSelect(ctx, obj, fields, descOpt) {
         seen[k] = true;
         return true;
     });
-    return { selects: selects, refMap: refMap };
+    if (!selects.length) selects.push('Id');
+    return { selects: selects, relToField: relToField };
 }
 
-// Flatten resolved lookups: record.RecordType.Name -> record.RecordTypeId, etc.
-function normalize(rec, refMap) {
+// Flatten resolved lookups in place: row.RecordType.Name -> out.RecordTypeId, etc.
+// Field order is preserved (the relationship sits where its id field would).
+function normalize(row, relToField) {
     var out = {};
-    for (var k in rec) { if (k === 'attributes') continue; out[k] = rec[k]; }
-    for (var fld in refMap) {
-        var rel = refMap[fld];
-        var relObj = rec[rel];
-        out[fld] = (relObj && relObj.Name != null) ? relObj.Name
-            : (rec[fld] != null ? rec[fld] : null);
-        if (rel !== fld) delete out[rel];
+    for (var k in row) {
+        if (k === 'attributes') continue;
+        var fld = relToField[k];
+        if (fld !== undefined) {
+            out[fld] = (row[k] && row[k].Name != null) ? row[k].Name : null;
+        } else {
+            out[k] = row[k];
+        }
     }
     return out;
 }
@@ -196,23 +150,23 @@ async function fetchCaseBundle(params) {
     var parentDesc = await describe(ctx, caseObject);
 
     // Case record
-    var caseSel = await buildSelect(ctx, caseObject, FIELDS['case'], parentDesc);
+    var caseSel = await buildSelectAll(ctx, caseObject, parentDesc);
     var caseRows = await soql(ctx, 'SELECT ' + caseSel.selects.join(',') + ' FROM ' + caseObject +
         " WHERE Id = '" + caseId + "' LIMIT 1");
     if (!caseRows.length) throw new Error('Case record not found');
-    var caseRecord = normalize(caseRows[0], caseSel.refMap);
+    var caseRecord = normalize(caseRows[0], caseSel.relToField);
 
     async function childSection(key) {
         var loc = resolveChild(parentDesc, OBJECT_CANDIDATES[key], override[key]);
         if (!loc) { ctx.warnings.push('Could not locate object for "' + key + '"'); return { supplied: false, records: [] }; }
         try {
-            var sel = await buildSelect(ctx, loc.object, FIELDS[key]);
+            var sel = await buildSelectAll(ctx, loc.object);
             var rows = await soql(ctx, 'SELECT ' + sel.selects.join(',') + ' FROM ' + loc.object +
-                " WHERE " + loc.linkField + " = '" + caseId + "' ORDER BY Name LIMIT 2000");
+                " WHERE " + loc.linkField + " = '" + caseId + "' LIMIT 2000");
             return {
                 supplied: true,
                 object: loc.object,
-                records: rows.map(function (r) { return normalize(r, sel.refMap); })
+                records: rows.map(function (r) { return normalize(r, sel.relToField); })
             };
         } catch (e) {
             ctx.warnings.push(key + ' query failed: ' + e.message);
@@ -260,11 +214,11 @@ async function fetchContinuity(ctx, exhibits, override) {
     if (!ids.length) return { supplied: true, records: [] };
 
     try {
-        var sel = await buildSelect(ctx, loc.object, FIELDS.continuity);
+        var sel = await buildSelectAll(ctx, loc.object);
         var inList = '(' + ids.map(function (id) { return "'" + id + "'"; }).join(',') + ')';
         var rows = await soql(ctx, 'SELECT ' + sel.selects.join(',') + ' FROM ' + loc.object +
-            ' WHERE ' + loc.linkField + ' IN ' + inList + ' ORDER BY Name LIMIT 2000');
-        return { supplied: true, records: rows.map(function (r) { return normalize(r, sel.refMap); }) };
+            ' WHERE ' + loc.linkField + ' IN ' + inList + ' LIMIT 2000');
+        return { supplied: true, records: rows.map(function (r) { return normalize(r, sel.relToField); }) };
     } catch (e) {
         ctx.warnings.push('Continuity query failed: ' + e.message);
         return { supplied: false, records: [] };
