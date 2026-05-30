@@ -7,30 +7,7 @@
     box-sizing: border-box;
 }
 
-:root {
-    --surface:        #ffffff;
-    --surface-soft:   #f7f9fc;
-    --surface-muted:  #eef2f7;
-    --border:         #d4dce8;
-    --text-primary:   #1a2637;
-    --text-secondary: #4a5568;
-    --text-muted:     #8796a5;
-    --brand:          #0070d2;
-    --brand-dark:     #005fb2;
-    --success-bg:     #f0fdf4;
-    --success-text:   #166534;
-    --danger-bg:      #fef2f2;
-    --danger-text:    #b91c1c;
-    --danger-border:  #fca5a5;
-    --warn-bg:        #fffbeb;
-    --warn-text:      #92400e;
-    --warn-border:    #fcd34d;
-    --info-bg:        #eff6ff;
-    --info-text:      #1e40af;
-    --info-border:    #bfdbfe;
-    --radius:         6px;
-    --shadow:         0 1px 4px rgba(0,0,0,.10);
-}
+/* Palette/tokens now live in styles/tokens.css (shared with the popup). */
 
 body {
     margin: 0;
@@ -93,6 +70,22 @@ body {
     font-style: italic;
     line-height: 1.6;
     text-align: center;
+}
+
+/* Spinner before the loading messages (CSS-driven so JS text changes keep it).
+   @keyframes cyfor-spin is defined in styles/tokens.css. */
+#mgr-loading::before,
+#mgr-history-loading::before {
+    content: "";
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--border);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: cyfor-spin 0.7s linear infinite;
+    vertical-align: -2px;
+    margin-right: 8px;
 }
 
 .mgr-state-msg strong {
@@ -238,6 +231,54 @@ body {
 
 .mgr-table tbody tr:hover td {
     background: var(--surface-soft);
+}
+
+/* Keyboard focus within a row (e.g. tabbing to Edit/Delete) stays visible. */
+.mgr-table tbody tr:focus-within td {
+    background: var(--surface-muted);
+    box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+/* ── Branded modal (replaces window.confirm / window.alert) ── */
+.mgr-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.mgr-modal {
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .3);
+    max-width: 440px;
+    width: 100%;
+    padding: 20px 22px;
+}
+
+.mgr-modal-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+.mgr-modal-body {
+    margin: 0 0 18px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.mgr-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 .mgr-col-actions {
@@ -645,67 +686,46 @@ select.mgr-input {
 
 /* ── Dark mode ──────────────────────────────────────────────────────────────── */
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --surface:        #1c1c1e;
-        --surface-soft:   #242426;
-        --surface-muted:  #2a2a2c;
-        --border:         #3e3e40;
-        --text-primary:   #e8e8e8;
-        --text-secondary: #b0b0b4;
-        --text-muted:     #8a8a8e;
-        --brand:          #4da6ff;
-        --brand-dark:     #2d8ff0;
-        --success-text:   #4ade80;
-        --danger-text:    #ff6b70;
-        --danger-border:  #7f1d1d;
-        --warn-bg:        #1c1600;
-        --warn-text:      #fcd34d;
-        --warn-border:    #78350f;
-        --info-bg:        #0c1a2e;
-        --info-text:      #7dd3fc;
-        --info-border:    #1e3a5f;
-        --shadow:         0 1px 4px rgba(0,0,0,.4);
-    }
+/* Dark mode — palette vars live in styles/tokens.css. These element-specific
+   tweaks are driven by the data-theme attribute (set by styles/theme.js), so
+   they apply for both "Auto" (OS dark) and an explicit Dark choice. */
+html[data-theme="dark"] body {
+    background: #141416;
+}
 
-    body {
-        background: #141416;
-    }
+html[data-theme="dark"] .mgr-scope-badge--team {
+    background: #0a2540;
+    color: #4da6ff;
+    border-color: #1a4a80;
+}
 
-    .mgr-scope-badge--team {
-        background: #0a2540;
-        color: #4da6ff;
-        border-color: #1a4a80;
-    }
+html[data-theme="dark"] .mgr-status-badge--active {
+    background: #052e16;
+    color: #4ade80;
+    border-color: #166534;
+}
 
-    .mgr-status-badge--active {
-        background: #052e16;
-        color: #4ade80;
-        border-color: #166534;
-    }
+html[data-theme="dark"] .mgr-status-badge--draft {
+    background: #1c1200;
+    color: #fcd34d;
+    border-color: #78350f;
+}
 
-    .mgr-status-badge--draft {
-        background: #1c1200;
-        color: #fcd34d;
-        border-color: #78350f;
-    }
+html[data-theme="dark"] .mgr-diff-line--added   { background: #052e16; color: #4ade80; }
+html[data-theme="dark"] .mgr-diff-line--removed { background: #2c0000; color: #ff6b70; }
+html[data-theme="dark"] .mgr-diff-chip--added   { background: #052e16; color: #4ade80; }
+html[data-theme="dark"] .mgr-diff-chip--removed { background: #2c0000; color: #ff6b70; }
 
-    .mgr-diff-line--added   { background: #052e16; color: #4ade80; }
-    .mgr-diff-line--removed { background: #2c0000; color: #ff6b70; }
-    .mgr-diff-chip--added   { background: #052e16; color: #4ade80; }
-    .mgr-diff-chip--removed { background: #2c0000; color: #ff6b70; }
+html[data-theme="dark"] .mgr-btn-primary {
+    background: #2563eb;
+    border-color: #2563eb;
+}
 
-    .mgr-btn-primary {
-        background: #2563eb;
-        border-color: #2563eb;
-    }
+html[data-theme="dark"] .mgr-btn-primary:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
 
-    .mgr-btn-primary:hover:not(:disabled) {
-        background: #1d4ed8;
-        border-color: #1d4ed8;
-    }
-
-    .mgr-setup-table {
-        background: rgba(255,255,255,.04);
-    }
+html[data-theme="dark"] .mgr-setup-table {
+    background: rgba(255, 255, 255, .04);
 }

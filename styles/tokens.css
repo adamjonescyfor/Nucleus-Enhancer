@@ -1,0 +1,128 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Design Tokens
+   Single source of truth for the extension-page palette
+   (popup + manager). Both files used to define their own
+   near-identical :root blocks; this unifies the values and
+   the dark theme so they stay in sync.
+
+   Theme model:
+     - styles/theme.js sets html[data-theme="light|dark"].
+     - "Auto" resolves to light/dark from the OS at runtime.
+     - The @media block below is a no-JS first-paint fallback.
+   The injected Salesforce UI keeps its own tokens in base.css.
+   ================================================== */
+
+:root {
+    /* Surfaces */
+    --surface:        #ffffff;
+    --surface-soft:   #f7f9fc;
+    --surface-muted:  #eef2f7;
+    --border:         #d8e0ec;
+
+    /* Text */
+    --text-primary:   #172b4d;
+    --text-secondary: #4a5568;
+    --text-muted:     #6f7f96;
+    --cyfor-text-muted: #6f7f96; /* legacy alias used in popup.css */
+
+    /* Brand */
+    --brand:          #0070d2;
+    --brand-strong:   #005fb2;
+    --brand-dark:     #005fb2;
+
+    /* Semantic */
+    --success-bg:     #dff5e7;
+    --success-text:   #0b7a3a;
+    --danger-bg:      #fff1f1;
+    --danger-text:    #b4232f;
+    --danger-border:  #fca5a5;
+    --warn-bg:        #fffbeb;
+    --warn-text:      #92400e;
+    --warn-border:    #fcd34d;
+    --info-bg:        #eff6ff;
+    --info-text:      #1e40af;
+    --info-border:    #bfdbfe;
+
+    /* Layout */
+    --radius:         6px;
+    --shadow:         0 1px 4px rgba(0, 0, 0, .10);
+}
+
+/* Dark palette — shared declarations */
+:root[data-theme="dark"] {
+    --surface:        #1c1c1e;
+    --surface-soft:   #242426;
+    --surface-muted:  #2a2a2c;
+    --border:         #3e3e40;
+
+    --text-primary:   #e8e8e8;
+    --text-secondary: #b0b0b4;
+    --text-muted:     #8a8a8e;
+    --cyfor-text-muted: #8a8a8e;
+
+    --brand:          #4da6ff;
+    --brand-strong:   #2d8ff0;
+    --brand-dark:     #2d8ff0;
+
+    --success-bg:     #0a2e1a;
+    --success-text:   #4ade80;
+    --danger-bg:      #2e0a0a;
+    --danger-text:    #ff6b70;
+    --danger-border:  #7f1d1d;
+    --warn-bg:        #1c1600;
+    --warn-text:      #fcd34d;
+    --warn-border:    #78350f;
+    --info-bg:        #0c1a2e;
+    --info-text:      #7dd3fc;
+    --info-border:    #1e3a5f;
+
+    --shadow:         0 1px 4px rgba(0, 0, 0, .4);
+}
+
+/* Shared spinner utility (popup + manager). */
+@keyframes cyfor-spin { to { transform: rotate(360deg); } }
+.cyfor-spinner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--border);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: cyfor-spin 0.7s linear infinite;
+    vertical-align: -2px;
+    margin-right: 6px;
+}
+
+/* No-JS / pre-script first-paint fallback: follow the OS until theme.js
+   sets an explicit data-theme. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --surface:        #1c1c1e;
+        --surface-soft:   #242426;
+        --surface-muted:  #2a2a2c;
+        --border:         #3e3e40;
+
+        --text-primary:   #e8e8e8;
+        --text-secondary: #b0b0b4;
+        --text-muted:     #8a8a8e;
+        --cyfor-text-muted: #8a8a8e;
+
+        --brand:          #4da6ff;
+        --brand-strong:   #2d8ff0;
+        --brand-dark:     #2d8ff0;
+
+        --success-bg:     #0a2e1a;
+        --success-text:   #4ade80;
+        --danger-bg:      #2e0a0a;
+        --danger-text:    #ff6b70;
+        --danger-border:  #7f1d1d;
+        --warn-bg:        #1c1600;
+        --warn-text:      #fcd34d;
+        --warn-border:    #78350f;
+        --info-bg:        #0c1a2e;
+        --info-text:      #7dd3fc;
+        --info-border:    #1e3a5f;
+
+        --shadow:         0 1px 4px rgba(0, 0, 0, .4);
+    }
+}

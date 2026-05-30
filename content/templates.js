@@ -44,9 +44,15 @@ Cyfor.templates = {
             this._attachButton(container);
             this._attachMenu(container);
 
-            // Auto-insert if enabled (Notes only — Forensic Strategy is manual)
-            if (Cyfor.config.enableAutoInsert && Cyfor.editor.isMainNotesField(container)) {
-                this._attemptAutoInsert(container);
+            // Smart-by-type (Notes only — Forensic Strategy is manual):
+            // auto-insert if the user enabled it, otherwise offer a one-click
+            // suggestion so the process→template mapping is still surfaced.
+            if (Cyfor.editor.isMainNotesField(container)) {
+                if (Cyfor.config.enableAutoInsert) {
+                    this._attemptAutoInsert(container);
+                } else {
+                    this._suggestByType(container);
+                }
             }
         }
     },
@@ -379,6 +385,52 @@ Cyfor.templates = {
                     });
                 }
             });
+    },
+
+    /**
+     * When auto-insert is off, offer the process-type-mapped template as a
+     * single click (non-intrusive toast) for an empty Notes field.
+     */
+    _suggestByType(container, retries) {
+        retries = retries || 0;
+        const maxRetries = 15;
+
+        const editor = Cyfor.editor.findEditor(container);
+        if (!editor && retries < maxRetries) {
+            Cyfor.cleanup.setTimeout(() => {
+                this._suggestByType(container, retries + 1);
+            }, 600);
+            return;
+        }
+        if (!editor) return;
+
+        const text = editor.innerText.trim();
+        if (text.length > 0 && text !== '\n') return;
+
+        const root = container.closest('.slds-modal') || document.body;
+        const processType = this._detectProcessType(root);
+        if (!processType) return;
+
+        const templateName = Cyfor.config.processMap[processType];
+        if (!templateName) return;
+
+        const templateText = Cyfor.config.templates[templateName];
+        if (!templateText) return;
+
+        Cyfor.toast.info(`Suggested for "${processType}": ${templateName}`, 6000, {
+            label: 'Insert',
+            onClick: () => {
+                Cyfor.editor.insertIntoContainer(container, templateText, templateName)
+                    .then((success) => {
+                        if (success) {
+                            Cyfor.toast.success(`"${templateName}" inserted`, 2500, {
+                                label: 'Undo',
+                                onClick: () => Cyfor.undo.undo()
+                            });
+                        }
+                    });
+            }
+        });
     },
 
     /**

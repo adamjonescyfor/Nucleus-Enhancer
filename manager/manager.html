@@ -4,7 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CYFOR Template Manager</title>
+    <link rel="stylesheet" href="../styles/tokens.css">
     <link rel="stylesheet" href="manager.css">
+    <!-- Applies the user's stored theme (set from the popup) before first paint. -->
+    <script src="../styles/theme.js"></script>
 </head>
 <body>
 
@@ -12,6 +15,7 @@
         <h1 class="mgr-title" id="mgr-title">CYFOR Template Manager</h1>
         <div class="mgr-header-actions">
             <button id="btn-new-template" class="mgr-btn mgr-btn-primary" disabled>+ New Template</button>
+            <button id="btn-usage" class="mgr-btn mgr-btn-secondary">Usage log</button>
             <button id="btn-back" class="mgr-btn mgr-btn-secondary">← Back to Extension</button>
         </div>
     </header>
@@ -53,6 +57,34 @@
                     </tr>
                 </thead>
                 <tbody id="mgr-template-rows"></tbody>
+            </table>
+        </div>
+
+        <!-- Usage log panel -->
+        <div id="mgr-usage-panel" style="display:none">
+            <div class="mgr-list-header">
+                <p class="mgr-list-desc">
+                    Local template-insertion log for this device (most recent first).
+                    Stored on this machine only — not synced across devices.
+                </p>
+                <div class="mgr-header-actions">
+                    <button id="btn-usage-clear" class="mgr-btn mgr-btn-secondary">Clear log</button>
+                    <button id="btn-usage-back" class="mgr-btn mgr-btn-secondary">← Back to list</button>
+                </div>
+            </div>
+            <div id="mgr-usage-empty" class="mgr-state-msg" style="display:none">
+                No template insertions recorded on this device yet.
+            </div>
+            <table class="mgr-table" id="mgr-usage-table" style="display:none">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Template</th>
+                        <th>Record</th>
+                        <th>User</th>
+                    </tr>
+                </thead>
+                <tbody id="mgr-usage-rows"></tbody>
             </table>
         </div>
 

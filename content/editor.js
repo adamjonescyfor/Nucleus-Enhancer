@@ -234,6 +234,11 @@ Cyfor.editor = {
         editor.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 
         Cyfor.utils.flashElement(editor);
+
+        // Audit trail: log the insertion (best-effort, local-only).
+        if (inserted && templateName && Cyfor.usage) {
+            try { Cyfor.usage.record(templateName); } catch (e) { /* ignore */ }
+        }
         return inserted;
     },
 

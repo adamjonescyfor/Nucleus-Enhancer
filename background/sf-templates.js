@@ -27,8 +27,9 @@ function buildQuery(config, teamCode, withUkas) {
     var category = config.categoryField  || 'Category__c';
     var active   = config.activeField    || 'IsActive__c';
 
+    var escTeam = self.SfUtils ? self.SfUtils.soqlEscape(teamCode) : String(teamCode || '');
     var teamFilter = teamCode
-        ? "(Team__c = null OR Team__r.TeamCode__c = '" + teamCode + "')"
+        ? "(Team__c = null OR Team__r.TeamCode__c = '" + escTeam + "')"
         : 'Team__c = null';
 
     var fields = 'Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c';

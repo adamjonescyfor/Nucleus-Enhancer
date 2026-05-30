@@ -117,6 +117,7 @@ Cyfor.contextMenu = {
                     item.setAttribute('role', 'menuitem');
                     item.setAttribute('tabindex', '0');
                     item.setAttribute('data-template', key);
+                    item.setAttribute('data-category', this._categoryOf(key));
                     const label = document.createElement('span');
                     label.className = 'cyfor-ctx-menu-item-label';
                     label.textContent = key;
@@ -140,34 +141,50 @@ Cyfor.contextMenu = {
                 menu.appendChild(sep);
             }
 
-            // Search
-            if (sortedKeys.length >= 4) {
-                const search = document.createElement('input');
-                search.type = 'text';
-                search.className = 'cyfor-ctx-menu-search';
-                search.placeholder = 'Search ' + sortedKeys.length + ' templates…';
-                search.setAttribute('aria-label', 'Search templates');
-                search.addEventListener('input', () => {
-                    const q = search.value.trim();
-                    const qLow = q.toLowerCase();
-                    menu.querySelectorAll('.cyfor-ctx-menu-item[data-template]').forEach(item => {
-                        const name = item.getAttribute('data-template') || '';
-                        const matches = name.toLowerCase().includes(qLow);
-                        item.style.display = matches ? '' : 'none';
-                        // Highlight match in label (L-4)
-                        const label = item.querySelector('.cyfor-ctx-menu-item-label');
-                        if (label) {
-                            if (q && matches) {
-                                const escaped = Cyfor.utils.escapeHtml(name);
-                                const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
-                                label.innerHTML = escaped.replace(re, '<mark>$1</mark>');
-                            } else {
-                                label.textContent = name;
-                            }
+            // ── Filter controls: text search + category (L-4) ──
+            // Distinct categories come from the synced Salesforce templates.
+            const categories = [];
+            const seenCat = Object.create(null);
+            for (const k of sortedKeys) {
+                const c = this._categoryOf(k);
+                if (c && !seenCat[c]) { seenCat[c] = true; categories.push(c); }
+            }
+            categories.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+            let searchInput = null;
+            let categorySelect = null;
+
+            const applyFilter = () => {
+                const q = searchInput ? searchInput.value.trim() : '';
+                const qLow = q.toLowerCase();
+                const cat = categorySelect ? categorySelect.value : '';
+                menu.querySelectorAll('.cyfor-ctx-menu-item[data-template]').forEach(item => {
+                    const name = item.getAttribute('data-template') || '';
+                    const itemCat = item.getAttribute('data-category') || '';
+                    const matchesText = !qLow || name.toLowerCase().includes(qLow);
+                    const matchesCat = !cat || itemCat === cat;
+                    item.style.display = (matchesText && matchesCat) ? '' : 'none';
+                    const label = item.querySelector('.cyfor-ctx-menu-item-label');
+                    if (label) {
+                        if (q && matchesText) {
+                            const escaped = Cyfor.utils.escapeHtml(name);
+                            const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
+                            label.innerHTML = escaped.replace(re, '<mark>$1</mark>');
+                        } else {
+                            label.textContent = name;
                         }
-                    });
+                    }
                 });
-                search.addEventListener('keydown', (e) => {
+            };
+
+            if (sortedKeys.length >= 4) {
+                searchInput = document.createElement('input');
+                searchInput.type = 'text';
+                searchInput.className = 'cyfor-ctx-menu-search';
+                searchInput.placeholder = 'Search ' + sortedKeys.length + ' templates…';
+                searchInput.setAttribute('aria-label', 'Search templates');
+                searchInput.addEventListener('input', applyFilter);
+                searchInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape') {
                         e.stopPropagation();
                         this.hide();
@@ -177,10 +194,29 @@ Cyfor.contextMenu = {
                         if (first) first.focus();
                     }
                 });
-                // Stop propagation so document mousedown doesn't close the menu
-                search.addEventListener('mousedown', (e) => e.stopPropagation());
-                search.addEventListener('click', (e) => e.stopPropagation());
-                menu.appendChild(search);
+                searchInput.addEventListener('mousedown', (e) => e.stopPropagation());
+                searchInput.addEventListener('click', (e) => e.stopPropagation());
+                menu.appendChild(searchInput);
+            }
+
+            if (categories.length >= 2) {
+                categorySelect = document.createElement('select');
+                categorySelect.className = 'cyfor-ctx-menu-filter';
+                categorySelect.setAttribute('aria-label', 'Filter by category');
+                const optAll = document.createElement('option');
+                optAll.value = '';
+                optAll.textContent = 'All categories';
+                categorySelect.appendChild(optAll);
+                for (const c of categories) {
+                    const o = document.createElement('option');
+                    o.value = c;
+                    o.textContent = c;
+                    categorySelect.appendChild(o);
+                }
+                categorySelect.addEventListener('change', applyFilter);
+                categorySelect.addEventListener('mousedown', (e) => e.stopPropagation());
+                categorySelect.addEventListener('click', (e) => e.stopPropagation());
+                menu.appendChild(categorySelect);
             }
 
             // Items
@@ -214,6 +250,7 @@ Cyfor.contextMenu = {
                 item.setAttribute('role', 'menuitem');
                 item.setAttribute('tabindex', '0');
                 item.setAttribute('data-template', key);
+                item.setAttribute('data-category', this._categoryOf(key));
                 item.title = 'Insert "' + key + '"';
 
                 // Mark built-in templates with a small badge
@@ -332,6 +369,17 @@ Cyfor.contextMenu = {
                 firstItem.focus();
             }
         }, 30);
+    },
+
+    /**
+     * Category for a template (from the synced Salesforce metadata),
+     * or '' if it has none (built-in / locally uploaded templates).
+     */
+    _categoryOf(key) {
+        const r = Cyfor.config.sfRemoteTemplates;
+        const entry = r && r[key];
+        const cat = (entry && typeof entry === 'object') ? entry.category : null;
+        return (cat && String(cat).trim()) || '';
     },
 
     /**

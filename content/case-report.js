@@ -12,6 +12,12 @@
 
     var BTN_ID = 'cyfor-export-case-btn';
 
+    // Shared teardown registry (defined in content/config.js). When present we
+    // route our observer / interval / listeners through it so they disconnect
+    // on extension context invalidation, consistent with the other content
+    // scripts. Falls back to raw APIs if it isn't available.
+    var CLEAN = (typeof Cyfor !== 'undefined' && Cyfor.cleanup) ? Cyfor.cleanup : null;
+
     // Parse /lightning/r/<ObjectApiName>/<RecordId>/view and accept Forensic Case pages.
     function parseCasePage() {
         var m = location.href.match(/\/lightning\/r\/([^/]+)\/([^/]+)\/view/);
@@ -97,7 +103,8 @@
         btn.className = 'slds-button slds-button_neutral cyfor-export-case-btn';
         btn.title = 'Generate a sanitised disclosure report for this case';
         btn.textContent = 'Export Case Report';
-        btn.addEventListener('click', function () { runExport(btn); });
+        if (CLEAN) CLEAN.addEventListener(btn, 'click', function () { runExport(btn); });
+        else btn.addEventListener('click', function () { runExport(btn); });
 
         li.appendChild(btn);
         ribbon.insertBefore(li, ribbon.firstChild); // first action — clean rounded-left join
@@ -234,14 +241,18 @@
         requestAnimationFrame(function () { rafPending = false; ensureButton(); });
     }
     try {
-        new MutationObserver(scheduleEnsure).observe(document.documentElement, { childList: true, subtree: true });
+        var mo = new MutationObserver(scheduleEnsure);
+        mo.observe(document.documentElement, { childList: true, subtree: true });
+        if (CLEAN) CLEAN.register(function () { try { mo.disconnect(); } catch (e) {} });
     } catch (e) { /* observer unavailable — poll still covers it */ }
 
     // Backstop poll (also handles SPA URL changes with little DOM mutation).
     var lastHref = location.href;
-    setInterval(function () {
+    function pollTick() {
         if (location.href !== lastHref) lastHref = location.href;
         ensureButton();
-    }, 1000);
+    }
+    if (CLEAN) CLEAN.setInterval(pollTick, 1000);
+    else setInterval(pollTick, 1000);
     ensureButton();
 })();

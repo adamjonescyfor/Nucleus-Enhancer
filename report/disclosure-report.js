@@ -455,7 +455,8 @@ function css() {
 '.record-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.record-head span,.count{color:var(--muted);font-size:13px;font-weight:normal}.group{margin:24px 0}.muted{color:var(--muted)}\n' +
 '.notes{background:#fbfdff;border-left:4px solid var(--mid);padding:12px 16px;margin:12px 0;border-radius:8px}.notes p{margin:6px 0}.note-line{padding:6px 8px;background:#f7faff;border:1px solid #e0ebf7;border-radius:8px}\n' +
 '.back{display:inline-block;margin-top:14px;text-decoration:none;font-weight:bold}.footer{margin:34px auto 0;max-width:1240px;padding:22px 20px 30px;color:#42556c;text-align:center}.footer .copyright{border-top:1px solid var(--line);padding-top:18px}.footer .classification-bottom{font-weight:bold;color:#003865;letter-spacing:.08em;margin-top:12px}\n' +
-'@media print{.nav{position:static}.card,.record-card{break-inside:avoid;box-shadow:none}body{background:white}.summary-table th{position:static}}\n';
+'.print-btn{position:fixed;top:14px;right:14px;z-index:50;background:var(--mid);color:#fff;border:0;border-radius:999px;padding:10px 18px;font-weight:bold;font-size:14px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.25)}.print-btn:hover{background:var(--blue)}\n' +
+'@media print{.no-print{display:none!important}.nav{display:none}.header{break-inside:avoid}.card,.record-card,.group,.kpi-grid div{break-inside:avoid}h2,h3,h4{break-after:avoid}.summary-table th{position:static}body{background:white}a[href^="#"]{color:inherit;text-decoration:none}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\n';
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
@@ -516,6 +517,8 @@ function build(data) {
         '<meta name="viewport" content="width=device-width, initial-scale=1">' +
         '<title>' + escapeHtml(REPORT_TITLE) + '</title><style>' + css() + '</style></head>' +
         '<body id="top">\n' +
+        '<button class="print-btn no-print" type="button" onclick="window.print()" ' +
+        'title="Open the print dialog — choose &quot;Save as PDF&quot; as the destination">↓ Save as PDF</button>\n' +
         '<header class="header"><div class="logo-box">' + logoHtml + '</div>' +
         '<span class="classification">' + escapeHtml(classification) + '</span>' +
         '<h1>' + escapeHtml(REPORT_TITLE) + '</h1>' +

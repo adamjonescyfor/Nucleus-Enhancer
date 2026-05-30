@@ -12,6 +12,14 @@ var CONFIG_KEY       = 'sfOAuthConfig';
 var USER_KEY         = 'sfOAuthUser';
 var EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
+// JSON headers + the extension version, so the proxy can (optionally) gate on
+// a minimum client version. Returns a fresh object per call.
+function proxyHeaders() {
+    var version = '';
+    try { version = chrome.runtime.getManifest().version || ''; } catch (e) { /* ignore */ }
+    return { 'Content-Type': 'application/json', 'X-Client-Version': version };
+}
+
 // ── PKCE helpers ──────────────────────────────────────────────────────────────
 
 function base64urlEncode(uint8Array) {
@@ -74,7 +82,7 @@ async function launchOAuthFlow() {
     // Ask proxy to construct the Salesforce auth URL (proxy injects Consumer Key)
     var urlRes = await fetch(proxyUrl + '/auth-url', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body:    JSON.stringify({ codeChallenge: codeChallenge, redirectUri: redirectUrl })
     });
     if (!urlRes.ok) {
@@ -84,7 +92,8 @@ async function launchOAuthFlow() {
     var urlData = await urlRes.json();
     if (!urlData.url) throw new Error('Proxy returned no auth URL');
 
-    console.log('[CYFOR] Auth URL:', urlData.url);
+    // NOTE: never log urlData.url — it contains client_id (the Consumer Key),
+    // which must not be exposed in the console or anywhere else.
 
     var responseUrl = await chrome.identity.launchWebAuthFlow({
         url:         urlData.url,
@@ -124,7 +133,7 @@ async function launchOAuthFlow() {
 async function exchangeCodeForTokens(proxyUrl, code, codeVerifier, redirectUri) {
     var response = await fetch(proxyUrl + '/token', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body:    JSON.stringify({ code: code, codeVerifier: codeVerifier, redirectUri: redirectUri })
     });
 
@@ -157,7 +166,7 @@ async function refreshAccessToken() {
 
     var response = await fetch(proxyUrl + '/refresh', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body:    JSON.stringify({ refreshToken: tokens.refreshToken })
     });
 
@@ -226,7 +235,7 @@ async function disconnectOAuth() {
         try {
             await fetch(proxyUrl + '/revoke', {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: proxyHeaders(),
                 body:    JSON.stringify({ token: tokens.accessToken, instanceUrl: tokens.instanceUrl || '' })
             });
         } catch (e) { /* silent */ }

@@ -8,10 +8,11 @@
 (function () {
 
 async function fetchUserTeamInfo(instanceUrl, accessToken, sfUserId) {
+    var escUser = (self.SfUtils ? self.SfUtils.soqlEscape(sfUserId) : String(sfUserId || ''));
     var soql = [
         "SELECT Team__r.Name, Team__r.TeamCode__c, Team__r.Id, IsAdmin__c",
         "FROM NucleusTeamMember__c",
-        "WHERE User__c = '" + sfUserId + "'",
+        "WHERE User__c = '" + escUser + "'",
         "AND Team__r.IsActive__c = true",
         "LIMIT 1"
     ].join(' ');

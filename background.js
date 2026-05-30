@@ -12,7 +12,7 @@ try {
 }
 
 try {
-    importScripts('background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js', 'report/case-report-fetch.js');
+    importScripts('background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js', 'report/case-report-fetch.js');
 } catch (e) {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
 }
@@ -70,6 +70,12 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Defense-in-depth: only handle messages from this extension's own content
+    // scripts and pages (web-page JS can't reach onMessage, but this documents
+    // and enforces the boundary regardless).
+    if (!sender || sender.id !== chrome.runtime.id) return;
+    if (!message || !message.action) return;
+
     // Health check
     if (message.action === 'ping') {
         sendResponse({ status: 'ok', version: chrome.runtime.getManifest().version });
@@ -348,7 +354,12 @@ async function getSalesforceIdentity(tabId, tabUrl) {
                 target: { tabId },
                 world: 'MAIN',
                 func: async () => {
-                    const log = (msg, val) => console.log('[CYFOR identity]', msg, val !== undefined ? val : '');
+                    // Identity-discovery tracing is noisy and prints page/profile
+                    // details to the console — keep it off unless debugging.
+                    const DEBUG = false;
+                    const log = DEBUG
+                        ? (msg, val) => console.log('[CYFOR identity]', msg, val !== undefined ? val : '')
+                        : () => {};
                     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
                     const findInShadow = (root, sel, depth) => {
                         if (!root || depth > 20) return null;

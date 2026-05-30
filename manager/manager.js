@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-editor-save').addEventListener('click', saveTemplate);
     document.getElementById('btn-editor-cancel').addEventListener('click', closeEditor);
     document.getElementById('btn-history-back').addEventListener('click', function () { showState('list'); });
+    document.getElementById('btn-usage').addEventListener('click', openUsage);
+    document.getElementById('btn-usage-back').addEventListener('click', function () { showState('list'); });
+    document.getElementById('btn-usage-clear').addEventListener('click', clearUsage);
     document.getElementById('btn-diff-close').addEventListener('click', function () {
         document.getElementById('mgr-diff-panel').style.display = 'none';
     });
@@ -348,24 +351,107 @@ function saveTemplate() {
     });
 }
 
+// ── Branded modal (replaces window.confirm / window.alert) ─────────────────────
+function mgrModal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+        var backdrop = document.createElement('div');
+        backdrop.className = 'mgr-modal-backdrop';
+
+        var dialog = document.createElement('div');
+        dialog.className = 'mgr-modal';
+        dialog.setAttribute('role', opts.alert ? 'alertdialog' : 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+
+        var h = document.createElement('h3');
+        h.className = 'mgr-modal-title';
+        h.textContent = opts.title || (opts.alert ? 'Notice' : 'Confirm');
+        dialog.appendChild(h);
+
+        var p = document.createElement('p');
+        p.className = 'mgr-modal-body';
+        p.textContent = opts.body || '';
+        dialog.appendChild(p);
+
+        var actions = document.createElement('div');
+        actions.className = 'mgr-modal-actions';
+
+        var cancelBtn = null;
+        if (!opts.alert) {
+            cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'mgr-btn mgr-btn-secondary';
+            cancelBtn.textContent = opts.cancelLabel || 'Cancel';
+            actions.appendChild(cancelBtn);
+        }
+
+        var confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.className = 'mgr-btn ' + (opts.danger ? 'mgr-btn-danger' : 'mgr-btn-primary');
+        confirmBtn.textContent = opts.confirmLabel || 'OK';
+        actions.appendChild(confirmBtn);
+
+        dialog.appendChild(actions);
+        backdrop.appendChild(dialog);
+        document.body.appendChild(backdrop);
+
+        var lastFocus = document.activeElement;
+
+        function close(result) {
+            document.removeEventListener('keydown', onKey, true);
+            backdrop.remove();
+            if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+            resolve(result);
+        }
+        function onKey(e) {
+            if (e.key === 'Escape') { e.preventDefault(); close(false); return; }
+            if (e.key === 'Tab') {
+                var btns = dialog.querySelectorAll('button');
+                if (!btns.length) return;
+                var first = btns[0], last = btns[btns.length - 1];
+                if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+                else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+            }
+        }
+
+        confirmBtn.addEventListener('click', function () { close(true); });
+        if (cancelBtn) cancelBtn.addEventListener('click', function () { close(false); });
+        backdrop.addEventListener('mousedown', function (e) {
+            if (e.target === backdrop && !opts.alert) close(false);
+        });
+        document.addEventListener('keydown', onKey, true);
+
+        // Focus Cancel by default for destructive prompts so Enter doesn't delete.
+        (opts.danger && cancelBtn ? cancelBtn : confirmBtn).focus();
+    });
+}
+
+function mgrAlert(message, title) {
+    return mgrModal({ title: title || 'Notice', body: message, confirmLabel: 'OK', alert: true });
+}
+
 function confirmDelete(name) {
     var t = allTemplates[name];
     if (!t || !t.id) return;
 
-    if (!window.confirm(
-        'Delete "' + name + '"?\n\n' +
-        'This permanently removes the template from Salesforce. ' +
-        'Team members will no longer see it after their next sync. ' +
-        'Version history records will also be deleted.'
-    )) return;
-
-    chrome.runtime.sendMessage({ action: 'sfTemplates.delete', payload: { id: t.id } }, function (response) {
-        if (chrome.runtime.lastError || !response || !response.ok) {
-            var err = (response && response.error) || 'Delete failed';
-            window.alert('Could not delete "' + name + '": ' + err);
-            return;
-        }
-        loadTemplates();
+    mgrModal({
+        title: 'Delete template?',
+        body: 'Delete "' + name + '"? This permanently removes the template from Salesforce. '
+            + 'Team members will no longer see it after their next sync, and its version history '
+            + 'records will also be deleted.',
+        confirmLabel: 'Delete',
+        cancelLabel: 'Cancel',
+        danger: true
+    }).then(function (ok) {
+        if (!ok) return;
+        chrome.runtime.sendMessage({ action: 'sfTemplates.delete', payload: { id: t.id } }, function (response) {
+            if (chrome.runtime.lastError || !response || !response.ok) {
+                var err = (response && response.error) || 'Delete failed';
+                mgrAlert('Could not delete "' + name + '": ' + err, 'Delete failed');
+                return;
+            }
+            loadTemplates();
+        });
     });
 }
 
@@ -596,6 +682,60 @@ function escHtml(str) {
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
+// ── Usage log (local, per-device) ─────────────────────────────────────────────
+var USAGE_KEY = 'templateUsageLog';
+
+function openUsage() {
+    showState('usage');
+    chrome.storage.local.get([USAGE_KEY], function (res) {
+        var log = (res && Array.isArray(res[USAGE_KEY])) ? res[USAGE_KEY] : [];
+        renderUsage(log);
+    });
+}
+
+function renderUsage(log) {
+    var table = document.getElementById('mgr-usage-table');
+    var empty = document.getElementById('mgr-usage-empty');
+    var rows  = document.getElementById('mgr-usage-rows');
+    rows.innerHTML = '';
+
+    if (!log.length) {
+        table.style.display = 'none';
+        empty.style.display = '';
+        return;
+    }
+    empty.style.display = 'none';
+    table.style.display = '';
+
+    var sorted = log.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    rows.innerHTML = sorted.map(function (e) {
+        var when = e.ts ? new Date(e.ts).toLocaleString() : '';
+        var safeUrl = (typeof e.url === 'string' && /^https:\/\//i.test(e.url)) ? e.url : '';
+        var rec = e.recordId
+            ? (safeUrl
+                ? '<a href="' + escHtml(safeUrl) + '" target="_blank" rel="noopener">' + escHtml(e.recordId) + '</a>'
+                : escHtml(e.recordId))
+            : '—';
+        return '<tr><td>' + escHtml(when) + '</td><td>' + escHtml(e.template || '') +
+            '</td><td>' + rec + '</td><td>' + escHtml(e.user || '—') + '</td></tr>';
+    }).join('');
+}
+
+function clearUsage() {
+    mgrModal({
+        title: 'Clear usage log?',
+        body: 'Remove all locally recorded template-insertion entries on this device? This cannot be undone.',
+        confirmLabel: 'Clear',
+        cancelLabel: 'Cancel',
+        danger: true
+    }).then(function (ok) {
+        if (!ok) return;
+        var payload = {};
+        payload[USAGE_KEY] = [];
+        chrome.storage.local.set(payload, function () { renderUsage([]); });
+    });
+}
+
 function showState(state) {
     var panels = {
         'loading':       'mgr-loading',
@@ -603,7 +743,8 @@ function showState(state) {
         'not-admin':     'mgr-not-admin',
         'list':          'mgr-list-panel',
         'editor':        'mgr-editor-panel',
-        'history':       'mgr-history-panel'
+        'history':       'mgr-history-panel',
+        'usage':         'mgr-usage-panel'
     };
     Object.keys(panels).forEach(function (key) {
         var el = document.getElementById(panels[key]);

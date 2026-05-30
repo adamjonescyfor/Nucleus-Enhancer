@@ -11,21 +11,7 @@
     padding: 0;
 }
 
-:root {
-    --surface: #ffffff;
-    --surface-soft: #f7f9fc;
-    --surface-muted: #f3f6fb;
-    --border: #dce4ef;
-    --text-primary: #172b4d;
-    --text-secondary: #53637a;
-    --text-muted: #6f7f96;
-    --brand: #0b6ecf;
-    --brand-strong: #0857a5;
-    --success-bg: #dff5e7;
-    --success-text: #0b7a3a;
-    --danger-bg: #fff1f1;
-    --danger-text: #b4232f;
-}
+/* Palette/tokens now live in styles/tokens.css (shared with the manager). */
 
 body {
     width: 350px;
@@ -128,6 +114,13 @@ body {
     background: #ccc;
     flex-shrink: 0;
     transition: background 0.3s;
+    /* Pulses while in the initial "Checking…" state (no state class yet). */
+    animation: connection-pulse 1s ease-in-out infinite;
+}
+
+.connection-bar.connected .connection-dot,
+.connection-bar.disconnected .connection-dot {
+    animation: none;
 }
 
 .connection-bar.connected .connection-dot {
@@ -136,6 +129,64 @@ body {
 
 .connection-bar.disconnected .connection-dot {
     background: #c23934;
+}
+
+@keyframes connection-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.35; transform: scale(0.75); }
+}
+
+/* First-run onboarding banner */
+.onboarding-banner {
+    position: relative;
+    margin: 10px 12px 0;
+    padding: 12px 14px 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--brand);
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.onboarding-title {
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.onboarding-steps {
+    margin: 0;
+    padding-left: 16px;
+    line-height: 1.55;
+}
+
+.onboarding-steps li {
+    margin: 2px 0;
+}
+
+.onboarding-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.onboarding-close:hover {
+    color: var(--text-primary);
+}
+
+.onboarding-close:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+    border-radius: 3px;
 }
 
 /* ==================================================
@@ -288,13 +339,37 @@ kbd {
 
 .shortcut-hint {
     font-size: 9px;
-    color: #aaa;
+    color: var(--text-muted);
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
     display: flex;
     align-items: center;
     gap: 3px;
+}
+
+/* Inline link-style button (e.g. "Customise…" shortcuts) */
+.link-btn {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-size: 9px;
+    color: var(--brand);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.link-btn:hover {
+    color: var(--brand-strong);
+}
+
+.link-btn:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 2px;
 }
 
 /* ==================================================
@@ -316,7 +391,7 @@ kbd {
 
 .badge-empty {
     background: #eef2f7;
-    color: #7a879b;
+    color: #56657a; /* darker for WCAG AA contrast on the light badge */
 }
 
 /* ==================================================
@@ -522,9 +597,10 @@ select.map-select {
     transition: border-color 0.15s;
 }
 
-select.map-select:focus {
+select.map-select:focus-visible {
     border-color: var(--brand);
-    outline: none;
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
 }
 
 /* ==================================================
@@ -734,21 +810,69 @@ select.map-select:focus {
    Footer
    ================================================== */
 .footer {
-    text-align: center;
-    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
     font-size: 9px;
-    color: #7f8da2;
-    border-top: 1px solid #e6edf5;
-    background: #f5f8fc;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    background: var(--surface-soft);
+}
+
+.footer-brand {
+    letter-spacing: .02em;
 }
 
 .footer-link {
-    color: #0070d2;
+    color: var(--brand);
     text-decoration: none;
 }
 
 .footer-link:hover {
     text-decoration: underline;
+}
+
+/* Appearance (theme) picker */
+.theme-picker {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+}
+
+.theme-opt {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-opt + .theme-opt {
+    border-left: 1px solid var(--border);
+}
+
+.theme-opt:hover {
+    color: var(--text-primary);
+    background: var(--surface-muted);
+}
+
+.theme-opt.is-active {
+    background: var(--brand);
+    color: #fff;
+}
+
+.theme-opt:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -2px;
 }
 
 /* ==================================================
@@ -863,68 +987,55 @@ select.map-select:focus {
 }
 
 /* ==================================================
-   Dark Mode (L-6)
+   Dark Mode (L-6) — palette vars live in styles/tokens.css.
+   These element-specific tweaks are driven by the data-theme
+   attribute (set by styles/theme.js), so they apply for both
+   "Auto" (OS dark) and an explicit Dark choice.
    ================================================== */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --surface: #1c1c1e;
-        --surface-soft: #242426;
-        --surface-muted: #2a2a2c;
-        --border: #3e3e40;
-        --text-primary: #e8e8e8;
-        --text-secondary: #b0b0b4;
-        --text-muted: #8a8a8e;
-        --brand: #4da6ff;
-        --brand-strong: #2d8ff0;
-        --success-bg: #0a2e1a;
-        --success-text: #4ade80;
-        --danger-bg: #2e0a0a;
-        --danger-text: #ff6b70;
-    }
+html[data-theme="dark"] body {
+    background: linear-gradient(180deg, #1a1a1c 0%, #141416 100%);
+}
 
-    body {
-        background: linear-gradient(180deg, #1a1a1c 0%, #141416 100%);
-    }
+html[data-theme="dark"] .header {
+    background: linear-gradient(135deg, #0a2540 0%, #0d3060 100%);
+}
 
-    .header {
-        background: linear-gradient(135deg, #0a2540 0%, #0d3060 100%);
-    }
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+    background: var(--surface-soft);
+    color: var(--text-primary);
+    border-color: var(--border);
+}
 
-    input, select, textarea {
-        background: var(--surface-soft);
-        color: var(--text-primary);
-        border-color: var(--border);
-    }
+html[data-theme="dark"] .sortable-item {
+    background: var(--surface-soft);
+}
 
-    .sortable-item {
-        background: var(--surface-soft);
-    }
+html[data-theme="dark"] .auth-panel {
+    background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-muted) 100%);
+}
 
-    .auth-panel {
-        background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-muted) 100%);
-    }
+html[data-theme="dark"] .auth-avatar {
+    background: linear-gradient(135deg, var(--surface-muted) 0%, var(--surface) 100%);
+    color: var(--brand);
+    border-color: var(--border);
+}
 
-    .auth-avatar {
-        background: linear-gradient(135deg, var(--surface-muted) 0%, var(--surface) 100%);
-        color: var(--brand);
-        border-color: var(--border);
-    }
+html[data-theme="dark"] .sf-config-input {
+    background: var(--surface-soft);
+    color: var(--text-primary);
+    border-color: var(--border);
+}
 
-    .sf-config-input {
-        background: var(--surface-soft);
-        color: var(--text-primary);
-        border-color: var(--border);
-    }
+html[data-theme="dark"] .sf-config-input[readonly] {
+    color: var(--text-muted);
+}
 
-    .sf-config-input[readonly] {
-        color: var(--text-muted);
-    }
-
-    .cyfor-ctx-menu-item-badge--official {
-        background: #0a2540;
-        color: #4da6ff;
-        border-color: #1a4a80;
-    }
+html[data-theme="dark"] .cyfor-ctx-menu-item-badge--official {
+    background: #0a2540;
+    color: #4da6ff;
+    border-color: #1a4a80;
 }
 
 /* ==================================================

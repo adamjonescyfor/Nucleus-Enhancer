@@ -101,6 +101,7 @@ Cyfor.toast = {
             actionBtn.className = 'cyfor-toast-action';
             actionBtn.textContent = action.label;
             actionBtn.setAttribute('type', 'button');
+            actionBtn.setAttribute('aria-label', action.label + ' — ' + message);
             actionBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 action.onClick();

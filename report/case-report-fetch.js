@@ -183,6 +183,12 @@ async function fetchCaseBundle(params) {
     var caseObject = params.caseObject;
     var caseId = params.caseId;
 
+    // Validate the object name + record id before they reach any SOQL/REST path.
+    if (self.SfUtils) {
+        if (!self.SfUtils.isValidApiName(caseObject)) throw new Error('Invalid case object name');
+        if (!self.SfUtils.isValidSfId(caseId)) throw new Error('Invalid case record id');
+    }
+
     var cfgRes = await chrome.storage.local.get(['sfOAuthConfig', 'caseReportConfig']);
     var apiVersion = (cfgRes.sfOAuthConfig || {}).apiVersion || 'v62.0';
     var override = cfgRes.caseReportConfig || {};
@@ -269,7 +275,8 @@ async function fetchContinuity(ctx, exhibits, override) {
 
     try {
         var sel = await buildSelectAll(ctx, loc.object);
-        var inList = '(' + ids.map(function (id) { return "'" + id + "'"; }).join(',') + ')';
+        var esc = self.SfUtils ? self.SfUtils.soqlEscape : function (v) { return String(v == null ? '' : v); };
+        var inList = '(' + ids.map(function (id) { return "'" + esc(id) + "'"; }).join(',') + ')';
         var rows = await soqlWide(ctx, loc.object, loc.linkField + ' IN ' + inList, sel.selects);
         return { supplied: true, records: rows.map(function (r) { return normalize(r, sel.relToField); }) };
     } catch (e) {

@@ -18,8 +18,8 @@
     border-radius: var(--cyfor-radius);
     border: 1px solid var(--cyfor-border);
 
-    /* Appearance */
-    background: rgba(255, 255, 255, 0.95);
+    /* Appearance (token-driven so it adapts to dark mode) */
+    background: var(--cyfor-surface);
     cursor: pointer;
     user-select: none;
     pointer-events: auto;
@@ -180,8 +180,9 @@
 
 /* Focus for keyboard navigation */
 .cyfor-template-item:focus-visible {
-    outline: 2px solid var(--cyfor-primary);
-    outline-offset: -2px;
+    outline: none;
+    /* Inset ring: always fully visible and never clipped by the menu's overflow. */
+    box-shadow: inset 0 0 0 2px var(--cyfor-primary);
     background: var(--cyfor-primary-light);
 }
 

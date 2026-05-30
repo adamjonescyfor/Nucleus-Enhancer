@@ -83,6 +83,27 @@
     font-weight: 400;
 }
 
+/* Category filter dropdown (sits under the search) */
+.cyfor-ctx-menu-filter {
+    width: 100%;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-family: var(--cyfor-font);
+    color: var(--cyfor-text);
+    border: none;
+    border-bottom: 2px solid var(--cyfor-border-light);
+    outline: none;
+    background: var(--cyfor-surface);
+    box-sizing: border-box;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.cyfor-ctx-menu-filter:focus {
+    background: var(--cyfor-surface-raised);
+    border-bottom-color: var(--cyfor-primary);
+}
+
 /* ==================================================
    List
    ================================================== */

@@ -9,3 +9,6 @@ config.js
 .DS_Store
 Thumbs.db
 node_modules/
+
+# Wrangler local state (contains Cloudflare account id/email — must not be committed)
+oauth-proxy/.wrangler/

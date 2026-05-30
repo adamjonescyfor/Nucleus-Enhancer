@@ -8,3 +8,30 @@ compatibility_date = "2024-01-01"
 #   wrangler secret put SF_INSTANCE_URL
 #
 # These are stored encrypted in Cloudflare and never appear in code or git.
+
+[vars]
+# CORS allow-list: only the CYFOR Nucleus Enhancer extension origin may call
+# this proxy from a browser. The ID is derived deterministically from the
+# manifest "key", so it is stable across installs. (Note: CORS only constrains
+# browsers; it is one layer, not a complete access control.)
+ALLOWED_ORIGIN = "chrome-extension://gclnaehibkhhgkmjkafanapejahkonch"
+
+# Server-side redirect check: redirect_uri must be THIS extension's
+# chromiumapp.org callback. Unlike CORS, this is enforced for every caller
+# (including non-browser clients).
+ALLOWED_REDIRECT_PREFIX = "https://gclnaehibkhhgkmjkafanapejahkonch.chromiumapp.org/"
+
+# Optional minimum extension version. Empty = allow all (recommended for now,
+# so stale installs are never locked out). Set e.g. "2.3.0" to enforce later.
+MIN_CLIENT_VERSION = ""
+
+# Native per-IP rate limit. Generous so a shared office IP (many users behind
+# one NAT) won't trip it; OAuth calls are infrequent per user. period must be
+# 10 or 60. The worker guards on this binding, so it fails open if removed.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+[ratelimits.simple]
+limit = 60
+period = 60

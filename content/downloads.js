@@ -147,8 +147,11 @@ Cyfor.downloads = {
                     foundNewInThisPass = true;
                     processedIds.add(recordId);
 
-                    var progressPct = tbody.querySelectorAll('tr.slds-hint-parent').length > 0
-                        ? Math.min(99, Math.round((processedIds.size / Math.max(processedIds.size, tbody.querySelectorAll('tr.slds-hint-parent').length)) * 100))
+                    // Reuse this pass's row list (already queried above) instead of
+                    // re-running the selector twice per record.
+                    var visibleCount = rows.length;
+                    var progressPct = visibleCount > 0
+                        ? Math.min(99, Math.round((processedIds.size / Math.max(processedIds.size, visibleCount)) * 100))
                         : -1;
                     this._setBtnState(btn, 'Downloading (' + processedIds.size + ')...', true, progressPct);
                     if (success > 0 && success % 5 === 0) {

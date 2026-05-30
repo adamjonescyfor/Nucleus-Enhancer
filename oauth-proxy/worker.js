@@ -7,21 +7,49 @@
 //   wrangler secret put SF_CLIENT_ID       ← your Consumer Key
 //   wrangler secret put SF_CLIENT_SECRET   ← your Consumer Secret
 //   wrangler secret put SF_INSTANCE_URL    ← e.g. https://cyfor.my.salesforce.com
+//
+// Hardening layers (all configured in wrangler.toml [vars] / [[ratelimits]]):
+//   - ALLOWED_ORIGIN            CORS lock to the extension's chrome-extension:// origin
+//   - ALLOWED_REDIRECT_PREFIX   server-side check that redirect_uri is *our* extension's
+//                               chromiumapp.org callback (works against non-browser callers too)
+//   - MIN_CLIENT_VERSION        optional floor on the extension's reported version ("" = off)
+//   - RATE_LIMITER              optional native per-IP rate-limit binding (fails open if absent)
+// None of these is a complete access control on its own; the real guarantees are that the
+// Consumer Secret never leaves Cloudflare and /token & /refresh require a valid Salesforce
+// authorization code / refresh token that an attacker cannot forge.
+
+const MAX_FIELD = 8192;
 
 export default {
     async fetch(request, env) {
+        // ── CORS: reflect only the allow-listed extension origin ──
+        const origin  = request.headers.get('Origin') || '';
+        const allowed = env.ALLOWED_ORIGIN || '';
+        const allowOrigin = allowed ? (origin === allowed ? allowed : '') : '*';
+
         const corsHeaders = {
-            'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Headers': 'Content-Type, X-Client-Version',
+            'Vary': 'Origin',
         };
+        if (allowOrigin) corsHeaders['Access-Control-Allow-Origin'] = allowOrigin;
 
         if (request.method === 'OPTIONS') {
             return new Response(null, { headers: corsHeaders });
         }
-
         if (request.method !== 'POST') {
             return new Response('Method not allowed', { status: 405 });
+        }
+
+        // ── Optional client-version gate (operational control; spoofable) ──
+        if (!clientVersionAllowed(request, env)) {
+            return badReq('Client version not supported — please update the extension.', corsHeaders, 426);
+        }
+
+        // ── Optional per-IP rate limit (fails open if the binding is absent) ──
+        if (!(await rateLimitOk(request, env))) {
+            return Response.json({ error: 'Rate limit exceeded — try again shortly.' },
+                { status: 429, headers: corsHeaders });
         }
 
         const url = new URL(request.url);
@@ -39,10 +67,67 @@ export default {
     }
 };
 
+// ── Validation helpers ──────────────────────────────────────────────────────
+
+function isStr(v, max) {
+    return typeof v === 'string' && v.length > 0 && v.length <= (max || MAX_FIELD);
+}
+
+function badReq(msg, corsHeaders, status) {
+    return Response.json({ error: msg }, { status: status || 400, headers: corsHeaders });
+}
+
+async function readJson(request) {
+    try { return await request.json(); } catch (_) { return null; }
+}
+
+// redirect_uri must be our extension's chromiumapp.org callback (when configured).
+function redirectAllowed(redirectUri, env) {
+    const prefix = (env.ALLOWED_REDIRECT_PREFIX || '').trim();
+    if (!prefix) return true;
+    return typeof redirectUri === 'string' && redirectUri.startsWith(prefix);
+}
+
+function clientVersionAllowed(request, env) {
+    const min = (env.MIN_CLIENT_VERSION || '').trim();
+    if (!min) return true; // gate disabled
+    return versionGte((request.headers.get('X-Client-Version') || '').trim(), min);
+}
+
+function versionGte(v, min) {
+    const a = String(v).split('.').map((n) => parseInt(n, 10) || 0);
+    const b = String(min).split('.').map((n) => parseInt(n, 10) || 0);
+    for (let i = 0; i < 3; i++) {
+        const x = a[i] || 0, y = b[i] || 0;
+        if (x > y) return true;
+        if (x < y) return false;
+    }
+    return true;
+}
+
+async function rateLimitOk(request, env) {
+    if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== 'function') return true;
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    try {
+        const { success } = await env.RATE_LIMITER.limit({ key: ip });
+        return success !== false;
+    } catch (_) {
+        return true; // never block legit users if the limiter itself errors
+    }
+}
+
+// ── Handlers ────────────────────────────────────────────────────────────────
+
 async function handleAuthUrl(request, env, corsHeaders) {
-    const { codeChallenge, redirectUri } = await request.json();
-    if (!codeChallenge || !redirectUri) {
-        return Response.json({ error: 'Missing codeChallenge or redirectUri' }, { status: 400, headers: corsHeaders });
+    const body = await readJson(request);
+    if (!body) return badReq('Invalid JSON body', corsHeaders);
+    const { codeChallenge, redirectUri } = body;
+
+    if (!isStr(codeChallenge, 256) || !isStr(redirectUri, 2048)) {
+        return badReq('Missing or invalid codeChallenge / redirectUri', corsHeaders);
+    }
+    if (!redirectAllowed(redirectUri, env)) {
+        return badReq('redirectUri not allowed', corsHeaders, 403);
     }
 
     const authUrl = new URL('/services/oauth2/authorize', env.SF_INSTANCE_URL);
@@ -58,9 +143,15 @@ async function handleAuthUrl(request, env, corsHeaders) {
 }
 
 async function handleToken(request, env, corsHeaders) {
-    const { code, codeVerifier, redirectUri } = await request.json();
-    if (!code || !codeVerifier || !redirectUri) {
-        return Response.json({ error: 'Missing code, codeVerifier, or redirectUri' }, { status: 400, headers: corsHeaders });
+    const body = await readJson(request);
+    if (!body) return badReq('Invalid JSON body', corsHeaders);
+    const { code, codeVerifier, redirectUri } = body;
+
+    if (!isStr(code, 4096) || !isStr(codeVerifier, 256) || !isStr(redirectUri, 2048)) {
+        return badReq('Missing or invalid code / codeVerifier / redirectUri', corsHeaders);
+    }
+    if (!redirectAllowed(redirectUri, env)) {
+        return badReq('redirectUri not allowed', corsHeaders, 403);
     }
 
     const params = new URLSearchParams({
@@ -88,9 +179,12 @@ async function handleToken(request, env, corsHeaders) {
 }
 
 async function handleRefresh(request, env, corsHeaders) {
-    const { refreshToken } = await request.json();
-    if (!refreshToken) {
-        return Response.json({ error: 'Missing refreshToken' }, { status: 400, headers: corsHeaders });
+    const body = await readJson(request);
+    if (!body) return badReq('Invalid JSON body', corsHeaders);
+    const { refreshToken } = body;
+
+    if (!isStr(refreshToken, 8192)) {
+        return badReq('Missing or invalid refreshToken', corsHeaders);
     }
 
     const params = new URLSearchParams({
@@ -121,9 +215,15 @@ async function handleRefresh(request, env, corsHeaders) {
 }
 
 async function handleRevoke(request, env, corsHeaders) {
-    const { token, instanceUrl } = await request.json();
-    if (!token) {
-        return Response.json({ error: 'Missing token' }, { status: 400, headers: corsHeaders });
+    const body = await readJson(request);
+    if (!body) return badReq('Invalid JSON body', corsHeaders);
+    const { token, instanceUrl } = body;
+
+    if (!isStr(token, 8192)) {
+        return badReq('Missing or invalid token', corsHeaders);
+    }
+    if (instanceUrl && !/^https:\/\/[a-z0-9.-]+\.(salesforce\.com|force\.com)\/?/i.test(instanceUrl)) {
+        return badReq('Invalid instanceUrl', corsHeaders);
     }
 
     const base = (instanceUrl || env.SF_INSTANCE_URL).replace(/\/$/, '');

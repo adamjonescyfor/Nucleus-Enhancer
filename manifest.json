@@ -9,7 +9,6 @@
         "activeTab",
         "storage",
         "downloads",
-        "cookies",
         "scripting",
         "identity"
     ],
@@ -65,6 +64,7 @@
                 "content/config.js",
                 "content/toast.js",
                 "content/undo.js",
+                "content/usage.js",
                 "content/builtin-templates.js",
                 "content/editor.js",
                 "content/datetime.js",
