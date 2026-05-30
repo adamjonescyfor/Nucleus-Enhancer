@@ -19,7 +19,7 @@ self.CaseReportFetch = (function () {
 // childRelationships exactly (case-insensitive) against these.
 var OBJECT_CANDIDATES = {
     exhibits:          ['Exhibit__c'],
-    process:           ['Process__c', 'Exhibit_Processing__c', 'Processing__c'],
+    process:           ['Exhibit_Process__c', 'Process__c', 'Exhibit_Processing__c', 'Processing__c'],
     timeEntries:       ['Time_Entry__c', 'Time_Log__c', 'TimeEntry__c', 'Time_Entries__c'],
     generatedMaterial: ['Generated_Material__c', 'GeneratedMaterial__c', 'Generated_Exhibit__c'],
     archive:           ['Forensic_Case_Archive__c', 'Case_Archive__c', 'ForensicCaseArchive__c'],
@@ -53,6 +53,33 @@ async function soql(ctx, q) {
     if (!res.ok) throw new Error(await sfError(res));
     var data = await res.json();
     return data.records || [];
+}
+
+// Run a SELECT across many fields by splitting into URL-safe chunks (objects like
+// the Process object have ~200 fields) and merging the rows back together by Id.
+async function soqlWide(ctx, obj, whereClause, selects) {
+    var CHUNK = 100;
+    var fields = selects.filter(function (s) { return s.toLowerCase() !== 'id'; });
+    var byId = Object.create(null);
+    var order = [];
+
+    function absorb(rows) {
+        rows.forEach(function (r) {
+            var id = r.Id;
+            if (!id) return;
+            if (!byId[id]) { byId[id] = {}; order.push(id); }
+            for (var k in r) { if (k === 'attributes') continue; byId[id][k] = r[k]; }
+        });
+    }
+
+    if (!fields.length) {
+        absorb(await soql(ctx, 'SELECT Id FROM ' + obj + ' WHERE ' + whereClause + ' LIMIT 2000'));
+    }
+    for (var i = 0; i < fields.length; i += CHUNK) {
+        var chunk = ['Id'].concat(fields.slice(i, i + CHUNK));
+        absorb(await soql(ctx, 'SELECT ' + chunk.join(',') + ' FROM ' + obj + ' WHERE ' + whereClause + ' LIMIT 2000'));
+    }
+    return order.map(function (id) { return byId[id]; });
 }
 
 async function describe(ctx, obj) {
@@ -151,8 +178,7 @@ async function fetchCaseBundle(params) {
 
     // Case record
     var caseSel = await buildSelectAll(ctx, caseObject, parentDesc);
-    var caseRows = await soql(ctx, 'SELECT ' + caseSel.selects.join(',') + ' FROM ' + caseObject +
-        " WHERE Id = '" + caseId + "' LIMIT 1");
+    var caseRows = await soqlWide(ctx, caseObject, "Id = '" + caseId + "'", caseSel.selects);
     if (!caseRows.length) throw new Error('Case record not found');
     var caseRecord = normalize(caseRows[0], caseSel.relToField);
 
@@ -161,8 +187,7 @@ async function fetchCaseBundle(params) {
         if (!loc) { ctx.warnings.push('Could not locate object for "' + key + '"'); return { supplied: false, records: [] }; }
         try {
             var sel = await buildSelectAll(ctx, loc.object);
-            var rows = await soql(ctx, 'SELECT ' + sel.selects.join(',') + ' FROM ' + loc.object +
-                " WHERE " + loc.linkField + " = '" + caseId + "' LIMIT 2000");
+            var rows = await soqlWide(ctx, loc.object, loc.linkField + " = '" + caseId + "'", sel.selects);
             return {
                 supplied: true,
                 object: loc.object,
@@ -216,8 +241,7 @@ async function fetchContinuity(ctx, exhibits, override) {
     try {
         var sel = await buildSelectAll(ctx, loc.object);
         var inList = '(' + ids.map(function (id) { return "'" + id + "'"; }).join(',') + ')';
-        var rows = await soql(ctx, 'SELECT ' + sel.selects.join(',') + ' FROM ' + loc.object +
-            ' WHERE ' + loc.linkField + ' IN ' + inList + ' LIMIT 2000');
+        var rows = await soqlWide(ctx, loc.object, loc.linkField + ' IN ' + inList, sel.selects);
         return { supplied: true, records: rows.map(function (r) { return normalize(r, sel.relToField); }) };
     } catch (e) {
         ctx.warnings.push('Continuity query failed: ' + e.message);
