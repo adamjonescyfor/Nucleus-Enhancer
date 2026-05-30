@@ -180,6 +180,7 @@
 
             var data = resp.data || {};
             if (data.meta) {
+                console.log('[CYFOR] Resolved objects:', data.meta.resolved);
                 console.log('[CYFOR] Case child relationships:', data.meta.childRelationships);
                 if (data.meta.warnings && data.meta.warnings.length) {
                     console.log('[CYFOR] Report notes (non-fatal):', data.meta.warnings);

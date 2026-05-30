@@ -26,6 +26,20 @@ var OBJECT_CANDIDATES = {
     continuity:        ['Continuity__c', 'Exhibit_Continuity__c', 'ExhibitContinuity__c']
 };
 
+// Last-resort fuzzy patterns, applied ONLY if no exact candidate matched and
+// constrained to CUSTOM (__c) child objects — so standard objects such as
+// ProcessInstance / ProcessInstanceHistory can never be mis-picked. This keeps
+// the Process (and other) sections resilient to org-specific API naming.
+// `exhibits` is intentionally omitted: a loose /exhibit/i would also catch
+// Exhibit_Process__c / Exhibit_Continuity__c, so it stays exact-only.
+var FUZZY = {
+    process:           /process|processing/i,
+    timeEntries:       /time.?(entry|log|record)/i,
+    generatedMaterial: /generat/i,
+    archive:           /archive/i,
+    continuity:        /continuity/i
+};
+
 // Field types that cannot be selected directly in SOQL (compound / binary).
 var UNSELECTABLE_TYPES = { 'address': true, 'location': true, 'base64': true };
 
@@ -135,7 +149,10 @@ function normalize(row, relToField) {
 }
 
 // Locate a child object + its lookup field via the parent's childRelationships.
-function resolveChild(parentDesc, candidates, override) {
+// 1) exact API-name match against the candidate list (preferred);
+// 2) constrained fuzzy fallback (custom __c objects only) so an org-specific
+//    name still resolves instead of silently dropping the section.
+function resolveChild(parentDesc, candidates, override, fuzzy) {
     if (override && override.object && override.linkField) {
         return { object: override.object, linkField: override.linkField };
     }
@@ -146,6 +163,14 @@ function resolveChild(parentDesc, candidates, override) {
             var r = rels[j];
             if (r.childSObject && r.field && r.childSObject.toLowerCase() === cand) {
                 return { object: r.childSObject, linkField: r.field };
+            }
+        }
+    }
+    if (fuzzy) {
+        for (var k = 0; k < rels.length; k++) {
+            var rr = rels[k];
+            if (rr.childSObject && rr.field && /__c$/i.test(rr.childSObject) && fuzzy.test(rr.childSObject)) {
+                return { object: rr.childSObject, linkField: rr.field };
             }
         }
     }
@@ -171,7 +196,8 @@ async function fetchCaseBundle(params) {
         base: instanceUrl.replace(/\/$/, '') + '/services/data/' + apiVersion,
         token: token,
         cache: new Map(),
-        warnings: []
+        warnings: [],
+        resolved: {}
     };
 
     var parentDesc = await describe(ctx, caseObject);
@@ -183,8 +209,9 @@ async function fetchCaseBundle(params) {
     var caseRecord = normalize(caseRows[0], caseSel.relToField);
 
     async function childSection(key) {
-        var loc = resolveChild(parentDesc, OBJECT_CANDIDATES[key], override[key]);
+        var loc = resolveChild(parentDesc, OBJECT_CANDIDATES[key], override[key], FUZZY[key]);
         if (!loc) { ctx.warnings.push('Could not locate object for "' + key + '"'); return { supplied: false, records: [] }; }
+        ctx.resolved[key] = loc.object;
         try {
             var sel = await buildSelectAll(ctx, loc.object);
             var rows = await soqlWide(ctx, loc.object, loc.linkField + " = '" + caseId + "'", sel.selects);
@@ -216,6 +243,7 @@ async function fetchCaseBundle(params) {
         archive: archive,
         meta: {
             warnings: ctx.warnings,
+            resolved: ctx.resolved,
             childRelationships: (parentDesc.childRelationships || [])
                 .filter(function (r) { return r.childSObject && r.field; })
                 .map(function (r) { return { object: r.childSObject, field: r.field, relationship: r.relationshipName }; })
@@ -232,8 +260,9 @@ async function fetchContinuity(ctx, exhibits, override) {
     try { exDesc = await describe(ctx, exhibits.object); }
     catch (e) { ctx.warnings.push('Exhibit describe failed: ' + e.message); return { supplied: false, records: [] }; }
 
-    var loc = resolveChild(exDesc, OBJECT_CANDIDATES.continuity, override);
+    var loc = resolveChild(exDesc, OBJECT_CANDIDATES.continuity, override, FUZZY.continuity);
     if (!loc) { ctx.warnings.push('Could not locate Continuity object'); return { supplied: false, records: [] }; }
+    ctx.resolved.continuity = loc.object;
 
     var ids = exhibits.records.map(function (r) { return r.Id; }).filter(Boolean);
     if (!ids.length) return { supplied: true, records: [] };
