@@ -44,15 +44,19 @@ Cyfor.templates = {
             this._attachButton(container);
             this._attachMenu(container);
 
-            // Smart-by-type (Notes only — Forensic Strategy is manual):
-            // auto-insert if the user enabled it, otherwise offer a one-click
-            // suggestion so the process→template mapping is still surfaced.
+            // Smart suggestions on an empty field:
+            //  - Notes: auto-insert (if enabled) the process→template mapping,
+            //    otherwise offer it as a one-click suggestion.
+            //  - Forensic Strategy: never auto-inserted, but offer the Forensic
+            //    Strategy template as a one-click suggestion.
             if (Cyfor.editor.isMainNotesField(container)) {
                 if (Cyfor.config.enableAutoInsert) {
                     this._attemptAutoInsert(container);
                 } else {
                     this._suggestByType(container);
                 }
+            } else if (Cyfor.editor.isForensicStrategyField(container)) {
+                this._suggestForensicStrategy(container);
             }
         }
     },
@@ -424,6 +428,51 @@ Cyfor.templates = {
                     .then((success) => {
                         if (success) {
                             Cyfor.toast.success(`"${templateName}" inserted`, 2500, {
+                                label: 'Undo',
+                                onClick: () => Cyfor.undo.undo()
+                            });
+                        }
+                    });
+            }
+        });
+    },
+
+    /**
+     * Offer the Forensic Strategy template as a one-click suggestion when an
+     * empty Forensic Strategy field is opened (e.g. on the main case page).
+     */
+    _suggestForensicStrategy(container, retries) {
+        retries = retries || 0;
+        const maxRetries = 15;
+
+        const editor = Cyfor.editor.findEditor(container);
+        if (!editor && retries < maxRetries) {
+            Cyfor.cleanup.setTimeout(() => {
+                this._suggestForensicStrategy(container, retries + 1);
+            }, 600);
+            return;
+        }
+        if (!editor) return;
+
+        const text = editor.innerText.trim();
+        if (text.length > 0 && text !== '\n') return;
+
+        const keys = Object.keys(Cyfor.config.templates || {});
+        // Prefer an exact "Forensic Strategy" template, else any name containing it.
+        let name = keys.find((k) => k.trim().toLowerCase() === 'forensic strategy');
+        if (!name) name = keys.find((k) => /forensic\s*strategy/i.test(k));
+        if (!name) return;
+
+        const templateText = Cyfor.config.templates[name];
+        if (!templateText) return;
+
+        Cyfor.toast.info(`Suggested: ${name}`, 6000, {
+            label: 'Insert',
+            onClick: () => {
+                Cyfor.editor.insertIntoContainer(container, templateText, name)
+                    .then((success) => {
+                        if (success) {
+                            Cyfor.toast.success(`"${name}" inserted`, 2500, {
                                 label: 'Undo',
                                 onClick: () => Cyfor.undo.undo()
                             });

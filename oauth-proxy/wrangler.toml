@@ -21,9 +21,12 @@ ALLOWED_ORIGIN = "chrome-extension://gclnaehibkhhgkmjkafanapejahkonch"
 # (including non-browser clients).
 ALLOWED_REDIRECT_PREFIX = "https://gclnaehibkhhgkmjkafanapejahkonch.chromiumapp.org/"
 
-# Optional minimum extension version. Empty = allow all (recommended for now,
-# so stale installs are never locked out). Set e.g. "2.3.0" to enforce later.
-MIN_CLIENT_VERSION = ""
+# Minimum extension version. 2.4.0 is the first OAuth-capable build, so this
+# locks out nothing legitimate (older builds never had OAuth) while rejecting
+# unknown/forked clients that report a lower or absent version.
+# IMPORTANT: reload the extension to >=2.4.0 BEFORE deploying this. If you ever
+# lock yourself out, set this back to "" (or raise nothing) and redeploy.
+MIN_CLIENT_VERSION = "2.4.0"
 
 # Native per-IP rate limit. Generous so a shared office IP (many users behind
 # one NAT) won't trip it; OAuth calls are infrequent per user. period must be
