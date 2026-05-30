@@ -307,9 +307,23 @@ function recordCard(rec, subtitle, preferred, opts, notesField) {
 // ── Sorting ───────────────────────────────────────────────────────────────────
 
 function cmp(a, b) { a = String(a == null ? '' : a); b = String(b == null ? '' : b); return a < b ? -1 : a > b ? 1 : 0; }
-function byName(a, b) { return cmp(a['Name'], b['Name']); }
+
+// Natural sort: "EP-9" < "EP-10", "IGL2" < "IGL2-SIM1" < "IGL5".
+function naturalCmp(a, b) {
+    a = String(a == null ? '' : a); b = String(b == null ? '' : b);
+    var am = a.match(/(\d+)|(\D+)/g) || [];
+    var bm = b.match(/(\d+)|(\D+)/g) || [];
+    var n = Math.min(am.length, bm.length);
+    for (var i = 0; i < n; i++) {
+        if (am[i] === bm[i]) continue;
+        var an = /^\d/.test(am[i]), bn = /^\d/.test(bm[i]);
+        if (an && bn) return parseInt(am[i], 10) - parseInt(bm[i], 10);
+        return am[i] < bm[i] ? -1 : 1;
+    }
+    return am.length - bm.length;
+}
+function byRef(a, b) { return naturalCmp(a['Name'], b['Name']); }
 function byStart(a, b) { return cmp(a['Start_Date_Time__c'] || a['CreatedDate'] || a['Name'], b['Start_Date_Time__c'] || b['CreatedDate'] || b['Name']); }
-function byApproved(a, b) { return cmp(a['Approved_Declined_Date_Time__c'] || a['CreatedDate'], b['Approved_Declined_Date_Time__c'] || b['CreatedDate']); }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
 
@@ -328,7 +342,7 @@ function kpiTile(value, label) {
 }
 
 function exhibitsSection(input, opts) {
-    var recs = input.records.slice().sort(byName);
+    var recs = input.records.slice().sort(byRef);
     if (!recs.length) return '<p class="muted">No Records</p>';
     var sumRows = recs.map(function (e) {
         return [fv('Name', e), fv('Type__c', e), plainText(e['Description__c'] || e['Exhibit_Notes__c'] || ''),
@@ -347,13 +361,13 @@ function continuitySection(exhibits, input, opts) {
     var grouped = Object.create(null);
     recs.forEach(function (r) { var k = fv('Exhibit__c', r) || 'Unspecified'; (grouped[k] = grouped[k] || []).push(r); });
 
-    var order = exhibits.records.filter(function (e) { return e['Name']; }).map(function (e) { return fv('Name', e); });
+    var order = exhibits.records.filter(function (e) { return e['Name']; }).map(function (e) { return fv('Name', e); }).sort(naturalCmp);
     var ordered = order.filter(function (x) { return grouped[x]; });
-    Object.keys(grouped).sort().forEach(function (k) { if (ordered.indexOf(k) < 0) ordered.push(k); });
+    Object.keys(grouped).sort(naturalCmp).forEach(function (k) { if (ordered.indexOf(k) < 0) ordered.push(k); });
 
     var html = '';
     ordered.forEach(function (ref) {
-        var list = grouped[ref].slice().sort(byApproved);
+        var list = grouped[ref].slice().sort(byRef);
         html += '<div class="group"><h3>' + escapeHtml(ref) + ' <span class="count">' +
             list.length + (list.length === 1 ? ' record' : ' records') + '</span></h3>';
         var sumRows = list.map(function (r) {
@@ -368,7 +382,7 @@ function continuitySection(exhibits, input, opts) {
 }
 
 function generatedSection(input, opts) {
-    var recs = input.records;
+    var recs = input.records.slice().sort(byRef);
     if (!recs.length) return '<p class="muted">No Records</p>';
     var sumRows = recs.map(function (r) {
         return [fv('Name', r), fv('Exhibit_Type__c', r), plainText(r['Description__c'] || ''),
@@ -380,7 +394,7 @@ function generatedSection(input, opts) {
 }
 
 function archiveSection(input, opts) {
-    var recs = input.records;
+    var recs = input.records.slice().sort(byRef);
     if (!recs.length) return '<p class="muted">No Records</p>';
     if (recs.length === 1) return detailTable(recs[0], ARCHIVE_PREFERRED, opts);
     return recs.map(function (r) { return recordCard(r, fv('Type__c', r), ARCHIVE_PREFERRED, opts, null); }).join('');
@@ -394,7 +408,7 @@ function processSection(input, opts) {
 
     var html = '';
     Object.keys(grouped).sort().forEach(function (g) {
-        var list = grouped[g].slice().sort(byStart);
+        var list = grouped[g].slice().sort(byRef);
         html += '<div class="group"><h3>' + escapeHtml(g) + ' <span class="count">' + list.length + ' records</span></h3>';
         list.forEach(function (r) {
             var subtitle = [fv('Start_Date_Time__c', r), fv('Exhibit__c', r), fv('Status__c', r)].filter(Boolean).join(' · ');
