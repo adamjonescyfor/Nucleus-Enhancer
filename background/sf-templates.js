@@ -77,6 +77,22 @@ async function fetchRemoteTemplates(forceRefresh) {
     var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) return { ok: false, error: 'Not authenticated — connect via Salesforce OAuth first.' };
 
+    // Re-read team membership + admin status each sync — it may have changed in
+    // Salesforce since login (e.g. the user was just added to a team), so
+    // team-scoped templates and the admin tools update without a full reconnect.
+    // null = fetch failed → keep whatever we already had.
+    if (self.SfTeam && sfUser.id) {
+        try {
+            var teamInfo = await self.SfTeam.fetchUserTeamInfo(instanceUrl, accessToken, sfUser.id);
+            if (teamInfo) {
+                sfUser = Object.assign({}, sfUser, teamInfo);
+                var userUpdate = {};
+                userUpdate['sfOAuthUser'] = sfUser;
+                await chrome.storage.local.set(userUpdate);
+            }
+        } catch (e) { /* keep existing team info on failure */ }
+    }
+
     var teamCode   = sfUser.teamCode || null;
     var apiVersion = config.apiVersion || 'v62.0';
 

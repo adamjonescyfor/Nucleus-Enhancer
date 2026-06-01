@@ -23,6 +23,8 @@ async function fetchUserTeamInfo(instanceUrl, accessToken, sfUserId) {
     var url = instanceUrl.replace(/\/$/, '') + '/services/data/' + apiVersion
               + '/query?q=' + encodeURIComponent(soql);
 
+    // Returns null on a FETCH FAILURE (network/HTTP/parse) so callers can keep
+    // any existing team info, vs nullTeam() which means "definitely no membership".
     var response;
     try {
         response = await fetch(url, {
@@ -33,16 +35,16 @@ async function fetchUserTeamInfo(instanceUrl, accessToken, sfUserId) {
         });
     } catch (e) {
         console.warn('[CYFOR] fetchUserTeamInfo network error:', e.message);
-        return nullTeam();
+        return null;
     }
 
     if (!response.ok) {
         console.warn('[CYFOR] fetchUserTeamInfo HTTP ' + response.status);
-        return nullTeam();
+        return null;
     }
 
     var data;
-    try { data = await response.json(); } catch (e) { return nullTeam(); }
+    try { data = await response.json(); } catch (e) { return null; }
 
     var records = (data && data.records) || [];
     if (!records.length) return nullTeam();

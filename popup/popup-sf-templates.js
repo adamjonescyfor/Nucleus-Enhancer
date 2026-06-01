@@ -188,10 +188,14 @@ function syncSfTemplates(forceRefresh) {
         setSfSyncStatus(count + ' official template' + (count !== 1 ? 's' : '') + ' · ' + when, 'success');
         updateSfTemplateCount(count);
 
-        chrome.storage.local.get(['mergedTemplates'], function (r) {
+        chrome.storage.local.get(['mergedTemplates', 'sfOAuthUser'], function (r) {
             currentMergedTemplates = r.mergedTemplates || {};
             populateDropdown(currentMergedTemplates);
             updateBadge(Object.keys(currentMergedTemplates).length);
+            // Team membership/admin status may have refreshed during sync, so
+            // re-render the connection row to update the team badge + the
+            // "Manage Templates" button without needing to reopen the popup.
+            renderSfTemplatesStatus({ connected: true, user: r.sfOAuthUser || null });
         });
     });
 }
