@@ -28,62 +28,39 @@
         <button type="button" class="onboarding-close" id="onboarding-close" aria-label="Dismiss welcome">×</button>
         <div class="onboarding-title">Welcome to Nucleus Enhancer 👋</div>
         <ol class="onboarding-steps">
-            <li>Connect <strong>Salesforce Account</strong> below to sync your team's official templates.</li>
+            <li>Connect <strong>Salesforce</strong> below to sync your team's official templates.</li>
             <li>Or load your own under <strong>Template Files</strong>.</li>
             <li>In a Notes / Forensic Strategy field, press <kbd>Alt</kbd>+<kbd>T</kbd> or right-click to insert.</li>
         </ol>
     </div>
 
-    <!-- Salesforce Sign-In -->
+    <!-- Salesforce (OAuth identity + official template sync) -->
     <section class="section">
         <div class="section-header">
-            <span>Salesforce Account</span>
-            <span class="badge badge-empty" id="auth-badge">Not signed in</span>
-        </div>
-        <div class="auth-panel">
-            <div class="auth-identity">
-                <div class="auth-avatar" id="auth-avatar" aria-hidden="true" style="display:none">
-                    <span class="auth-avatar-fallback" id="auth-avatar-fallback">?</span>
-                    <img class="auth-avatar-img" id="auth-avatar-img" alt="">
-                </div>
-                <div class="auth-identity-text">
-                    <div class="auth-status-line" id="auth-status">Use an open Salesforce tab to connect.</div>
-                    <div class="auth-user-line" id="auth-user">No active Salesforce session detected.</div>
-                </div>
-            </div>
-            <div class="auth-actions">
-                <button id="btn-sf-sign-in" class="btn btn-primary" aria-label="Sign in via Salesforce">
-                    Sign In via Salesforce
-                </button>
-                <button id="btn-sf-sign-out" class="btn btn-secondary" style="display:none" aria-label="Sign out of Salesforce in the extension">
-                    Sign Out
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Salesforce Templates (OAuth + Sync) -->
-    <section class="section">
-        <div class="section-header">
-            <span>Salesforce Templates</span>
+            <span>Salesforce</span>
             <span class="badge badge-empty" id="sf-templates-badge">Not connected</span>
         </div>
         <div class="sf-templates-panel">
-            <div class="sf-status-text" id="sf-connected-name">Connect to sync official templates from Salesforce.</div>
-            <div class="auth-actions" style="margin-top:8px">
-                <button id="btn-sf-oauth-connect" class="btn btn-primary">Connect via Salesforce OAuth</button>
+            <div class="auth-identity">
+                <div class="auth-avatar" id="sf-avatar" aria-hidden="true" style="display:none">
+                    <span class="auth-avatar-fallback" id="sf-avatar-fallback">?</span>
+                    <img class="auth-avatar-img" id="sf-avatar-img" alt="">
+                </div>
+                <div class="auth-identity-text">
+                    <div class="sf-status-text" id="sf-connected-name">Connect to sync your team's official templates.</div>
+                    <div class="auth-user-line" id="sf-connected-email" style="display:none"></div>
+                </div>
+            </div>
+            <div id="sf-sync-row" style="display:none; align-items:center; margin-top:8px">
+                <span id="sf-sync-status" class="sf-sync-status"></span>
+            </div>
+            <div class="auth-actions" style="margin-top:10px">
+                <button id="btn-sf-oauth-connect" class="btn btn-primary">Connect Salesforce</button>
+                <button id="btn-sf-sync-now" class="btn btn-secondary" style="display:none">Sync Now</button>
+                <button id="btn-manage-templates" class="btn btn-secondary" style="display:none">Manage Templates</button>
                 <button id="btn-sf-oauth-disconnect" class="btn btn-secondary" style="display:none">Disconnect</button>
             </div>
-            <div id="sf-sync-row" style="display:none; margin-top:8px; align-items:center; gap:8px">
-                <span id="sf-sync-status" class="sf-sync-status"></span>
-                <button id="btn-sf-sync-now" class="btn btn-secondary" style="margin-left:auto">Sync Now</button>
-            </div>
             <div id="sf-template-count" class="sf-sync-status" style="display:none"></div>
-            <div id="sf-manage-row" style="margin-top:8px">
-                <button id="btn-manage-templates" class="btn btn-secondary" style="display:none">
-                    Manage Templates
-                </button>
-            </div>
         </div>
     </section>
 
@@ -109,11 +86,6 @@
         <div class="sf-config-panel">
             <label class="sf-config-label" for="sf-proxy-url">OAuth Proxy URL</label>
             <input type="text" id="sf-proxy-url" class="sf-config-input" placeholder="https://cyfor-oauth-proxy.your-name.workers.dev" autocomplete="off">
-            <label class="sf-config-label">OAuth Callback URL <small>(add this to your Connected App in Salesforce)</small></label>
-            <div class="sf-redirect-row">
-                <input type="text" id="sf-redirect-url" class="sf-config-input" readonly>
-                <button id="btn-copy-redirect" class="btn btn-secondary">Copy</button>
-            </div>
             <button id="btn-sf-config-save" class="btn btn-primary" style="margin-top:10px">Save</button>
             <div id="sf-config-status" class="status-msg"></div>
         </div>
@@ -187,9 +159,6 @@
             <span>Templates</span>
             <span class="badge" id="template-badge">0 loaded</span>
         </div>
-        <div class="builtin-note" id="builtin-note">
-            ✓ Built-in template available: <strong>Forensic Strategy</strong>. Upload a .txt with the same name to override it.
-        </div>
         <div class="option-row">
             <div class="option-info">
                 <div class="option-label">Smart Auto-Insert</div>
@@ -245,9 +214,7 @@
             <button id="btn-editor-save" class="btn btn-primary">Save</button>
             <button id="btn-editor-cancel" class="btn btn-secondary">Cancel</button>
         </div>
-        <div id="template-editor-builtin-note" class="builtin-note" style="display:none">
-            This is a built-in template. Saving will create a user override.
-        </div>
+        <div id="template-editor-builtin-note" class="builtin-note" style="display:none"></div>
     </section>
 
     <!-- Template Preview -->
@@ -269,15 +236,7 @@
             <label for="folder-input" class="upload-label">
                 Select Template Folder
             </label>
-            <div class="template-file-actions">
-                <button id="btn-export-templates" class="btn btn-secondary" aria-label="Export templates as JSON">
-                    Export JSON
-                </button>
-                <label class="btn btn-secondary" aria-label="Import templates from JSON">
-                    Import JSON
-                    <input type="file" id="json-import-input" accept=".json" style="display:none">
-                </label>
-            </div>
+            <div class="upload-hint">Load your own <code>.txt</code> templates. Official Salesforce templates always take priority and can't be overridden.</div>
             <div id="status-msg" class="status-msg"></div>
             <button id="btn-clear" class="btn btn-danger" style="display:none" aria-label="Clear all templates">
                 Clear All Templates
@@ -296,7 +255,6 @@
     </footer>
 
     <script src="../config.js"></script>
-    <script src="popup-auth.js"></script>
     <script src="popup-columns.js"></script>
     <script src="popup-templates.js"></script>
     <script src="popup-sf-templates.js"></script>

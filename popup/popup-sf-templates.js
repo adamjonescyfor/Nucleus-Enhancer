@@ -5,15 +5,6 @@
 // ==================================================
 
 function loadSfTemplatesSection() {
-    // Display the stable OAuth callback URL so admin can register it in the Connected App
-    chrome.runtime.sendMessage({ action: 'sfOAuth.getRedirectUrl' }, function (response) {
-        if (chrome.runtime.lastError) return;
-        var urlEl = document.getElementById('sf-redirect-url');
-        if (urlEl && response && response.redirectUrl) {
-            urlEl.value = response.redirectUrl;
-        }
-    });
-
     // Populate saved config fields (fall back to compiled-in defaults from config.js)
     chrome.storage.local.get(['sfOAuthConfig', 'sfOAuthTokens', 'sfOAuthUser', 'sfRemoteTemplates', 'sfTemplatesSyncedAt'], function (r) {
         var config = r.sfOAuthConfig || {};
@@ -65,7 +56,6 @@ function bindSfTemplateActions() {
     var disconnectBtn = document.getElementById('btn-sf-oauth-disconnect');
     var syncBtn       = document.getElementById('btn-sf-sync-now');
     var saveBtn       = document.getElementById('btn-sf-config-save');
-    var copyBtn       = document.getElementById('btn-copy-redirect');
 
     if (connectBtn) {
         connectBtn.addEventListener('click', function () {
@@ -75,7 +65,7 @@ function bindSfTemplateActions() {
 
             chrome.runtime.sendMessage({ action: 'sfOAuth.connect' }, function (response) {
                 connectBtn.disabled = false;
-                connectBtn.textContent = 'Connect via Salesforce OAuth';
+                connectBtn.textContent = 'Connect Salesforce';
 
                 if (chrome.runtime.lastError || !response || !response.ok) {
                     var err = (response && response.error) || 'Connection failed';
@@ -129,21 +119,6 @@ function bindSfTemplateActions() {
         });
     }
 
-    if (copyBtn) {
-        copyBtn.addEventListener('click', function () {
-            var urlEl = document.getElementById('sf-redirect-url');
-            if (!urlEl || !urlEl.value) return;
-            navigator.clipboard.writeText(urlEl.value).then(function () {
-                copyBtn.textContent = 'Copied!';
-                setTimeout(function () { copyBtn.textContent = 'Copy'; }, 2000);
-            }).catch(function () {
-                urlEl.select();
-                document.execCommand('copy');
-                copyBtn.textContent = 'Copied!';
-                setTimeout(function () { copyBtn.textContent = 'Copy'; }, 2000);
-            });
-        });
-    }
 }
 
 function saveSfConfig() {
@@ -205,45 +180,68 @@ function syncSfTemplates(forceRefresh) {
 function renderSfTemplatesStatus(state) {
     var badge         = document.getElementById('sf-templates-badge');
     var nameEl        = document.getElementById('sf-connected-name');
+    var emailEl       = document.getElementById('sf-connected-email');
     var connectBtn    = document.getElementById('btn-sf-oauth-connect');
     var disconnectBtn = document.getElementById('btn-sf-oauth-disconnect');
+    var syncBtn       = document.getElementById('btn-sf-sync-now');
     var syncRow       = document.getElementById('sf-sync-row');
+    var manageBtn     = document.getElementById('btn-manage-templates');
+    var avatar        = document.getElementById('sf-avatar');
 
     if (!badge) return;
+    var user = (state && state.user) || null;
+
+    function show(el, on) { if (el) el.style.display = on ? '' : 'none'; }
 
     if (state && state.connected) {
         badge.textContent = 'Connected';
         badge.className   = 'badge badge-success';
 
-        var displayName = '';
-        if (state.user) {
-            displayName = state.user.fullName || state.user.email || state.user.username || '';
-            var teamPart = state.user.teamName ? ' · ' + state.user.teamName : '';
-            displayName = displayName + teamPart;
+        var name = user ? (user.fullName || user.username || user.email || '') : '';
+        var team = (user && user.teamName) ? ' · ' + user.teamName : '';
+        if (nameEl) nameEl.textContent = name ? name + team : 'Connected to Salesforce';
+        if (emailEl) {
+            emailEl.textContent = (user && user.email) ? user.email : '';
+            show(emailEl, !!(user && user.email));
         }
-        if (nameEl) nameEl.textContent = displayName ? 'Connected as ' + displayName : 'Connected to Salesforce';
 
-        if (connectBtn)    { connectBtn.style.display    = 'none'; }
-        if (disconnectBtn) { disconnectBtn.style.display = ''; }
-        if (syncRow)       { syncRow.style.display       = ''; }
-
-        var manageBtn = document.getElementById('btn-manage-templates');
-        if (manageBtn) {
-            manageBtn.style.display = (state.user && state.user.isTemplateAdmin) ? '' : 'none';
+        // Avatar from the OAuth profile photo, with an initials fallback.
+        if (avatar) {
+            var img      = document.getElementById('sf-avatar-img');
+            var fallback = document.getElementById('sf-avatar-fallback');
+            var photo    = user && user.photoUrl;
+            if (img && photo) {
+                img.src = photo; img.style.display = '';
+                if (fallback) fallback.style.display = 'none';
+            } else {
+                if (img) img.style.display = 'none';
+                if (fallback) {
+                    fallback.textContent = (name ? name.trim().charAt(0) : '?').toUpperCase();
+                    fallback.style.display = '';
+                }
+            }
+            show(avatar, true);
         }
+
+        show(connectBtn, false);
+        show(disconnectBtn, true);
+        show(syncBtn, true);
+        show(syncRow, true);
+        show(manageBtn, !!(user && user.isTemplateAdmin));
     } else {
         badge.textContent = 'Not connected';
         badge.className   = 'badge badge-empty';
 
-        var msg = (state && state.error) ? state.error : 'Connect to sync official templates';
-        if (nameEl) nameEl.textContent = msg;
+        if (nameEl) nameEl.textContent = (state && state.error) ? state.error : "Connect to sync your team's official templates.";
+        show(emailEl, false);
+        show(avatar, false);
 
-        if (connectBtn)    { connectBtn.style.display = ''; connectBtn.disabled = false; }
-        if (disconnectBtn) { disconnectBtn.style.display = 'none'; }
-        if (syncRow)       { syncRow.style.display = 'none'; }
-
-        var manageBtn = document.getElementById('btn-manage-templates');
-        if (manageBtn) { manageBtn.style.display = 'none'; }
+        if (connectBtn) connectBtn.disabled = false;
+        show(connectBtn, true);
+        show(disconnectBtn, false);
+        show(syncBtn, false);
+        show(syncRow, false);
+        show(manageBtn, false);
     }
 }
 

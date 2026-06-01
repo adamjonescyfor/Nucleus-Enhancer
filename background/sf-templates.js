@@ -15,10 +15,13 @@ var SYNCED_AT_KEY = 'sfTemplatesSyncedAt';
 var UKAS_KEY      = 'sfUkasFieldsAvailable';
 var CACHE_TTL_MS  = 20 * 60 * 1000; // 20 minutes
 
+// "Who last changed it" now comes from the system LastModifiedBy relationship
+// (LastModifiedBy.Name) rather than custom fields — Salesforce maintains it
+// automatically and authoritatively. It's a standard relationship, so it does
+// not affect the UKAS-field availability probe below.
 var UKAS_FIELDS = [
     'VersionLabel__c', 'Status__c', 'ChangeReason__c',
-    'EffectiveDate__c', 'ReviewDueDate__c', 'DocumentId__c',
-    'LastChangedByName__c', 'LastChangedByEmail__c'
+    'EffectiveDate__c', 'ReviewDueDate__c', 'DocumentId__c'
 ].join(', ');
 
 function buildQuery(config, teamCode, withUkas) {
@@ -32,7 +35,7 @@ function buildQuery(config, teamCode, withUkas) {
         ? "(Team__c = null OR Team__r.TeamCode__c = '" + escTeam + "')"
         : 'Team__c = null';
 
-    var fields = 'Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c';
+    var fields = 'Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c, LastModifiedBy.Name';
     if (withUkas) fields += ', ' + UKAS_FIELDS;
 
     return 'SELECT ' + fields
@@ -159,15 +162,15 @@ async function fetchRemoteTemplates(forceRefresh) {
         var recTeamCode = (record['Team__r'] && record['Team__r']['TeamCode__c']) || null;
         if (name && body) {
             var entry = { id: recId, content: body, category: cat, teamCode: recTeamCode };
+            // "Last changed by" from the system field — always available.
+            entry.lastChangedByName = (record.LastModifiedBy && record.LastModifiedBy.Name) || '';
             if (knownUkas) {
-                entry.versionLabel      = record.VersionLabel__c      || '1.0';
-                entry.status            = record.Status__c            || 'Active';
-                entry.changeReason      = record.ChangeReason__c      || '';
-                entry.effectiveDate     = record.EffectiveDate__c     || null;
-                entry.reviewDueDate     = record.ReviewDueDate__c     || null;
-                entry.documentId        = record.DocumentId__c        || '';
-                entry.lastChangedByName  = record.LastChangedByName__c  || '';
-                entry.lastChangedByEmail = record.LastChangedByEmail__c || '';
+                entry.versionLabel  = record.VersionLabel__c  || '1.0';
+                entry.status        = record.Status__c        || 'Active';
+                entry.changeReason  = record.ChangeReason__c  || '';
+                entry.effectiveDate = record.EffectiveDate__c || null;
+                entry.reviewDueDate = record.ReviewDueDate__c || null;
+                entry.documentId    = record.DocumentId__c    || '';
             }
             sfRemoteTemplates[name] = entry;
         }

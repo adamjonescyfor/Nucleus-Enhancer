@@ -14,74 +14,13 @@ function initTemplates(savedMap) {
     renderMappings(PROCESS_TYPES, currentMergedTemplates, savedMap || {});
 }
 
+// Official = synced from Salesforce (present in the merged set but not a user
+// upload). builtinTemplateKeys is maintained in popup.js.
+function isOfficialTemplate(key) {
+    return typeof builtinTemplateKeys !== 'undefined' && builtinTemplateKeys.indexOf(key) !== -1;
+}
+
 function bindTemplateEvents() {
-    // JSON Export (L-2)
-    var exportBtn = document.getElementById('btn-export-templates');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', function () {
-            if (Object.keys(currentUserTemplates).length === 0) {
-                setStatus('No user templates to export', 'info');
-                return;
-            }
-            var blob = new Blob([JSON.stringify({
-                templates: currentUserTemplates,
-                exportedAt: new Date().toISOString(),
-                version: '1'
-            }, null, 2)], { type: 'application/json' });
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = 'cyfor-templates-' + new Date().toISOString().slice(0, 10) + '.json';
-            a.click();
-            URL.revokeObjectURL(url);
-            setStatus('Templates exported', 'success');
-        });
-    }
-
-    // JSON Import (L-2)
-    var importInput = document.getElementById('json-import-input');
-    if (importInput) {
-        importInput.addEventListener('change', function (e) {
-            var file = e.target.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function () {
-                try {
-                    var data = JSON.parse(reader.result);
-                    if (!data.templates || typeof data.templates !== 'object') {
-                        setStatus('Invalid template file — missing "templates" object', 'error');
-                        return;
-                    }
-                    var count = Object.keys(data.templates).length;
-                    if (count === 0) {
-                        setStatus('No templates found in file', 'info');
-                        return;
-                    }
-                    var merged = Object.assign({}, currentUserTemplates, data.templates);
-                    currentUserTemplates = merged;
-                    currentMergedTemplates = mergeTemplates(merged);
-                    chrome.storage.local.set({ nucleusTemplates: merged, templateCount: Object.keys(merged).length }, function () {
-                        if (chrome.runtime.lastError) {
-                            setStatus('Storage error: ' + chrome.runtime.lastError.message, 'error');
-                            return;
-                        }
-                        chrome.storage.local.get(['processMap'], function (res) {
-                            renderMappings(PROCESS_TYPES, currentMergedTemplates, (res || {}).processMap || {});
-                            populateDropdown(currentMergedTemplates);
-                            updateBadge(Object.keys(currentMergedTemplates).length);
-                            updateClearBtn(Object.keys(currentUserTemplates).length);
-                            setStatus('✓ Imported ' + count + ' template' + (count !== 1 ? 's' : ''), 'success');
-                        });
-                    });
-                } catch (err) {
-                    setStatus('Could not parse JSON: ' + err.message, 'error');
-                }
-                importInput.value = '';
-            };
-            reader.readAsText(file);
-        });
-    }
-
     // Insert button
     els.insertBtn.addEventListener('click', function () {
         var select = els.templateSelect;
@@ -136,11 +75,20 @@ function bindTemplateEvents() {
         editingKey = key;
         editorName.textContent = key;
         editorArea.value = content;
-        var isBuiltIn = builtinTemplateKeys.indexOf(key) !== -1 && !currentUserTemplates.hasOwnProperty(key);
-        editorBuiltinNote.style.display = isBuiltIn ? '' : 'none';
+        // Official (Salesforce-synced) templates are read-only here — they're
+        // managed centrally in Salesforce and a local edit would be ignored.
+        var official = isOfficialTemplate(key);
+        if (editorBuiltinNote) {
+            editorBuiltinNote.textContent = official
+                ? 'Official Salesforce template — manage it in Salesforce. Local changes won’t apply.'
+                : '';
+            editorBuiltinNote.style.display = official ? '' : 'none';
+        }
+        editorArea.readOnly = official;
+        if (editorSave) editorSave.disabled = official;
         editorSection.style.display = '';
         editorSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        editorArea.focus();
+        if (!official) editorArea.focus();
     }
 
     function closeEditor() {
@@ -152,7 +100,7 @@ function bindTemplateEvents() {
         editBtn.addEventListener('click', function () {
             var select = els.templateSelect;
             var key = (select.options[select.selectedIndex] || {}).textContent || '';
-            key = key.replace(/\s*\(built-in\)\s*$/, '').trim();
+            key = key.replace(/\s*·\s*(Official|built-in)\s*$/i, '').trim();
             var content = select.value;
             if (!key || !content) return;
             openEditor(key, content);
@@ -216,33 +164,47 @@ function bindTemplateEvents() {
         setStatus('Reading ' + txtFiles.length + ' files…', 'info');
 
         Promise.all(txtFiles.map(readFile)).then(function (results) {
-            var templates = {};
-            for (var i = 0; i < results.length; i++) {
-                templates[results[i].name] = results[i].text;
-            }
+            // Official (Salesforce-synced) templates are authoritative — a user
+            // upload of the same name is skipped rather than overriding it.
+            chrome.storage.local.get(['sfRemoteTemplates', 'processMap'], function (store) {
+                var official = store.sfRemoteTemplates || {};
+                var templates = {};
+                var skipped = [];
+                for (var i = 0; i < results.length; i++) {
+                    var nm = results[i].name;
+                    if (Object.prototype.hasOwnProperty.call(official, nm)) {
+                        skipped.push(nm);
+                        continue;
+                    }
+                    templates[nm] = results[i].text;
+                }
 
-            var count = Object.keys(templates).length;
-            var totalSize = JSON.stringify(templates).length;
-            if (totalSize > 8 * 1024 * 1024) {
-                setStatus('Templates too large (' + formatBytes(totalSize) + '). Max ~8MB.', 'error');
-                return;
-            }
-
-            currentUserTemplates = templates;
-            currentMergedTemplates = mergeTemplates(templates);
-
-            chrome.storage.local.set({ nucleusTemplates: templates, templateCount: count }, function () {
-                if (chrome.runtime.lastError) {
-                    setStatus('Storage error: ' + chrome.runtime.lastError.message, 'error');
+                var count = Object.keys(templates).length;
+                var totalSize = JSON.stringify(templates).length;
+                if (totalSize > 8 * 1024 * 1024) {
+                    setStatus('Templates too large (' + formatBytes(totalSize) + '). Max ~8MB.', 'error');
                     return;
                 }
 
-                chrome.storage.local.get(['processMap'], function (res) {
-                    renderMappings(PROCESS_TYPES, currentMergedTemplates, (res || {}).processMap || {});
+                currentUserTemplates = templates;
+                currentMergedTemplates = mergeTemplates(templates);
+
+                chrome.storage.local.set({ nucleusTemplates: templates, templateCount: count }, function () {
+                    if (chrome.runtime.lastError) {
+                        setStatus('Storage error: ' + chrome.runtime.lastError.message, 'error');
+                        return;
+                    }
+
+                    renderMappings(PROCESS_TYPES, currentMergedTemplates, (store || {}).processMap || {});
                     populateDropdown(currentMergedTemplates);
                     updateBadge(Object.keys(currentMergedTemplates).length);
                     updateClearBtn(count);
-                    setStatus('✓ ' + count + ' user template' + (count !== 1 ? 's' : '') + ' loaded', 'success');
+
+                    var msg = '✓ ' + count + ' user template' + (count !== 1 ? 's' : '') + ' loaded';
+                    if (skipped.length) {
+                        msg += ' · ' + skipped.length + ' skipped (an official template owns that name): ' + skipped.join(', ');
+                    }
+                    setStatus(msg, skipped.length ? 'info' : 'success');
                 });
             });
         }).catch(function (err) {
@@ -371,9 +333,7 @@ function populateDropdown(templates) {
     for (var i = 0; i < keys.length; i++) {
         var opt = document.createElement('option');
         opt.value = templates[keys[i]];
-        var isBuiltIn = builtinTemplateKeys.indexOf(keys[i]) !== -1 &&
-            !currentUserTemplates.hasOwnProperty(keys[i]);
-        opt.textContent = keys[i] + (isBuiltIn ? '  (built-in)' : '');
+        opt.textContent = keys[i] + (isOfficialTemplate(keys[i]) ? '  ·  Official' : '');
         fragment.appendChild(opt);
     }
 

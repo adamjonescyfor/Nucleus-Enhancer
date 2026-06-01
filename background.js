@@ -254,8 +254,7 @@ async function sfTemplateCrud(op, payload) {
             createBody.Status__c             = payload.status       || 'Active';
             createBody.ChangeReason__c       = payload.changeReason || 'Initial version';
             createBody.DocumentId__c         = payload.documentId   || '';
-            createBody.LastChangedByName__c  = user.fullName        || '';
-            createBody.LastChangedByEmail__c = user.email           || '';
+            // "Who" is captured by Salesforce's system CreatedById/LastModifiedById.
             if (payload.effectiveDate) createBody.EffectiveDate__c  = payload.effectiveDate;
             if (payload.reviewDueDate) createBody.ReviewDueDate__c  = payload.reviewDueDate;
         }
@@ -305,8 +304,7 @@ async function sfTemplateCrud(op, payload) {
             updateBody.VersionLabel__c       = payload.versionLabel || '1.1';
             updateBody.Status__c             = payload.status       || 'Active';
             updateBody.ChangeReason__c       = payload.changeReason || '';
-            updateBody.LastChangedByName__c  = user.fullName        || '';
-            updateBody.LastChangedByEmail__c = user.email           || '';
+            // "Who" is captured by Salesforce's system LastModifiedById.
             updateBody.EffectiveDate__c      = payload.effectiveDate || null;
             updateBody.ReviewDueDate__c      = payload.reviewDueDate || null;
         }

@@ -767,6 +767,20 @@ select.map-select:focus-visible {
     border-color: var(--brand);
 }
 
+.upload-hint {
+    margin-top: 8px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+.upload-hint code {
+    font-family: var(--cyfor-font-mono, monospace);
+    background: var(--surface-muted);
+    padding: 0 3px;
+    border-radius: 3px;
+}
+
 .template-file-actions {
     display: flex;
     gap: 6px;

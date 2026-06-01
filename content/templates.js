@@ -134,6 +134,14 @@ Cyfor.templates = {
     },
 
     /**
+     * Whether a template is an official (Salesforce-synced) one.
+     */
+    _isOfficial(key) {
+        const r = Cyfor.config.sfRemoteTemplates;
+        return !!(r && Object.prototype.hasOwnProperty.call(r, key));
+    },
+
+    /**
      * Populate menu with template items, search box, and undo option.
      */
     _populateMenu(menu, container) {
@@ -158,6 +166,7 @@ Cyfor.templates = {
             for (const key of recentKeys) {
                 const item = document.createElement('div');
                 item.className = 'cyfor-template-item cyfor-template-item-recent';
+                if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
                 item.textContent = key;
                 item.title = `Insert "${key}"`;
                 item.setAttribute('role', 'menuitem');
@@ -281,6 +290,7 @@ Cyfor.templates = {
         for (const key of keys) {
             const item = document.createElement('div');
             item.className = 'cyfor-template-item';
+            if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
             item.textContent = key;
             item.title = `Insert "${key}"`;
             item.setAttribute('role', 'menuitem');

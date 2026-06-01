@@ -13,18 +13,20 @@ var currentUserTemplates = {};
 var currentMergedTemplates = {};
 var currentTableContextId = null;
 var currentTableColumns = [];
-var builtinTemplateKeys = []; // populated from storage (M-3: no duplicate)
+// Names of official (Salesforce-synced) templates — i.e. merged entries that
+// are not user uploads. (Historically called "built-in"; built-ins are gone.)
+var builtinTemplateKeys = [];
 
 function mergeTemplates(userTemplates) {
-    // Merge: start from mergedTemplates stored by content script when possible.
-    // This function is a fallback for when storage is not yet populated.
+    // Fallback merge for when the content script hasn't stored mergedTemplates yet.
+    // Official (synced) templates win collisions, matching getMergedTemplates.
     var merged = {};
-    builtinTemplateKeys.forEach(function (k) {
-        if (currentMergedTemplates[k] !== undefined) merged[k] = currentMergedTemplates[k];
-    });
     if (userTemplates) {
         for (var key in userTemplates) merged[key] = userTemplates[key];
     }
+    builtinTemplateKeys.forEach(function (k) {
+        if (currentMergedTemplates[k] !== undefined) merged[k] = currentMergedTemplates[k];
+    });
     return merged;
 }
 
@@ -96,27 +98,17 @@ document.addEventListener('DOMContentLoaded', function () {
         previewSection:     document.getElementById('preview-section'),
         previewContent:     document.getElementById('preview-content'),
         previewClose:       document.getElementById('btn-preview-close'),
-        authBadge:          document.getElementById('auth-badge'),
-        authAvatar:         document.getElementById('auth-avatar'),
-        authAvatarFallback: document.getElementById('auth-avatar-fallback'),
-        authAvatarImg:      document.getElementById('auth-avatar-img'),
-        authStatus:         document.getElementById('auth-status'),
-        authUser:           document.getElementById('auth-user'),
-        authSignInBtn:          document.getElementById('btn-sf-sign-in'),
-        authSignOutBtn:         document.getElementById('btn-sf-sign-out'),
         sfTemplatesBadge:       document.getElementById('sf-templates-badge'),
         sfConnectedName:        document.getElementById('sf-connected-name'),
         sfSyncRow:              document.getElementById('sf-sync-row'),
         sfTemplateCount:        document.getElementById('sf-template-count'),
         sfSyncStatus:           document.getElementById('sf-sync-status'),
         sfProxyUrl:             document.getElementById('sf-proxy-url'),
-        sfRedirectUrl:          document.getElementById('sf-redirect-url'),
         sfConfigStatus:         document.getElementById('sf-config-status'),
         sfOAuthConnectBtn:      document.getElementById('btn-sf-oauth-connect'),
         sfOAuthDisconnectBtn:   document.getElementById('btn-sf-oauth-disconnect'),
         sfSyncNowBtn:           document.getElementById('btn-sf-sync-now'),
         sfConfigSaveBtn:        document.getElementById('btn-sf-config-save'),
-        btnCopyRedirect:        document.getElementById('btn-copy-redirect'),
         sfConfigSection:        document.getElementById('sf-config-section')
     };
 
@@ -157,9 +149,9 @@ function loadSettings(settingsStore) {
         }
     );
 
-    // Template and auth data always from local storage
+    // Template data always from local storage
     chrome.storage.local.get(
-        ['nucleusTemplates', 'mergedTemplates', 'processMap', AUTH_STORAGE_KEY],
+        ['nucleusTemplates', 'mergedTemplates', 'processMap'],
         function (result) {
             var r = result || {};
 
@@ -176,17 +168,13 @@ function loadSettings(settingsStore) {
 
             initTemplates(savedMap);
             bindColumnEvents();
-            bindAuthActions();
             loadSfTemplatesSection();
             loadCaseReportSection();
-
-            renderAuthFromState(r[AUTH_STORAGE_KEY]);
-            refreshSalesforceAuth(false);
 
             if (Object.keys(currentUserTemplates).length > 0) {
                 var n = Object.keys(currentUserTemplates).length;
                 setStatus(n + ' user template' + (n !== 1 ? 's' : '') + ' loaded · ' +
-                    builtinTemplateKeys.length + ' built-in', 'success');
+                    builtinTemplateKeys.length + ' official', 'success');
             }
         }
     );
