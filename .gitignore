@@ -12,3 +12,6 @@ node_modules/
 
 # Wrangler local state (contains Cloudflare account id/email — must not be committed)
 oauth-proxy/.wrangler/
+
+# CYFOR MG22 Word templates (managed in Salesforce, not committed)
+*.docx

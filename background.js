@@ -12,7 +12,11 @@ try {
 }
 
 try {
-    importScripts('background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js', 'background/sf-team.js', 'background/sf-versions.js', 'report/case-report-fetch.js');
+    importScripts(
+        'background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js',
+        'background/sf-team.js', 'background/sf-versions.js', 'report/case-report-fetch.js',
+        'lib/fflate.min.js', 'lib/docx-fill.js', 'report/mg-extract.js', 'background/sf-report-templates.js'
+    );
 } catch (e) {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
 }
@@ -209,7 +213,67 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .catch((err) => sendResponse({ ok: false, error: err.message }));
         return true;
     }
+
+    // List the MG22 report templates available to this user (team-scoped)
+    if (message.action === 'report.listTemplates') {
+        if (!self.SfReportTemplates) { sendResponse({ ok: false, error: 'Report module not loaded' }); return true; }
+        self.SfReportTemplates.listReportTemplates()
+            .then((templates) => sendResponse({ ok: true, templates: templates }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Generate a filled .docx report from a template + the live case data
+    if (message.action === 'report.generate') {
+        generateReport(message)
+            .then((r) => sendResponse(r))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
 });
+
+// Fetch template + case bundle, map to placeholders, fill the .docx, return base64.
+async function generateReport(message) {
+    if (!self.SfReportTemplates || !self.CaseReportFetch || !self.MgExtract || !self.DocxFill) {
+        throw new Error('Report modules not loaded');
+    }
+    const templateBytes = await self.SfReportTemplates.fetchTemplateFile(message.templateId);
+    const bundle = await self.CaseReportFetch.fetchCaseBundle({
+        caseObject: message.caseObject, caseId: message.caseId
+    });
+    const stored = await chrome.storage.local.get(['sfOAuthUser', 'mgReportConfig']);
+    const data = self.MgExtract.buildReportData(bundle, stored.sfOAuthUser || {}, stored.mgReportConfig || {}, new Date());
+
+    // Fill occurrence no / date of offence from an MG21 attached to the case,
+    // if the Salesforce fields didn't supply them. Best-effort, never fatal.
+    try {
+        if (!data.occurrenceNo || !data.dateOfOffence) {
+            const mg21 = await self.SfReportTemplates.fetchMg21Data(message.caseId);
+            if (mg21.occurrenceNo && !data.occurrenceNo) data.occurrenceNo = mg21.occurrenceNo;
+            if (mg21.dateOfOffence && !data.dateOfOffence) data.dateOfOffence = mg21.dateOfOffence;
+        }
+    } catch (e) { /* MG21 optional */ }
+
+    const filled = self.DocxFill.fill(templateBytes, data);
+    const caseRef = (data.caseReference || 'Case').replace(/[<>:"/\\|?*]+/g, '_');
+    const label = (message.templateName || 'Report').replace(/[<>:"/\\|?*]+/g, '_');
+    return {
+        ok: true,
+        base64: uint8ToBase64(filled),
+        filename: caseRef + ' - ' + label + '.docx',
+        meta: { warnings: (bundle.meta && bundle.meta.warnings) || [] }
+    };
+}
+
+// Service-worker-safe base64 of a Uint8Array (chunked to avoid call-stack limits).
+function uint8ToBase64(u8) {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < u8.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + chunk, u8.length)));
+    }
+    return btoa(binary);
+}
 
 /**
  * Create, update, or delete a NucleusTemplate__c record via Salesforce REST API.

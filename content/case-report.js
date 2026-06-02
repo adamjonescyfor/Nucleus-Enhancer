@@ -11,6 +11,8 @@
     window.__cyforCaseReportLoaded = true;
 
     var BTN_ID = 'cyfor-export-case-btn';
+    var GEN_BTN_ID = 'cyfor-generate-report-btn';
+    var MENU_ID = 'cyfor-report-menu';
 
     // Shared teardown registry (defined in content/config.js). When present we
     // route our observer / interval / listeners through it so they disconnect
@@ -76,8 +78,11 @@
     }
 
     function removeButton() {
-        var b = document.getElementById(BTN_ID);
-        if (b) { var li = b.closest('li'); (li || b).remove(); }
+        [BTN_ID, GEN_BTN_ID].forEach(function (id) {
+            var b = document.getElementById(id);
+            if (b) { var li = b.closest('li'); (li || b).remove(); }
+        });
+        closeReportMenu();
     }
 
     function ensureButton() {
@@ -108,6 +113,119 @@
 
         li.appendChild(btn);
         ribbon.insertBefore(li, ribbon.firstChild); // first action — clean rounded-left join
+
+        // Generate Report (MG22) — sits right after Export Case Report.
+        var genLi = document.createElement('li');
+        genLi.className = 'slds-button-group-item';
+        genLi.setAttribute('data-cyfor-report', '1');
+        var genBtn = document.createElement('button');
+        genBtn.id = GEN_BTN_ID;
+        genBtn.type = 'button';
+        genBtn.className = 'slds-button slds-button_neutral cyfor-generate-report-btn';
+        genBtn.title = 'Pre-fill an MG22 report from this case';
+        genBtn.textContent = 'Generate Report ▾';
+        if (CLEAN) CLEAN.addEventListener(genBtn, 'click', function () { openReportMenu(genBtn); });
+        else genBtn.addEventListener('click', function () { openReportMenu(genBtn); });
+        genLi.appendChild(genBtn);
+        ribbon.insertBefore(genLi, li.nextSibling);
+    }
+
+    // ── MG22 report generation ──────────────────────────────────────────────
+    function closeReportMenu() {
+        var menu = document.getElementById(MENU_ID);
+        if (menu) menu.remove();
+        document.removeEventListener('mousedown', onReportMenuOutside, true);
+    }
+
+    function onReportMenuOutside(e) {
+        var menu = document.getElementById(MENU_ID);
+        if (menu && !menu.contains(e.target) && e.target.id !== GEN_BTN_ID) closeReportMenu();
+    }
+
+    async function openReportMenu(anchorBtn) {
+        if (document.getElementById(MENU_ID)) { closeReportMenu(); return; }
+        var original = anchorBtn.textContent;
+        anchorBtn.disabled = true;
+        anchorBtn.textContent = 'Loading…';
+
+        var resp = await sendMessage({ action: 'report.listTemplates' });
+
+        anchorBtn.disabled = false;
+        anchorBtn.textContent = original;
+
+        if (!resp || !resp.ok) {
+            var err = (resp && resp.error) || 'Could not load report templates';
+            if (err === 'NOT_AUTHENTICATED' || err === 'NOT_CONFIGURED') err = 'Connect via Salesforce OAuth in the extension first.';
+            toast(err, 'error');
+            return;
+        }
+        var templates = resp.templates || [];
+        if (!templates.length) {
+            toast('No report templates available. Ask an admin to add MG22 templates in Salesforce.', 'warning');
+            return;
+        }
+
+        var menu = document.createElement('div');
+        menu.id = MENU_ID;
+        menu.className = 'cyfor-report-menu';
+        menu.setAttribute('role', 'menu');
+        templates.forEach(function (t) {
+            var item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'cyfor-report-menu-item';
+            item.setAttribute('role', 'menuitem');
+            item.textContent = t.name + (t.region ? '  ·  ' + t.region : '');
+            item.addEventListener('click', function () { closeReportMenu(); generateReport(t.id, t.name); });
+            menu.appendChild(item);
+        });
+        document.body.appendChild(menu);
+
+        var r = anchorBtn.getBoundingClientRect();
+        menu.style.top  = (window.scrollY + r.bottom + 4) + 'px';
+        menu.style.left = (window.scrollX + r.left) + 'px';
+        setTimeout(function () { document.addEventListener('mousedown', onReportMenuOutside, true); }, 0);
+    }
+
+    async function generateReport(templateId, templateName) {
+        if (running) return;
+        var ctx = parseCasePage();
+        if (!ctx) { toast('Open a Forensic Case record first.', 'warning'); return; }
+        running = true;
+        toast('Generating "' + templateName + '"…', 'info');
+        try {
+            var resp = await sendMessage({
+                action: 'report.generate',
+                caseObject: ctx.object, caseId: ctx.id,
+                templateId: templateId, templateName: templateName
+            });
+            if (!resp || !resp.ok) throw new Error((resp && resp.error) || 'Generation failed');
+            if (resp.meta && resp.meta.warnings && resp.meta.warnings.length) {
+                console.log('[CYFOR] Report notes (non-fatal):', resp.meta.warnings);
+            }
+            downloadBase64(resp.base64, resp.filename,
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            toast('"' + templateName + '" downloaded.', 'success');
+        } catch (e) {
+            var msg = e.message || String(e);
+            if (msg === 'NOT_AUTHENTICATED' || msg === 'NOT_CONFIGURED') msg = 'Connect via Salesforce OAuth in the extension first.';
+            toast('Report failed: ' + msg, 'error');
+        } finally {
+            running = false;
+        }
+    }
+
+    function downloadBase64(base64, filename, mime) {
+        var binary = atob(base64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        var blob = new Blob([bytes], { type: mime });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1500);
     }
 
     function sendMessage(msg) {

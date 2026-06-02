@@ -21,3 +21,61 @@
 .cyfor-export-case-btn[disabled]::before {
     color: inherit;
 }
+
+/* Generate Report (MG22) button — a small document glyph */
+.cyfor-generate-report-btn {
+    white-space: nowrap;
+}
+
+.cyfor-generate-report-btn::before {
+    content: "\1F4C4"; /* 📄 */
+    margin-right: 6px;
+}
+
+/* Report-template dropdown */
+.cyfor-report-menu {
+    position: absolute;
+    z-index: 9999;
+    min-width: 220px;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid #d8dde6;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    padding: 4px;
+    font-family: 'Salesforce Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.cyfor-report-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #16325c;
+    cursor: pointer;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.cyfor-report-menu-item:hover,
+.cyfor-report-menu-item:focus-visible {
+    background: #f3f6fb;
+    outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    .cyfor-report-menu {
+        background: #1c1c1e;
+        border-color: #3e3e40;
+    }
+    .cyfor-report-menu-item {
+        color: #e8e8e8;
+    }
+    .cyfor-report-menu-item:hover,
+    .cyfor-report-menu-item:focus-visible {
+        background: #2a2a2c;
+    }
+}
