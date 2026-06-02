@@ -296,12 +296,15 @@ body {
 
 .auth-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 10px;
 }
 
 .auth-actions .btn {
-    flex: 1;
+    flex: 1 1 calc(50% - 4px);
+    min-width: calc(50% - 4px);
+    white-space: nowrap;
 }
 
 /* ==================================================

@@ -95,8 +95,8 @@
             <!-- Row 1: Doc ID + Status -->
             <div class="mgr-field-row">
                 <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-doc-id">Document ID</label>
-                    <input type="text" id="mgr-doc-id" class="mgr-input" placeholder="e.g. DF-TPL-001" autocomplete="off">
+                    <label class="mgr-label" for="mgr-doc-id">Document ID <small>(Salesforce-assigned)</small></label>
+                    <input type="text" id="mgr-doc-id" class="mgr-input" placeholder="Assigned by Salesforce on save" autocomplete="off" readonly>
                 </div>
                 <div class="mgr-field mgr-field--half">
                     <label class="mgr-label" for="mgr-status">Status</label>
@@ -104,6 +104,17 @@
                         <option value="Draft">Draft</option>
                         <option value="Active" selected>Active</option>
                         <option value="Deprecated">Deprecated</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Row 1b: Scope (team vs global) -->
+            <div class="mgr-field-row">
+                <div class="mgr-field mgr-field--half">
+                    <label class="mgr-label" for="mgr-scope">Scope <small>(who sees this template)</small></label>
+                    <select id="mgr-scope" class="mgr-input">
+                        <option value="team">My team</option>
+                        <option value="global">Global (all teams)</option>
                     </select>
                 </div>
             </div>

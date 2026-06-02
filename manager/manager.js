@@ -10,13 +10,6 @@ var currentHistoryName = null;   // template name whose history is being viewed
 var allTemplates       = {};     // name → { id, content, category, teamCode, ...fields }
 var currentUser        = {};     // sfOAuthUser
 
-var TEAM_PREFIX = {
-    digital_forensics: 'DF',
-    cell_site:         'CS',
-    ediscovery:        'ED',
-    cyber:             'CY'
-};
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -111,11 +104,13 @@ function renderTemplateList() {
 
         var tr = document.createElement('tr');
 
-        // Doc ID
+        // Doc ID — the custom DocumentId__c if present (e.g. a Salesforce Auto
+        // Number), otherwise the system record Id as the stable identifier.
+        var docVal = t.documentId || t.id || '';
         var docTd = document.createElement('td');
-        docTd.textContent  = t.documentId || '—';
-        docTd.style.color  = t.documentId ? '' : 'var(--text-muted)';
-        docTd.style.fontFamily = t.documentId ? "'Menlo','Consolas',monospace" : '';
+        docTd.textContent  = docVal || '—';
+        docTd.style.color  = docVal ? '' : 'var(--text-muted)';
+        docTd.style.fontFamily = docVal ? "'Menlo','Consolas',monospace" : '';
         docTd.style.fontSize   = '12px';
         tr.appendChild(docTd);
 
@@ -235,8 +230,11 @@ function openNewEditor() {
     document.getElementById('mgr-review-date').value   = '';
 
     var docIdEl = document.getElementById('mgr-doc-id');
-    docIdEl.value    = generateDocId();
-    docIdEl.readOnly = false;
+    docIdEl.value       = '';
+    docIdEl.readOnly    = true;            // assigned by Salesforce, not by hand
+    docIdEl.placeholder = 'Assigned by Salesforce on save';
+
+    setScopeSelect('team');
 
     document.getElementById('mgr-version-display').textContent = 'v1.0';
     document.getElementById('mgr-version-bump').style.display  = 'none';
@@ -266,8 +264,11 @@ function openEditEditor(name) {
     document.getElementById('mgr-review-date').value   = t.reviewDueDate  || '';
 
     var docIdEl = document.getElementById('mgr-doc-id');
-    docIdEl.value    = t.documentId || '';
-    docIdEl.readOnly = !!t.documentId;
+    docIdEl.value    = t.documentId || t.id || '';
+    docIdEl.readOnly = true;            // Salesforce-managed identifier
+
+    // teamCode present = tagged to a team (the admin's own); empty = Global.
+    setScopeSelect(t.teamCode ? 'team' : 'global');
 
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
     document.getElementById('mgr-version-bump').style.display  = '';
@@ -294,6 +295,7 @@ function saveTemplate() {
     var status       =  document.getElementById('mgr-status').value        || 'Active';
     var effectiveDate = document.getElementById('mgr-effective-date').value || null;
     var reviewDueDate = document.getElementById('mgr-review-date').value    || null;
+    var teamScope    = (document.getElementById('mgr-scope') || {}).value   || 'team';
 
     if (!name)           { setEditorStatus('Name is required.', 'error'); return; }
     if (!content.trim()) { setEditorStatus('Content is required.', 'error'); return; }
@@ -320,7 +322,8 @@ function saveTemplate() {
             status:       status,
             changeReason: changeReason,
             effectiveDate: effectiveDate,
-            reviewDueDate: reviewDueDate
+            reviewDueDate: reviewDueDate,
+            teamScope:    teamScope
         };
     } else {
         action  = 'sfTemplates.create';
@@ -329,9 +332,10 @@ function saveTemplate() {
             content:      content,
             category:     category,
             versionLabel: '1.0',
-            documentId:   (document.getElementById('mgr-doc-id').value || '').trim(),
+            documentId:   '',   // assigned by Salesforce (Auto Number) — not generated client-side
             status:       status,
             changeReason: changeReason,
+            teamScope:    teamScope,
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate
         };
@@ -642,21 +646,21 @@ function bumpVersion(current, type) {
     return type === 'major' ? (major + 1) + '.0' : major + '.' + (minor + 1);
 }
 
-function generateDocId() {
-    var teamCode = currentUser.teamCode || '';
-    var prefix   = (TEAM_PREFIX[teamCode] || teamCode.toUpperCase().slice(0, 2) || 'XX') + '-TPL-';
-    var max      = 0;
-    Object.values(allTemplates).forEach(function (t) {
-        if (t.documentId && t.documentId.indexOf(prefix) === 0) {
-            var num = parseInt(t.documentId.slice(prefix.length), 10);
-            if (!isNaN(num) && num > max) max = num;
-        }
-    });
-    return prefix + String(max + 1).padStart(3, '0');
-}
-
 function today() {
     return new Date().toISOString().slice(0, 10);
+}
+
+// Set the editor's Scope dropdown and label the "team" option with the admin's
+// actual team. If the admin has no team, only Global is meaningful.
+function setScopeSelect(scope) {
+    var sel = document.getElementById('mgr-scope');
+    if (!sel) return;
+    var teamOpt = sel.querySelector('option[value="team"]');
+    if (teamOpt) {
+        teamOpt.textContent = currentUser.teamName ? ('My team (' + currentUser.teamName + ')') : 'My team';
+        teamOpt.disabled = !currentUser.teamId;
+    }
+    sel.value = (scope === 'global' || !currentUser.teamId) ? 'global' : 'team';
 }
 
 function formatDate(isoDate) {

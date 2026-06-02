@@ -247,7 +247,9 @@ async function sfTemplateCrud(op, payload) {
             Content__c:  payload.content,
             Category__c: payload.category || '',
             IsActive__c: true,
-            Team__c:     user.teamId || null
+            // Scope: "global" => visible to all teams (Team__c null); otherwise
+            // tagged to the admin's own team.
+            Team__c:     (payload.teamScope === 'global') ? null : (user.teamId || null)
         };
         if (ukas) {
             createBody.VersionLabel__c       = payload.versionLabel || '1.0';
@@ -300,6 +302,10 @@ async function sfTemplateCrud(op, payload) {
             Content__c:  payload.content,
             Category__c: payload.category || ''
         };
+        // Allow changing scope (team ↔ global) from the editor.
+        if (payload.teamScope) {
+            updateBody.Team__c = (payload.teamScope === 'global') ? null : (user.teamId || null);
+        }
         if (ukas) {
             updateBody.VersionLabel__c       = payload.versionLabel || '1.1';
             updateBody.Status__c             = payload.status       || 'Active';
