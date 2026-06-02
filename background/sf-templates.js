@@ -1,9 +1,12 @@
 // ==================================================
 // CYFOR Nucleus Enhancer — Salesforce Template Sync
-// Fetches templates from a Salesforce Custom Object
-// via REST API with TTL-based local caching.
-// Supports UKAS extended fields with graceful fallback.
-// Exported as self.SfTemplates for use by background.js.
+// Fetches templates from NucleusTemplate__c via REST API with TTL caching.
+//
+// Field API names are DISCOVERED from the object describe (Salesforce
+// auto-generates names from labels, e.g. "Version Label" -> Version_Label__c,
+// which a hardcoded VersionLabel__c would miss). resolveTemplateFields() is
+// exported so the CRUD path writes to the exact same field names.
+// Exported as self.SfTemplates.
 // ==================================================
 
 (function () {
@@ -12,41 +15,64 @@ var CONFIG_KEY    = 'sfOAuthConfig';
 var TOKENS_KEY    = 'sfOAuthTokens';
 var CACHE_KEY     = 'sfRemoteTemplates';
 var SYNCED_AT_KEY = 'sfTemplatesSyncedAt';
-var UKAS_KEY      = 'sfUkasFieldsAvailable';
 var CACHE_TTL_MS  = 20 * 60 * 1000; // 20 minutes
 
-// "Who last changed it" now comes from the system LastModifiedBy relationship
-// (LastModifiedBy.Name) rather than custom fields — Salesforce maintains it
-// automatically and authoritatively. It's a standard relationship, so it does
-// not affect the UKAS-field availability probe below.
-var UKAS_FIELDS = [
-    'VersionLabel__c', 'Status__c', 'ChangeReason__c',
-    'EffectiveDate__c', 'ReviewDueDate__c', 'DocumentId__c'
-].join(', ');
+// concept -> normalised name candidates (see SfUtils.normalizeFieldName).
+var TEMPLATE_CONCEPTS = {
+    content:       ['content'],
+    category:      ['category'],
+    active:        ['isactive', 'active'],
+    versionLabel:  ['versionlabel', 'version'],
+    status:        ['status'],
+    changeReason:  ['changereason', 'reasonforchange', 'reason'],
+    effectiveDate: ['effectivedate'],
+    reviewDueDate: ['reviewduedate', 'reviewdate'],
+    documentId:    ['documentid', 'docid']
+};
 
-function buildQuery(config, teamCode, withUkas) {
-    var obj      = config.templateObject || 'NucleusTemplate__c';
-    var content  = config.contentField   || 'Content__c';
-    var category = config.categoryField  || 'Category__c';
-    var active   = config.activeField    || 'IsActive__c';
+// Describe NucleusTemplate__c once and map concepts -> real field API names.
+// Falls back to sensible defaults if describe fails.
+async function resolveTemplateFields(base, token, obj) {
+    var map = {
+        obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
+        team: 'Team__c', teamRel: 'Team__r',
+        versionLabel: null, status: null, changeReason: null,
+        effectiveDate: null, reviewDueDate: null, documentId: null
+    };
+    try {
+        var d = await self.SfUtils.describeObject(base, token, obj);
+        var fields = d.fields || [];
+        var resolved = self.SfUtils.resolveFields(fields, TEMPLATE_CONCEPTS);
+        Object.keys(resolved).forEach(function (k) { if (resolved[k]) map[k] = resolved[k]; });
+        var teamRef = self.SfUtils.findReferenceField(fields, 'NucleusTeam__c');
+        if (teamRef) { map.team = teamRef.name; map.teamRel = teamRef.relationshipName; }
+    } catch (e) { /* keep defaults */ }
+    return map;
+}
 
-    var escTeam = self.SfUtils ? self.SfUtils.soqlEscape(teamCode) : String(teamCode || '');
-    var teamFilter = teamCode
-        ? "(Team__c = null OR Team__r.TeamCode__c = '" + escTeam + "')"
-        : 'Team__c = null';
+function buildQuery(map, teamCode) {
+    var esc = self.SfUtils ? self.SfUtils.soqlEscape : function (v) { return String(v == null ? '' : v); };
+    var sel = ['Id', 'Name'];
+    if (map.content) sel.push(map.content);
+    if (map.category) sel.push(map.category);
+    if (map.teamRel) sel.push(map.teamRel + '.TeamCode__c');
+    sel.push('LastModifiedBy.Name');
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
+        .forEach(function (k) { if (map[k]) sel.push(map[k]); });
 
-    var fields = 'Id, Name, ' + content + ', ' + category + ', Team__r.TeamCode__c, LastModifiedBy.Name';
-    if (withUkas) fields += ', ' + UKAS_FIELDS;
+    var teamField = map.team || 'Team__c';
+    var teamFilter = (teamCode && map.teamRel)
+        ? '(' + teamField + " = null OR " + map.teamRel + ".TeamCode__c = '" + esc(teamCode) + "')"
+        : teamField + ' = null';
 
-    return 'SELECT ' + fields
-         + ' FROM ' + obj
-         + ' WHERE ' + active + ' = true'
+    return 'SELECT ' + sel.join(', ')
+         + ' FROM ' + map.obj
+         + ' WHERE ' + (map.active || 'IsActive__c') + ' = true'
          + ' AND ' + teamFilter
          + ' ORDER BY Name ASC';
 }
 
 async function fetchRemoteTemplates(forceRefresh) {
-    // Check TTL cache first
     if (!forceRefresh) {
         var cacheResult = await chrome.storage.local.get([CACHE_KEY, SYNCED_AT_KEY]);
         var cachedAt = cacheResult[SYNCED_AT_KEY];
@@ -58,148 +84,107 @@ async function fetchRemoteTemplates(forceRefresh) {
         }
     }
 
-    // Get valid access token (auto-refreshes if needed)
     var accessToken;
-    try {
-        accessToken = await self.SfOAuth.getValidAccessToken();
-    } catch (e) {
-        return { ok: false, error: e.message };
-    }
+    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
+    catch (e) { return { ok: false, error: e.message }; }
 
-    // On manual refresh, re-probe UKAS fields in case the admin has added them
-    if (forceRefresh) {
-        await chrome.storage.local.remove(UKAS_KEY);
-    }
+    if (forceRefresh && self.SfUtils && self.SfUtils.clearDescribeCache) self.SfUtils.clearDescribeCache();
 
-    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser', UKAS_KEY]);
+    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser']);
     var config  = results[CONFIG_KEY]    || {};
-    var tokens  = results[TOKENS_KEY]   || {};
+    var tokens  = results[TOKENS_KEY]    || {};
     var sfUser  = results['sfOAuthUser'] || {};
-    var knownUkas = results[UKAS_KEY];   // undefined | true | false
 
     var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) return { ok: false, error: 'Not authenticated — connect via Salesforce OAuth first.' };
 
-    // Re-read team membership + admin status each sync — it may have changed in
-    // Salesforce since login (e.g. the user was just added to a team), so
-    // team-scoped templates and the admin tools update without a full reconnect.
-    // null = fetch failed → keep whatever we already had.
+    var apiVersion = config.apiVersion || 'v62.0';
+    var base = instanceUrl + '/services/data/' + apiVersion;
+    var obj = config.templateObject || 'NucleusTemplate__c';
+
+    // Refresh team membership + admin status each sync (may have changed).
     if (self.SfTeam && sfUser.id) {
         try {
             var teamInfo = await self.SfTeam.fetchUserTeamInfo(instanceUrl, accessToken, sfUser.id);
             if (teamInfo) {
                 sfUser = Object.assign({}, sfUser, teamInfo);
-                var userUpdate = {};
-                userUpdate['sfOAuthUser'] = sfUser;
-                await chrome.storage.local.set(userUpdate);
+                var up = {}; up['sfOAuthUser'] = sfUser;
+                await chrome.storage.local.set(up);
             }
-        } catch (e) { /* keep existing team info on failure */ }
+        } catch (e) { /* keep existing team info */ }
     }
 
-    var teamCode   = sfUser.teamCode || null;
-    var apiVersion = config.apiVersion || 'v62.0';
+    var teamCode = sfUser.teamCode || null;
+    var map = await resolveTemplateFields(base, accessToken, obj);
 
-    // Try with UKAS fields unless we already know they're unavailable
-    var tryUkas = (knownUkas !== false);
-    var query   = buildQuery(config, teamCode, tryUkas);
-    var url     = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(query);
+    // Diagnostic: which fields were discovered (null = not found on the object).
+    console.log('[CYFOR] Template fields resolved:', {
+        content: map.content, category: map.category, team: map.team,
+        versionLabel: map.versionLabel, status: map.status, changeReason: map.changeReason,
+        effectiveDate: map.effectiveDate, reviewDueDate: map.reviewDueDate, documentId: map.documentId
+    });
 
+    var query = buildQuery(map, teamCode);
+    var url = base + '/query?q=' + encodeURIComponent(query);
     var response = await doFetch(url, accessToken);
 
-    // Auto-retry once on 401
     if (response.status === 401) {
-        try {
-            accessToken = await self.SfOAuth.refreshAccessToken();
-        } catch (e) {
-            return { ok: false, error: 'Authentication expired. Please reconnect in the extension popup.' };
-        }
+        try { accessToken = await self.SfOAuth.refreshAccessToken(); }
+        catch (e) { return { ok: false, error: 'Authentication expired. Please reconnect in the extension popup.' }; }
         response = await doFetch(url, accessToken);
-    }
-
-    // If UKAS fields don't exist in Salesforce yet, fall back to basic query
-    if (!response.ok && response.status === 400 && tryUkas) {
-        var errBody400 = await response.json().catch(function () { return []; });
-        var isInvalidField = Array.isArray(errBody400) && errBody400.some(function (e) {
-            return e.errorCode === 'INVALID_FIELD';
-        });
-        if (isInvalidField) {
-            await chrome.storage.local.set({ sfUkasFieldsAvailable: false });
-            knownUkas = false;
-            tryUkas   = false;
-            query    = buildQuery(config, teamCode, false);
-            url      = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(query);
-            response = await doFetch(url, accessToken);
-        }
     }
 
     if (!response.ok) {
         var errBody = await response.json().catch(function () { return []; });
-        var msg = Array.isArray(errBody)
-            ? (errBody[0] && errBody[0].message ? errBody[0].message : response.status)
-            : response.status;
-        return { ok: false, error: 'Salesforce query failed: ' + msg };
+        var emsg = Array.isArray(errBody) ? (errBody[0] && errBody[0].message ? errBody[0].message : response.status) : response.status;
+        return { ok: false, error: 'Salesforce query failed: ' + emsg };
     }
 
     var data = await response.json();
-
-    // If we successfully queried with UKAS fields, mark as available
-    if (tryUkas) {
-        await chrome.storage.local.set({ sfUkasFieldsAvailable: true });
-        knownUkas = true;
-    }
-
-    var contentField  = config.contentField  || 'Content__c';
-    var categoryField = config.categoryField || 'Category__c';
-
     var sfRemoteTemplates = {};
     var records = data.records || [];
     for (var i = 0; i < records.length; i++) {
-        var record      = records[i];
-        var name        = record.Name;
-        var body        = record[contentField]  || '';
-        var cat         = record[categoryField] || '';
-        var recId       = record.Id             || '';
-        var recTeamCode = (record['Team__r'] && record['Team__r']['TeamCode__c']) || null;
-        if (name && body) {
-            var entry = { id: recId, content: body, category: cat, teamCode: recTeamCode };
-            // "Last changed by" from the system field — always available.
-            entry.lastChangedByName = (record.LastModifiedBy && record.LastModifiedBy.Name) || '';
-            if (knownUkas) {
-                entry.versionLabel  = record.VersionLabel__c  || '1.0';
-                entry.status        = record.Status__c        || 'Active';
-                entry.changeReason  = record.ChangeReason__c  || '';
-                entry.effectiveDate = record.EffectiveDate__c || null;
-                entry.reviewDueDate = record.ReviewDueDate__c || null;
-                entry.documentId    = record.DocumentId__c    || '';
-            }
-            sfRemoteTemplates[name] = entry;
-        }
+        var r = records[i];
+        var name = r.Name;
+        var body = (map.content && r[map.content]) || '';
+        if (!name || !body) continue;
+
+        var entry = {
+            id:                r.Id || '',
+            content:           body,
+            category:          (map.category && r[map.category]) || '',
+            teamCode:          (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
+            lastChangedByName: (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
+        };
+        if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
+        if (map.status)        entry.status        = r[map.status]        || 'Active';
+        if (map.changeReason)  entry.changeReason  = r[map.changeReason]  || '';
+        if (map.effectiveDate) entry.effectiveDate = r[map.effectiveDate] || null;
+        if (map.reviewDueDate) entry.reviewDueDate = r[map.reviewDueDate] || null;
+        if (map.documentId)    entry.documentId    = r[map.documentId]    || '';
+        sfRemoteTemplates[name] = entry;
     }
 
     var syncedAt = Date.now();
-    var toStore  = {};
-    toStore[CACHE_KEY]     = sfRemoteTemplates;
+    var toStore = {};
+    toStore[CACHE_KEY] = sfRemoteTemplates;
     toStore[SYNCED_AT_KEY] = syncedAt;
     await chrome.storage.local.set(toStore);
 
-    return { ok: true, fromCache: false, templates: sfRemoteTemplates, syncedAt: syncedAt };
+    return { ok: true, fromCache: false, templates: sfRemoteTemplates, syncedAt: syncedAt, fields: map };
 }
 
 function doFetch(url, accessToken) {
     return fetch(url, {
-        headers: {
-            'Authorization': 'Bearer ' + accessToken,
-            'Accept':        'application/json'
-        }
+        headers: { 'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json' }
     }).catch(function (e) {
         return { ok: false, status: 0, json: function () { return Promise.resolve({ message: e.message }); } };
     });
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
-
 self.SfTemplates = {
-    fetchRemoteTemplates: fetchRemoteTemplates
+    fetchRemoteTemplates: fetchRemoteTemplates,
+    resolveTemplateFields: resolveTemplateFields
 };
 
 }());

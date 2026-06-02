@@ -33,6 +33,70 @@ self.SfUtils = (function () {
         return typeof name === 'string' && /^[a-zA-Z0-9_]+$/.test(name);
     }
 
-    return { soqlEscape: soqlEscape, isValidSfId: isValidSfId, isValidApiName: isValidApiName };
+    // ── Describe-driven field resolution ──────────────────────────────────────
+    // Salesforce auto-generates field API names from labels, so "Effective Date"
+    // becomes Effective_Date__c but a hand-written API name might be
+    // EffectiveDate__c. Rather than hardcode, we describe the object and match
+    // fields by their NORMALISED name (lowercased, underscores + the __c suffix
+    // removed), which makes both forms equivalent.
+
+    var describeCache = Object.create(null);
+
+    async function describeObject(base, token, obj) {
+        var key = obj.toLowerCase();
+        if (describeCache[key]) return describeCache[key];
+        var res = await fetch(base + '/sobjects/' + obj + '/describe', {
+            headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
+        });
+        if (!res.ok) throw new Error('describe ' + obj + ' failed: ' + res.status);
+        var d = await res.json();
+        describeCache[key] = d;
+        return d;
+    }
+
+    function clearDescribeCache() { describeCache = Object.create(null); }
+
+    function normalizeFieldName(name) {
+        return String(name || '').toLowerCase().replace(/__c$/, '').replace(/_/g, '');
+    }
+
+    // conceptMap: { concept: [normalisedCandidate, ...] }. Returns { concept: actualApiName|null }.
+    function resolveFields(fields, conceptMap) {
+        var byNorm = Object.create(null);
+        (fields || []).forEach(function (f) { byNorm[normalizeFieldName(f.name)] = f.name; });
+        var out = {};
+        Object.keys(conceptMap).forEach(function (concept) {
+            var cands = conceptMap[concept];
+            var found = null;
+            for (var i = 0; i < cands.length; i++) {
+                if (byNorm[cands[i]]) { found = byNorm[cands[i]]; break; }
+            }
+            out[concept] = found;
+        });
+        return out;
+    }
+
+    // First reference (lookup) field pointing at targetObject → { name, relationshipName }.
+    function findReferenceField(fields, targetObject) {
+        var t = String(targetObject || '').toLowerCase();
+        for (var i = 0; i < (fields || []).length; i++) {
+            var f = fields[i];
+            if (f.type === 'reference' && (f.referenceTo || []).some(function (r) { return String(r).toLowerCase() === t; })) {
+                return { name: f.name, relationshipName: f.relationshipName };
+            }
+        }
+        return null;
+    }
+
+    return {
+        soqlEscape: soqlEscape,
+        isValidSfId: isValidSfId,
+        isValidApiName: isValidApiName,
+        describeObject: describeObject,
+        clearDescribeCache: clearDescribeCache,
+        normalizeFieldName: normalizeFieldName,
+        resolveFields: resolveFields,
+        findReferenceField: findReferenceField
+    };
 
 })();

@@ -172,7 +172,7 @@ async function refreshAccessToken() {
 
     if (!response.ok) {
         if (response.status === 400 || response.status === 401) {
-            await chrome.storage.local.remove([TOKENS_KEY, USER_KEY, 'sfRemoteTemplates', 'sfTemplatesSyncedAt']);
+            await chrome.storage.local.remove([TOKENS_KEY, USER_KEY, 'sfRemoteTemplates', 'sfTemplatesSyncedAt', 'sfOAuthPhoto']);
             throw new Error('REFRESH_TOKEN_EXPIRED');
         }
         var err = await response.json().catch(function () { return {}; });
@@ -220,6 +220,70 @@ async function fetchSalesforceUserInfo(instanceUrl, accessToken) {
     };
 }
 
+// ── Profile photo ───────────────────────────────────────────────────────────
+// The Salesforce profile-photo URL needs the access token, so fetch it here and
+// return a data: URL the popup <img> can render. Cached in storage.
+//
+// Robustness:
+//  - if the stored user predates photoUrl capture, re-fetch userinfo to get it;
+//  - validate the bytes are actually an image (magic bytes) so an HTML error /
+//    login page is never cached and shown as a broken photo;
+//  - log a one-line diagnostic so a failure is visible in the SW console.
+
+function looksLikeImage(bytes, mime) {
+    if (/^image\//i.test(mime || '')) {
+        // PNG, JPEG, GIF, WEBP(RIFF), BMP magic numbers.
+        if (bytes[0] === 0x89 && bytes[1] === 0x50) return true;            // PNG
+        if (bytes[0] === 0xFF && bytes[1] === 0xD8) return true;            // JPEG
+        if (bytes[0] === 0x47 && bytes[1] === 0x49) return true;            // GIF
+        if (bytes[0] === 0x52 && bytes[1] === 0x49) return true;            // RIFF/WEBP
+        if (bytes[0] === 0x42 && bytes[1] === 0x4D) return true;            // BMP
+        // SVG or other image/* without a binary signature — trust the mime.
+        if (/svg/i.test(mime)) return true;
+    }
+    return false;
+}
+
+async function getProfilePhotoDataUrl() {
+    var stored = await chrome.storage.local.get([USER_KEY, 'sfOAuthPhoto']);
+    if (stored.sfOAuthPhoto) return stored.sfOAuthPhoto;
+
+    var user = stored[USER_KEY] || {};
+    var token = await getValidAccessToken();
+
+    // Self-heal: older sessions stored a user without photoUrl — fetch it now.
+    if (!user.photoUrl && user.instanceUrl) {
+        try {
+            var fresh = await fetchSalesforceUserInfo(user.instanceUrl, token);
+            if (fresh && fresh.photoUrl) {
+                user = Object.assign({}, user, { photoUrl: fresh.photoUrl });
+                var up = {}; up[USER_KEY] = user;
+                await chrome.storage.local.set(up);
+            }
+        } catch (e) { /* keep going — fallback initials will show */ }
+    }
+    if (!user.photoUrl) { console.log('[CYFOR] profile photo: no photoUrl on user'); return ''; }
+
+    var res = await fetch(user.photoUrl, { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' });
+    if (!res.ok) { console.log('[CYFOR] profile photo: fetch ' + res.status); return ''; }
+
+    var bytes = new Uint8Array(await res.arrayBuffer());
+    var mime = res.headers.get('content-type') || '';
+    if (!bytes.length || !looksLikeImage(bytes, mime)) {
+        console.log('[CYFOR] profile photo: not an image (mime=' + (mime || 'none') + ', bytes=' + bytes.length + ') — using initials');
+        return '';
+    }
+
+    var binary = '', chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+    }
+    var dataUrl = 'data:' + (mime || 'image/jpeg') + ';base64,' + btoa(binary);
+    await chrome.storage.local.set({ sfOAuthPhoto: dataUrl });
+    console.log('[CYFOR] profile photo: loaded (' + bytes.length + ' bytes, ' + mime + ')');
+    return dataUrl;
+}
+
 // ── Disconnect ────────────────────────────────────────────────────────────────
 
 async function disconnectOAuth() {
@@ -227,7 +291,7 @@ async function disconnectOAuth() {
     var tokens  = results[TOKENS_KEY];
     var config  = results[CONFIG_KEY] || {};
 
-    await chrome.storage.local.remove([TOKENS_KEY, USER_KEY, 'sfRemoteTemplates', 'sfTemplatesSyncedAt']);
+    await chrome.storage.local.remove([TOKENS_KEY, USER_KEY, 'sfRemoteTemplates', 'sfTemplatesSyncedAt', 'sfOAuthPhoto']);
 
     // Best-effort: revoke token via proxy (keeps Consumer Key off the extension)
     var proxyUrl = (config.oauthProxyUrl || '').replace(/\/$/, '');
@@ -249,6 +313,7 @@ self.SfOAuth = {
     refreshAccessToken:      refreshAccessToken,
     getValidAccessToken:     getValidAccessToken,
     fetchSalesforceUserInfo: fetchSalesforceUserInfo,
+    getProfilePhotoDataUrl:  getProfilePhotoDataUrl,
     disconnectOAuth:         disconnectOAuth
 };
 

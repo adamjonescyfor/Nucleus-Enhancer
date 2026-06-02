@@ -130,6 +130,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // Fetch the connected user's Salesforce profile photo as a data URL
+    if (message.action === 'sfOAuth.getProfilePhoto') {
+        if (!self.SfOAuth || !self.SfOAuth.getProfilePhotoDataUrl) { sendResponse({ ok: false }); return true; }
+        self.SfOAuth.getProfilePhotoDataUrl()
+            .then((dataUrl) => sendResponse({ ok: true, dataUrl: dataUrl }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
     // Return the stable OAuth callback URL for display in settings
     if (message.action === 'sfOAuth.getRedirectUrl') {
         sendResponse({ ok: true, redirectUrl: chrome.identity.getRedirectURL('sf-oauth') });
@@ -275,6 +284,20 @@ function uint8ToBase64(u8) {
     return btoa(binary);
 }
 
+// ── UKAS document-control date helpers ────────────────────────────────────────
+// Effective Date and Review Due Date must never be blank on a controlled
+// document, so we default them: effective = today, review = effective + N months.
+function todayIso() {
+    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (Salesforce Date)
+}
+function addMonthsIso(isoDate, months) {
+    var d = new Date((isoDate || todayIso()) + 'T00:00:00Z');
+    if (isNaN(d.getTime())) d = new Date();
+    d.setUTCMonth(d.getUTCMonth() + months);
+    return d.toISOString().slice(0, 10);
+}
+var REVIEW_PERIOD_MONTHS = 12;
+
 /**
  * Create, update, or delete a NucleusTemplate__c record via Salesforce REST API.
  * Only proceeds if the stored sfOAuthUser has isTemplateAdmin === true.
@@ -283,13 +306,12 @@ function uint8ToBase64(u8) {
  */
 async function sfTemplateCrud(op, payload) {
     var stored = await chrome.storage.local.get(
-        ['sfOAuthUser', 'sfOAuthConfig', 'sfOAuthTokens', 'sfRemoteTemplates', 'sfUkasFieldsAvailable']
+        ['sfOAuthUser', 'sfOAuthConfig', 'sfOAuthTokens', 'sfRemoteTemplates']
     );
-    var user      = stored['sfOAuthUser']          || {};
-    var config    = stored['sfOAuthConfig']         || {};
-    var tokens    = stored['sfOAuthTokens']         || {};
-    var templates = stored['sfRemoteTemplates']     || {};
-    var ukas      = stored['sfUkasFieldsAvailable'] === true;
+    var user      = stored['sfOAuthUser']      || {};
+    var config    = stored['sfOAuthConfig']    || {};
+    var tokens    = stored['sfOAuthTokens']    || {};
+    var templates = stored['sfRemoteTemplates'] || {};
 
     if (!user.isTemplateAdmin) throw new Error('PERMISSION_DENIED');
 
@@ -301,29 +323,33 @@ async function sfTemplateCrud(op, payload) {
     catch (e) { throw new Error('NOT_AUTHENTICATED'); }
 
     var apiVersion = config.apiVersion || 'v62.0';
-    var baseUrl    = instanceUrl + '/services/data/' + apiVersion + '/sobjects/NucleusTemplate__c';
+    var base       = instanceUrl + '/services/data/' + apiVersion;
+    var obj        = config.templateObject || 'NucleusTemplate__c';
+    var baseUrl    = base + '/sobjects/' + obj;
+
+    // Discover the real field API names (same resolution the sync uses), so we
+    // write to the fields that actually exist regardless of how they're named.
+    var map = await self.SfTemplates.resolveTemplateFields(base, accessToken, obj);
+    var teamValue = function () { return (payload.teamScope === 'global') ? null : (user.teamId || null); };
 
     var response, errBody;
 
     if (op === 'create') {
-        var createBody = {
-            Name:        payload.name,
-            Content__c:  payload.content,
-            Category__c: payload.category || '',
-            IsActive__c: true,
-            // Scope: "global" => visible to all teams (Team__c null); otherwise
-            // tagged to the admin's own team.
-            Team__c:     (payload.teamScope === 'global') ? null : (user.teamId || null)
-        };
-        if (ukas) {
-            createBody.VersionLabel__c       = payload.versionLabel || '1.0';
-            createBody.Status__c             = payload.status       || 'Active';
-            createBody.ChangeReason__c       = payload.changeReason || 'Initial version';
-            createBody.DocumentId__c         = payload.documentId   || '';
-            // "Who" is captured by Salesforce's system CreatedById/LastModifiedById.
-            if (payload.effectiveDate) createBody.EffectiveDate__c  = payload.effectiveDate;
-            if (payload.reviewDueDate) createBody.ReviewDueDate__c  = payload.reviewDueDate;
-        }
+        var createBody = { Name: payload.name };
+        if (map.content)  createBody[map.content]  = payload.content;
+        if (map.category) createBody[map.category] = payload.category || '';
+        if (map.active)   createBody[map.active]   = true;
+        if (map.team)     createBody[map.team]     = teamValue();
+        if (map.versionLabel)  createBody[map.versionLabel]  = payload.versionLabel || '1.0';
+        if (map.status)        createBody[map.status]        = payload.status || 'Active';
+        if (map.changeReason)  createBody[map.changeReason]  = payload.changeReason || 'Initial version';
+        if (map.documentId && payload.documentId)   createBody[map.documentId]    = payload.documentId;
+        // UKAS dates are always populated (never blank): default effective=today,
+        // review=effective + review period.
+        var createEffective = payload.effectiveDate || todayIso();
+        var createReview    = payload.reviewDueDate || addMonthsIso(createEffective, REVIEW_PERIOD_MONTHS);
+        if (map.effectiveDate) createBody[map.effectiveDate] = createEffective;
+        if (map.reviewDueDate) createBody[map.reviewDueDate] = createReview;
 
         response = await fetch(baseUrl + '/', {
             method:  'POST',
@@ -339,45 +365,36 @@ async function sfTemplateCrud(op, payload) {
         return { ok: true, id: created.id };
 
     } else if (op === 'update') {
-        // Archive the current version before overwriting (UKAS audit trail)
-        if (ukas && self.SfVersions) {
-            var currentTemplate = null;
+        // Archive the current version before overwriting (audit trail).
+        if (self.SfVersions) {
+            var current = null;
             var tNames = Object.keys(templates);
             for (var i = 0; i < tNames.length; i++) {
-                if (templates[tNames[i]].id === payload.id) {
-                    currentTemplate = templates[tNames[i]];
-                    break;
-                }
+                if (templates[tNames[i]].id === payload.id) { current = templates[tNames[i]]; break; }
             }
-            if (currentTemplate) {
+            if (current) {
                 await self.SfVersions.archiveCurrentVersion({
-                    templateId:    payload.id,
-                    versionLabel:  currentTemplate.versionLabel  || '1.0',
-                    content:       currentTemplate.content       || '',
-                    changeReason:  payload.changeReason          || '',
-                    changedByName: user.fullName                 || '',
-                    changedByEmail: user.email                   || ''
+                    templateId:   payload.id,
+                    versionLabel: current.versionLabel || '1.0',
+                    content:      current.content || '',
+                    changeReason: payload.changeReason || ''
                 });
             }
         }
 
-        var updateBody = {
-            Name:        payload.name,
-            Content__c:  payload.content,
-            Category__c: payload.category || ''
-        };
-        // Allow changing scope (team ↔ global) from the editor.
-        if (payload.teamScope) {
-            updateBody.Team__c = (payload.teamScope === 'global') ? null : (user.teamId || null);
-        }
-        if (ukas) {
-            updateBody.VersionLabel__c       = payload.versionLabel || '1.1';
-            updateBody.Status__c             = payload.status       || 'Active';
-            updateBody.ChangeReason__c       = payload.changeReason || '';
-            // "Who" is captured by Salesforce's system LastModifiedById.
-            updateBody.EffectiveDate__c      = payload.effectiveDate || null;
-            updateBody.ReviewDueDate__c      = payload.reviewDueDate || null;
-        }
+        var updateBody = { Name: payload.name };
+        if (map.content)  updateBody[map.content]  = payload.content;
+        if (map.category) updateBody[map.category] = payload.category || '';
+        if (payload.teamScope && map.team) updateBody[map.team] = teamValue();
+        if (map.versionLabel)  updateBody[map.versionLabel]  = payload.versionLabel || '1.1';
+        if (map.status)        updateBody[map.status]        = payload.status || 'Active';
+        if (map.changeReason)  updateBody[map.changeReason]  = payload.changeReason || '';
+        // A new version becomes effective when it's saved; default to today and
+        // recompute the review date so neither field is ever left blank.
+        var updateEffective = payload.effectiveDate || todayIso();
+        var updateReview    = payload.reviewDueDate || addMonthsIso(updateEffective, REVIEW_PERIOD_MONTHS);
+        if (map.effectiveDate) updateBody[map.effectiveDate] = updateEffective;
+        if (map.reviewDueDate) updateBody[map.reviewDueDate] = updateReview;
 
         response = await fetch(baseUrl + '/' + payload.id, {
             method:  'PATCH',

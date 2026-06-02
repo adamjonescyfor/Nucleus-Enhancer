@@ -1,101 +1,121 @@
 // ==================================================
 // CYFOR Nucleus Enhancer — Template Version Archive
-// Archives NucleusTemplate__c versions before each
-// update and retrieves full history for audit trail.
-// Exported as self.SfVersions for use by background.js.
+// Archives a NucleusTemplate__c version before each update and retrieves the
+// history. Field API names are DISCOVERED from the object describe (so labels
+// like "Change Reason" -> Change_Reason__c are matched even if the code would
+// have guessed ChangeReason__c). Who/when use the system CreatedBy/CreatedDate,
+// so no custom "changed by" fields are required.
+// Exported as self.SfVersions.
 // ==================================================
 
 (function () {
 
-async function getVersionHistory(templateId) {
+var VERSION_OBJ = 'NucleusTemplateVersion__c';
+var VERSION_CONCEPTS = {
+    versionLabel: ['versionlabel', 'version'],
+    content:      ['content'],
+    changeReason: ['changereason', 'reasonforchange', 'reason'],
+    archivedAt:   ['archivedat', 'archived']
+};
+
+async function ctx() {
     var stored = await chrome.storage.local.get(['sfOAuthTokens', 'sfOAuthConfig']);
-    var tokens = stored['sfOAuthTokens'] || {};
-    var config = stored['sfOAuthConfig'] || {};
+    var instanceUrl = ((stored.sfOAuthTokens || {}).instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) throw new Error('No instance URL');
+    var token = await self.SfOAuth.getValidAccessToken();
+    var apiVersion = (stored.sfOAuthConfig || {}).apiVersion || 'v62.0';
+    return { base: instanceUrl + '/services/data/' + apiVersion, token: token };
+}
 
-    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
-    if (!instanceUrl) return { ok: false, error: 'No instance URL configured.' };
+// Resolve version-object field names + the lookup to NucleusTemplate__c.
+async function resolveVersionFields(c) {
+    var d = await self.SfUtils.describeObject(c.base, c.token, VERSION_OBJ); // throws if object missing
+    var fields = d.fields || [];
+    var map = self.SfUtils.resolveFields(fields, VERSION_CONCEPTS);
+    var ref = self.SfUtils.findReferenceField(fields, 'NucleusTemplate__c');
+    map.template = ref ? ref.name : null;
+    return map;
+}
 
-    var accessToken;
-    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
-    catch (e) { return { ok: false, error: e.message }; }
+async function getVersionHistory(templateId) {
+    var c;
+    try { c = await ctx(); } catch (e) { return { ok: false, error: e.message }; }
 
-    var apiVersion = config.apiVersion || 'v62.0';
-    var soql = [
-        'SELECT Id, VersionLabel__c, Content__c, ChangeReason__c,',
-        'ChangedByName__c, ChangedByEmail__c, ArchivedAt__c',
-        'FROM NucleusTemplateVersion__c',
-        "WHERE Template__c = '" + templateId.replace(/'/g, "\\'") + "'",
-        'ORDER BY ArchivedAt__c DESC'
-    ].join(' ');
+    var map;
+    try { map = await resolveVersionFields(c); }
+    catch (e) { return { ok: true, versions: [], unavailable: true }; } // object not created yet
 
-    var url = instanceUrl + '/services/data/' + apiVersion + '/query?q=' + encodeURIComponent(soql);
+    if (!map.template) return { ok: true, versions: [], unavailable: true };
+
+    var esc = self.SfUtils.soqlEscape;
+    var sel = ['Id', 'CreatedDate', 'CreatedBy.Name', 'CreatedBy.Email'];
+    ['versionLabel', 'content', 'changeReason', 'archivedAt'].forEach(function (k) { if (map[k]) sel.push(map[k]); });
+
+    var soql = 'SELECT ' + sel.join(', ') + ' FROM ' + VERSION_OBJ
+             + " WHERE " + map.template + " = '" + esc(templateId) + "'"
+             + ' ORDER BY CreatedDate DESC';
 
     try {
-        var response = await fetch(url, {
-            headers: { 'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            var errBody = await response.json().catch(function () { return []; });
-            if (response.status === 400 && Array.isArray(errBody)) {
-                var isMissing = errBody.some(function (e) {
-                    return e.errorCode === 'INVALID_TYPE' || e.errorCode === 'INVALID_FIELD';
-                });
-                if (isMissing) return { ok: true, versions: [], unavailable: true };
-            }
-            return { ok: false, error: 'History query failed: ' + response.status };
+        var res = await fetch(c.base + '/query?q=' + encodeURIComponent(soql),
+            { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/json' } });
+        if (!res.ok) {
+            var eb = await res.json().catch(function () { return []; });
+            var missing = Array.isArray(eb) && eb.some(function (e) { return e.errorCode === 'INVALID_TYPE' || e.errorCode === 'INVALID_FIELD'; });
+            if (missing) return { ok: true, versions: [], unavailable: true };
+            return { ok: false, error: 'History query failed: ' + res.status };
         }
-
-        var data = await response.json();
-        return { ok: true, versions: data.records || [] };
+        var data = await res.json();
+        // Normalise to the keys the manager UI expects.
+        var versions = (data.records || []).map(function (r) {
+            var by = r.CreatedBy || {};
+            return {
+                VersionLabel__c:   map.versionLabel ? (r[map.versionLabel] || '') : '',
+                Content__c:        map.content ? (r[map.content] || '') : '',
+                ChangeReason__c:   map.changeReason ? (r[map.changeReason] || '') : '',
+                ArchivedAt__c:     (map.archivedAt && r[map.archivedAt]) || r.CreatedDate || '',
+                ChangedByName__c:  by.Name || '',
+                ChangedByEmail__c: by.Email || ''
+            };
+        });
+        return { ok: true, versions: versions };
     } catch (e) {
         return { ok: false, error: e.message };
     }
 }
 
+// payload: { templateId, versionLabel, content, changeReason }
 async function archiveCurrentVersion(payload) {
-    // payload: { templateId, versionLabel, content, changeReason, changedByName, changedByEmail }
-    var stored = await chrome.storage.local.get(['sfOAuthTokens', 'sfOAuthConfig']);
-    var tokens = stored['sfOAuthTokens'] || {};
-    var config = stored['sfOAuthConfig'] || {};
+    var c;
+    try { c = await ctx(); } catch (e) { console.warn('[CYFOR] archive: ' + e.message); return; }
 
-    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
-    if (!instanceUrl) { console.warn('[CYFOR] archiveCurrentVersion: no instanceUrl'); return; }
+    var map;
+    try { map = await resolveVersionFields(c); }
+    catch (e) { console.warn('[CYFOR] archive: version object unavailable'); return; } // object not created — skip silently
 
-    var accessToken;
-    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
-    catch (e) { console.warn('[CYFOR] archiveCurrentVersion: auth failed:', e.message); return; }
+    if (!map.template) { console.warn('[CYFOR] archive: no Template lookup on ' + VERSION_OBJ); return; }
 
-    var apiVersion = config.apiVersion || 'v62.0';
-    var url = instanceUrl + '/services/data/' + apiVersion + '/sobjects/NucleusTemplateVersion__c/';
+    var body = {};
+    body[map.template] = payload.templateId;
+    if (map.versionLabel) body[map.versionLabel] = payload.versionLabel || '1.0';
+    if (map.content)      body[map.content]      = payload.content || '';
+    if (map.changeReason) body[map.changeReason] = payload.changeReason || '';
+    if (map.archivedAt)   body[map.archivedAt]   = new Date().toISOString();
 
     try {
-        var response = await fetch(url, {
-            method:  'POST',
-            headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                Template__c:       payload.templateId,
-                VersionLabel__c:   payload.versionLabel  || '1.0',
-                Content__c:        payload.content        || '',
-                ChangeReason__c:   payload.changeReason   || '',
-                ChangedByName__c:  payload.changedByName  || '',
-                ChangedByEmail__c: payload.changedByEmail || '',
-                ArchivedAt__c:     new Date().toISOString()
-            })
+        var res = await fetch(c.base + '/sobjects/' + VERSION_OBJ + '/', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + c.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
-
-        if (!response.ok) {
-            var errBody = await response.json().catch(function () { return [{}]; });
-            console.warn('[CYFOR] archiveCurrentVersion failed:',
-                (errBody[0] && errBody[0].message) || response.status);
+        if (!res.ok) {
+            var eb = await res.json().catch(function () { return [{}]; });
+            console.warn('[CYFOR] archiveCurrentVersion failed:', (eb[0] && eb[0].message) || res.status);
         }
     } catch (e) {
         console.warn('[CYFOR] archiveCurrentVersion error:', e.message);
     }
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
-
-self.SfVersions = { getVersionHistory, archiveCurrentVersion };
+self.SfVersions = { getVersionHistory: getVersionHistory, archiveCurrentVersion: archiveCurrentVersion };
 
 }());

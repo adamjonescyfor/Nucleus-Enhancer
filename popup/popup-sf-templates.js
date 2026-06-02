@@ -205,22 +205,42 @@ function renderSfTemplatesStatus(state) {
             show(emailEl, !!(user && user.email));
         }
 
-        // Avatar from the OAuth profile photo, with an initials fallback.
+        // Avatar: show initials immediately, then swap in the real profile photo
+        // once the background fetches it (the Salesforce photo URL needs the
+        // OAuth token, so a plain <img src> can't load it directly).
         if (avatar) {
             var img      = document.getElementById('sf-avatar-img');
             var fallback = document.getElementById('sf-avatar-fallback');
-            var photo    = user && user.photoUrl;
-            if (img && photo) {
-                img.src = photo; img.style.display = '';
-                if (fallback) fallback.style.display = 'none';
-            } else {
-                if (img) img.style.display = 'none';
-                if (fallback) {
-                    fallback.textContent = (name ? name.trim().charAt(0) : '?').toUpperCase();
-                    fallback.style.display = '';
-                }
-            }
+            if (fallback) fallback.textContent = (name ? name.trim().charAt(0) : '?').toUpperCase();
             show(avatar, true);
+
+            function showInitials() { if (img) img.style.display = 'none'; if (fallback) fallback.style.display = ''; }
+            function showPhoto()    { if (img) img.style.display = ''; if (fallback) fallback.style.display = 'none'; }
+
+            if (img) {
+                img.onerror = showInitials;
+                img.onload  = showPhoto;
+                // If a previous render already loaded the photo, keep it shown
+                // (re-assigning the same src would not re-fire onload).
+                if (img.src && img.complete && img.naturalWidth > 0) {
+                    showPhoto();
+                } else {
+                    showInitials();
+                    try {
+                        chrome.runtime.sendMessage({ action: 'sfOAuth.getProfilePhoto' }, function (r) {
+                            if (chrome.runtime.lastError) return;
+                            if (!(r && r.ok && r.dataUrl && img)) return; // no photo → initials stay
+                            if (img.src === r.dataUrl && img.complete && img.naturalWidth > 0) {
+                                showPhoto();
+                            } else {
+                                img.src = r.dataUrl;
+                            }
+                        });
+                    } catch (e) { /* ignore — initials remain */ }
+                }
+            } else {
+                showInitials();
+            }
         }
 
         show(connectBtn, false);

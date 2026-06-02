@@ -227,7 +227,7 @@ function openNewEditor() {
     document.getElementById('mgr-change-reason').value = '';
     document.getElementById('mgr-status').value        = 'Active';
     document.getElementById('mgr-effective-date').value = today();
-    document.getElementById('mgr-review-date').value   = '';
+    document.getElementById('mgr-review-date').value   = addMonths(today(), REVIEW_PERIOD_MONTHS);
 
     var docIdEl = document.getElementById('mgr-doc-id');
     docIdEl.value       = '';
@@ -260,8 +260,11 @@ function openEditEditor(name) {
     document.getElementById('mgr-content').value       = t.content       || '';
     document.getElementById('mgr-change-reason').value = '';
     document.getElementById('mgr-status').value        = t.status        || 'Active';
-    document.getElementById('mgr-effective-date').value = t.effectiveDate || '';
-    document.getElementById('mgr-review-date').value   = t.reviewDueDate  || '';
+    // A new version becomes effective today; pre-fill so the controlled-document
+    // dates are never left blank (matches the background defaulting on save).
+    var effPrefill = t.effectiveDate || today();
+    document.getElementById('mgr-effective-date').value = effPrefill;
+    document.getElementById('mgr-review-date').value   = t.reviewDueDate || addMonths(effPrefill, REVIEW_PERIOD_MONTHS);
 
     var docIdEl = document.getElementById('mgr-doc-id');
     docIdEl.value    = t.documentId || t.id || '';
@@ -649,6 +652,15 @@ function bumpVersion(current, type) {
 function today() {
     return new Date().toISOString().slice(0, 10);
 }
+
+// Add N months to an ISO date (YYYY-MM-DD); used to suggest the review-due date.
+function addMonths(isoDate, months) {
+    var d = new Date((isoDate || today()) + 'T00:00:00Z');
+    if (isNaN(d.getTime())) d = new Date();
+    d.setUTCMonth(d.getUTCMonth() + months);
+    return d.toISOString().slice(0, 10);
+}
+var REVIEW_PERIOD_MONTHS = 12;
 
 // Set the editor's Scope dropdown and label the "team" option with the admin's
 // actual team. If the admin has no team, only Global is meaningful.
