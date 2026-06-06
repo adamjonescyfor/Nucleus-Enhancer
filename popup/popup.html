@@ -232,11 +232,8 @@
             <span>Template Files</span>
         </div>
         <div class="upload-area" id="upload-area">
-            <input type="file" id="folder-input" webkitdirectory directory multiple aria-label="Select template folder">
-            <label for="folder-input" class="upload-label">
-                Select Template Folder
-            </label>
-            <div class="upload-hint">Load your own <code>.txt</code> templates. Official Salesforce templates always take priority and can't be overridden.</div>
+            <button type="button" id="btn-open-loader" class="upload-label">📁 Load Templates from Folder…</button>
+            <div class="upload-hint">Opens a loader tab — pick a folder of <code>.txt</code> templates (one per file). Official Salesforce templates always take priority and can't be overridden.</div>
             <div id="status-msg" class="status-msg"></div>
             <button id="btn-clear" class="btn btn-danger" style="display:none" aria-label="Clear all templates">
                 Clear All Templates

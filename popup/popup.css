@@ -742,8 +742,8 @@ select.map-select:focus-visible {
     margin: 0 14px 10px;
     padding: 14px;
     background: var(--surface-soft);
-    border-radius: 6px;
-    border: 2px dashed #cfdae8;
+    border-radius: var(--radius-sm);
+    border: 2px dashed var(--border-strong);
     text-align: center;
     transition: all 0.2s;
 }
@@ -761,20 +761,21 @@ select.map-select:focus-visible {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: white;
-    border: 1px solid #cfd9e6;
-    padding: 7px 14px;
+    background: var(--brand);
+    border: 1px solid var(--brand);
+    padding: 8px 16px;
     font-size: 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    color: var(--brand);
-    font-weight: 600;
-    transition: all 0.15s;
+    color: var(--on-brand);
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(14, 154, 167, .28);
+    transition: background 0.15s;
 }
 
 .upload-label:hover {
-    background: #f0f7ff;
-    border-color: var(--brand);
+    background: var(--brand-strong);
+    border-color: var(--brand-strong);
 }
 
 .upload-hint {
@@ -1022,6 +1023,13 @@ html[data-theme="dark"] body {
 
 html[data-theme="dark"] .header {
     background: var(--brand-grad);
+}
+
+/* Native dropdown list options — explicit colours so they're legible in dark
+   mode rather than inheriting a low-contrast/greyed default. */
+select option {
+    background: var(--surface);
+    color: var(--text-primary);
 }
 
 html[data-theme="dark"] input,

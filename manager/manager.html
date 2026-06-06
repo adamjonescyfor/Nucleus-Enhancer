@@ -154,6 +154,25 @@
                     <dl class="mgr-settings-info" id="mgr-settings-info"></dl>
                     <button id="btn-settings-refresh" class="mgr-btn mgr-btn-secondary mgr-btn-sm">↻ Refresh from Salesforce</button>
                 </div>
+
+                <div class="mgr-settings-card mgr-settings-note">
+                    <h3 class="mgr-settings-title">How this works</h3>
+                    <p>Every template, version and team lives in <strong>Salesforce</strong>
+                       (<code>NucleusTemplate__c</code> / <code>NucleusTemplateVersion__c</code>).
+                       This manager is a convenience layer over the same records — everything you do here
+                       is standard Salesforce data.</p>
+                    <ul>
+                        <li><strong>Uninstall-safe:</strong> removing the extension never deletes templates or
+                            history — they stay in Salesforce.</li>
+                        <li><strong>Always current:</strong> the list is read live from Salesforce, so edits made
+                            directly in Salesforce appear here too.</li>
+                        <li><strong>Version history</strong> is captured automatically when you edit
+                            <em>through this manager</em>. A direct Salesforce edit still updates the record, but
+                            only creates a version snapshot if your admin adds a Salesforce flow for it.</li>
+                        <li><strong>Team members</strong> see their team’s active templates plus Global in the
+                            extension popup, refreshed on Sync.</li>
+                    </ul>
+                </div>
             </div>
 
             <!-- ── Editor (overlay view) ───────────────────────────────────── -->
@@ -246,6 +265,7 @@
                 <div class="mgr-editor-actions">
                     <button id="btn-editor-save" class="mgr-btn mgr-btn-primary">Save to Salesforce</button>
                     <button id="btn-editor-cancel" class="mgr-btn mgr-btn-secondary">Cancel</button>
+                    <a id="mgr-editor-sf-link" class="mgr-doclink mgr-editor-sflink" target="_blank" rel="noopener" style="display:none">↗ Open in Salesforce</a>
                     <span id="mgr-editor-status" class="mgr-status-msg"></span>
                 </div>
             </div>

@@ -257,13 +257,25 @@ function renderTemplateList() {
         var tr = document.createElement('tr');
 
         // Doc ID — the custom DocumentId__c if present (e.g. a Salesforce Auto
-        // Number), otherwise the system record Id as the stable identifier.
+        // Number), otherwise the system record Id. Rendered as a link to the live
+        // Salesforce record so admins can see the data is held in Salesforce.
         var docVal = t.documentId || t.id || '';
         var docTd = document.createElement('td');
-        docTd.textContent  = docVal || '—';
-        docTd.style.color  = docVal ? '' : 'var(--text-muted)';
-        docTd.style.fontFamily = docVal ? "'Menlo','Consolas',monospace" : '';
-        docTd.style.fontSize   = '12px';
+        docTd.className = 'mgr-cell-docid';
+        var sfUrl = sfRecordUrl(t.id);
+        if (docVal && sfUrl) {
+            var a = document.createElement('a');
+            a.className = 'mgr-doclink';
+            a.href = sfUrl;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = docVal;
+            a.title = 'Open in Salesforce — ' + docVal;
+            docTd.appendChild(a);
+        } else {
+            docTd.textContent = docVal || '—';
+            if (!docVal) docTd.style.color = 'var(--text-muted)';
+        }
         tr.appendChild(docTd);
 
         // Name
@@ -513,6 +525,9 @@ function openNewEditor() {
     docIdEl.readOnly    = true;            // assigned by Salesforce, not by hand
     docIdEl.placeholder = 'Assigned by Salesforce on save';
 
+    var newSfLink = document.getElementById('mgr-editor-sf-link');
+    if (newSfLink) newSfLink.style.display = 'none';
+
     // Default new templates to the admin's own team (or Global if none).
     ensureTeamOption(currentUser.teamId, currentUser.teamName);
     document.getElementById('mgr-scope').value = currentUser.teamId || '';
@@ -551,6 +566,13 @@ function openEditEditor(name) {
     var docIdEl = document.getElementById('mgr-doc-id');
     docIdEl.value    = t.documentId || t.id || '';
     docIdEl.readOnly = true;            // Salesforce-managed identifier
+
+    var editSfLink = document.getElementById('mgr-editor-sf-link');
+    var editSfUrl  = sfRecordUrl(t.id);
+    if (editSfLink) {
+        if (editSfUrl) { editSfLink.href = editSfUrl; editSfLink.style.display = ''; }
+        else editSfLink.style.display = 'none';
+    }
 
     // Pre-select the template's current team (empty value = Global).
     ensureTeamOption(t.teamId, t.teamName);
@@ -1083,6 +1105,13 @@ function addMonths(isoDate, months) {
     return d.toISOString().slice(0, 10);
 }
 var REVIEW_PERIOD_MONTHS = 12;
+
+// Link to the live Salesforce record for a template ('' if instanceUrl unknown).
+function sfRecordUrl(id) {
+    var base = (currentUser.instanceUrl || '').replace(/\/$/, '');
+    if (!base || !id) return '';
+    return base + '/lightning/r/NucleusTemplate__c/' + id + '/view';
+}
 
 function formatDate(isoDate) {
     if (!isoDate) return '';
