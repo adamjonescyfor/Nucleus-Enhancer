@@ -729,3 +729,134 @@ html[data-theme="dark"] .mgr-btn-primary:hover:not(:disabled) {
 html[data-theme="dark"] .mgr-setup-table {
     background: rgba(255, 255, 255, .04);
 }
+
+/* ── Extra status badges (lifecycle) ──────────────────────────────────────────── */
+
+.mgr-status-badge--under-review {
+    background: #e0f2fe;
+    color: #075985;
+    border-color: #7dd3fc;
+}
+
+.mgr-status-badge--superseded,
+.mgr-status-badge--deprecated,
+.mgr-status-badge--retired {
+    background: var(--surface-muted);
+    color: var(--text-muted);
+    border-color: var(--border);
+}
+
+/* Highlight the admin's own team in the scope column. */
+.mgr-scope-badge--own {
+    box-shadow: 0 0 0 1px var(--brand, #0070d2) inset;
+    font-weight: 700;
+}
+
+/* ── Review-due dashboard (4a) ────────────────────────────────────────────────── */
+
+.mgr-review-dash {
+    margin: 0 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-soft, var(--surface-muted));
+    padding: 4px 12px;
+}
+
+.mgr-review-dash-summary {
+    cursor: pointer;
+    padding: 8px 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: revert;
+}
+
+.mgr-rev-overdue { color: var(--danger-text); }
+.mgr-rev-warn    { color: #d97706; }
+
+.mgr-review-dash-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 0 10px;
+}
+
+.mgr-review-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 12px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.mgr-review-item:hover { background: var(--surface-muted); }
+.mgr-review-item--overdue { border-left-color: var(--danger-text); }
+.mgr-review-item--warn    { border-left-color: #d97706; }
+
+.mgr-review-item-name { font-weight: 600; }
+.mgr-review-item-team { color: var(--text-muted); }
+.mgr-review-item-due  { color: var(--text-muted); white-space: nowrap; }
+
+/* ── History search + export (4b) ─────────────────────────────────────────────── */
+
+.mgr-history-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.mgr-history-search { flex: 1 1 220px; min-width: 180px; }
+
+.mgr-history-daterange {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.mgr-history-daterange input { width: auto; }
+
+.mgr-history-noresult {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 14px;
+    font-size: 13px;
+}
+
+.mgr-history-superseded {
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* ── Compare any two versions (4c) ────────────────────────────────────────────── */
+
+.mgr-compare-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-soft, var(--surface-muted));
+}
+
+.mgr-compare-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.mgr-compare-arrow { color: var(--text-muted); }
+.mgr-compare-bar select { flex: 0 1 240px; }

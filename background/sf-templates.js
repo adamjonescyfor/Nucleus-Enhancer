@@ -19,15 +19,17 @@ var CACHE_TTL_MS  = 20 * 60 * 1000; // 20 minutes
 
 // concept -> normalised name candidates (see SfUtils.normalizeFieldName).
 var TEMPLATE_CONCEPTS = {
-    content:       ['content'],
-    category:      ['category'],
-    active:        ['isactive', 'active'],
-    versionLabel:  ['versionlabel', 'version'],
-    status:        ['status'],
-    changeReason:  ['changereason', 'reasonforchange', 'reason'],
-    effectiveDate: ['effectivedate'],
-    reviewDueDate: ['reviewduedate', 'reviewdate'],
-    documentId:    ['documentid', 'docid']
+    content:            ['content'],
+    category:           ['category'],
+    active:             ['isactive', 'active'],
+    versionLabel:       ['versionlabel', 'version'],
+    status:             ['status'],
+    changeReason:       ['changereason', 'reasonforchange', 'reason'],
+    effectiveDate:      ['effectivedate'],
+    reviewDueDate:      ['reviewduedate', 'reviewdate'],
+    documentId:         ['documentid', 'docid'],
+    lastChangedByName:  ['lastchangedbyname', 'lastchangedby', 'changedbyname', 'changedby'],
+    lastChangedByEmail: ['lastchangedbyemail', 'changedbyemail']
 };
 
 // Describe NucleusTemplate__c once and map concepts -> real field API names.
@@ -37,7 +39,8 @@ async function resolveTemplateFields(base, token, obj) {
         obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
         team: 'Team__c', teamRel: 'Team__r',
         versionLabel: null, status: null, changeReason: null,
-        effectiveDate: null, reviewDueDate: null, documentId: null
+        effectiveDate: null, reviewDueDate: null, documentId: null,
+        lastChangedByName: null, lastChangedByEmail: null
     };
     try {
         var d = await self.SfUtils.describeObject(base, token, obj);
@@ -57,7 +60,8 @@ function buildQuery(map, teamCode) {
     if (map.category) sel.push(map.category);
     if (map.teamRel) sel.push(map.teamRel + '.TeamCode__c');
     sel.push('LastModifiedBy.Name');
-    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId',
+     'lastChangedByName', 'lastChangedByEmail']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
 
     var teamField = map.team || 'Team__c';
@@ -150,11 +154,12 @@ async function fetchRemoteTemplates(forceRefresh) {
         if (!name || !body) continue;
 
         var entry = {
-            id:                r.Id || '',
-            content:           body,
-            category:          (map.category && r[map.category]) || '',
-            teamCode:          (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
-            lastChangedByName: (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
+            id:                 r.Id || '',
+            content:            body,
+            category:           (map.category && r[map.category]) || '',
+            teamCode:           (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
+            lastChangedByName:  (map.lastChangedByName && r[map.lastChangedByName]) || (r.LastModifiedBy && r.LastModifiedBy.Name) || '',
+            lastChangedByEmail: (map.lastChangedByEmail && r[map.lastChangedByEmail]) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
         if (map.status)        entry.status        = r[map.status]        || 'Active';
@@ -174,6 +179,107 @@ async function fetchRemoteTemplates(forceRefresh) {
     return { ok: true, fromCache: false, templates: sfRemoteTemplates, syncedAt: syncedAt, fields: map };
 }
 
+// ── Admin "manage all teams" view ─────────────────────────────────────────────
+// Unlike the team-scoped sync, this returns EVERY template (all teams + global)
+// in EVERY status (incl. Draft/Superseded/Retired) so a template admin can manage
+// the whole estate from the manager. Admin-gated.
+
+function buildAdminQuery(map) {
+    var sel = ['Id', 'Name'];
+    if (map.content)  sel.push(map.content);
+    if (map.category) sel.push(map.category);
+    if (map.active)   sel.push(map.active);
+    if (map.team)     sel.push(map.team);
+    if (map.teamRel)  { sel.push(map.teamRel + '.Name'); sel.push(map.teamRel + '.TeamCode__c'); }
+    sel.push('LastModifiedBy.Name');
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId',
+     'lastChangedByName', 'lastChangedByEmail']
+        .forEach(function (k) { if (map[k]) sel.push(map[k]); });
+    return 'SELECT ' + sel.join(', ') + ' FROM ' + map.obj + ' ORDER BY Name ASC';
+}
+
+async function fetchAllTemplatesForAdmin() {
+    var accessToken;
+    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
+    catch (e) { return { ok: false, error: e.message }; }
+
+    if (self.SfUtils && self.SfUtils.clearDescribeCache) self.SfUtils.clearDescribeCache();
+
+    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser']);
+    var config  = results[CONFIG_KEY]    || {};
+    var tokens  = results[TOKENS_KEY]    || {};
+    var sfUser  = results['sfOAuthUser'] || {};
+
+    if (!sfUser.isTemplateAdmin) return { ok: false, error: 'PERMISSION_DENIED', user: sfUser };
+
+    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) return { ok: false, error: 'Not authenticated — connect via Salesforce OAuth first.' };
+
+    var apiVersion = config.apiVersion || 'v62.0';
+    var base = instanceUrl + '/services/data/' + apiVersion;
+    var obj  = config.templateObject || 'NucleusTemplate__c';
+
+    var map   = await resolveTemplateFields(base, accessToken, obj);
+
+    // If Status is a picklist, return its real values so the manager dropdown
+    // can only offer values that exist (avoids INVALID_PICKLIST on save). Empty
+    // => the field is free text and the manager uses its default lifecycle list.
+    var statusOptions = [];
+    try {
+        var d = await self.SfUtils.describeObject(base, accessToken, obj);
+        var sf = (d.fields || []).filter(function (f) { return f.name === map.status; })[0];
+        if (sf && sf.type === 'picklist' && Array.isArray(sf.picklistValues)) {
+            statusOptions = sf.picklistValues
+                .filter(function (p) { return p.active !== false; })
+                .map(function (p) { return p.value; });
+        }
+    } catch (e) { /* leave empty */ }
+
+    var query = buildAdminQuery(map);
+    var url   = base + '/query?q=' + encodeURIComponent(query);
+    var response = await doFetch(url, accessToken);
+
+    if (response.status === 401) {
+        try { accessToken = await self.SfOAuth.refreshAccessToken(); }
+        catch (e) { return { ok: false, error: 'Authentication expired. Please reconnect in the extension popup.' }; }
+        response = await doFetch(url, accessToken);
+    }
+    if (!response.ok) {
+        var errBody = await response.json().catch(function () { return []; });
+        var emsg = Array.isArray(errBody) ? (errBody[0] && errBody[0].message ? errBody[0].message : response.status) : response.status;
+        return { ok: false, error: 'Salesforce query failed: ' + emsg };
+    }
+
+    var data = await response.json();
+    var out = {};
+    var records = data.records || [];
+    for (var i = 0; i < records.length; i++) {
+        var r = records[i];
+        var name = r.Name;
+        if (!name) continue;
+        var teamRel = map.teamRel ? r[map.teamRel] : null;
+        var entry = {
+            id:                 r.Id || '',
+            content:            (map.content && r[map.content]) || '',
+            category:           (map.category && r[map.category]) || '',
+            isActive:           map.active ? (r[map.active] === true) : true,
+            teamId:             (map.team && r[map.team]) || null,
+            teamName:           (teamRel && teamRel.Name) || null,
+            teamCode:           (teamRel && teamRel.TeamCode__c) || null,
+            lastChangedByName:  (map.lastChangedByName && r[map.lastChangedByName]) || (r.LastModifiedBy && r.LastModifiedBy.Name) || '',
+            lastChangedByEmail: (map.lastChangedByEmail && r[map.lastChangedByEmail]) || ''
+        };
+        if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
+        if (map.status)        entry.status        = r[map.status]        || (entry.isActive ? 'Active' : 'Draft');
+        if (map.changeReason)  entry.changeReason  = r[map.changeReason]  || '';
+        if (map.effectiveDate) entry.effectiveDate = r[map.effectiveDate] || null;
+        if (map.reviewDueDate) entry.reviewDueDate = r[map.reviewDueDate] || null;
+        if (map.documentId)    entry.documentId    = r[map.documentId]    || '';
+        out[name] = entry;
+    }
+    return { ok: true, templates: out, fields: map, user: sfUser, statusOptions: statusOptions };
+}
+
 function doFetch(url, accessToken) {
     return fetch(url, {
         headers: { 'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json' }
@@ -184,6 +290,7 @@ function doFetch(url, accessToken) {
 
 self.SfTemplates = {
     fetchRemoteTemplates: fetchRemoteTemplates,
+    fetchAllTemplatesForAdmin: fetchAllTemplatesForAdmin,
     resolveTemplateFields: resolveTemplateFields
 };
 

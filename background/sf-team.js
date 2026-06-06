@@ -63,6 +63,33 @@ function nullTeam() {
     return { teamCode: null, teamName: null, teamId: null, isTemplateAdmin: false };
 }
 
-self.SfTeam = { fetchUserTeamInfo: fetchUserTeamInfo };
+// All active teams — used by the manager's "assign to any team" picker (admins).
+// Returns [] on any failure (the picker just falls back to Global only).
+async function fetchAllTeams(instanceUrl, accessToken) {
+    var cfgResult  = await chrome.storage.local.get('sfOAuthConfig');
+    var apiVersion = ((cfgResult.sfOAuthConfig) || {}).apiVersion || 'v62.0';
+    var soql = 'SELECT Id, Name, TeamCode__c FROM NucleusTeam__c WHERE IsActive__c = true ORDER BY Name ASC';
+    var url  = instanceUrl.replace(/\/$/, '') + '/services/data/' + apiVersion
+             + '/query?q=' + encodeURIComponent(soql);
+
+    var response;
+    try {
+        response = await fetch(url, {
+            headers: { 'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json' }
+        });
+    } catch (e) {
+        console.warn('[CYFOR] fetchAllTeams network error:', e.message);
+        return [];
+    }
+    if (!response.ok) { console.warn('[CYFOR] fetchAllTeams HTTP ' + response.status); return []; }
+
+    var data;
+    try { data = await response.json(); } catch (e) { return []; }
+    return ((data && data.records) || []).map(function (r) {
+        return { id: r.Id, name: r.Name, teamCode: r.TeamCode__c || null };
+    });
+}
+
+self.SfTeam = { fetchUserTeamInfo: fetchUserTeamInfo, fetchAllTeams: fetchAllTeams };
 
 }());

@@ -166,6 +166,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // Admin "manage all teams" view — live query of EVERY template (all teams +
+    // global, all statuses). Used by the manager (not the popup sync).
+    if (message.action === 'sfTemplates.listAll') {
+        if (!self.SfTemplates || !self.SfTemplates.fetchAllTemplatesForAdmin) {
+            sendResponse({ ok: false, error: 'Templates module not loaded' }); return true;
+        }
+        self.SfTemplates.fetchAllTemplatesForAdmin()
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // List all active teams — for the manager's "assign to any team" picker.
+    if (message.action === 'sfTeams.list') {
+        (async function () {
+            try {
+                var stored = await chrome.storage.local.get('sfOAuthTokens');
+                var instanceUrl = ((stored.sfOAuthTokens || {}).instanceUrl || '').replace(/\/$/, '');
+                if (!instanceUrl || !self.SfTeam || !self.SfTeam.fetchAllTeams) {
+                    sendResponse({ ok: false, teams: [] }); return;
+                }
+                var token = await self.SfOAuth.getValidAccessToken();
+                var teams = await self.SfTeam.fetchAllTeams(instanceUrl, token);
+                sendResponse({ ok: true, teams: teams });
+            } catch (e) { sendResponse({ ok: false, teams: [], error: e.message }); }
+        })();
+        return true;
+    }
+
     // Fetch version history for a single template
     if (message.action === 'sfTemplates.versions.get') {
         if (!self.SfVersions) { sendResponse({ ok: false, error: 'Versions module not loaded' }); return true; }
@@ -330,7 +359,16 @@ async function sfTemplateCrud(op, payload) {
     // Discover the real field API names (same resolution the sync uses), so we
     // write to the fields that actually exist regardless of how they're named.
     var map = await self.SfTemplates.resolveTemplateFields(base, accessToken, obj);
-    var teamValue = function () { return (payload.teamScope === 'global') ? null : (user.teamId || null); };
+
+    // Team assignment: admins can target any team by Id ('' / null = Global).
+    // Falls back to the legacy teamScope / own-team behaviour if no teamId given.
+    var resolveTeamId = function () {
+        if (payload.teamId !== undefined && payload.teamId !== null) return payload.teamId || null;
+        if (payload.teamScope === 'global') return null;
+        return user.teamId || null;
+    };
+    // Only "Active" status publishes to analysts (others stay hidden from sync).
+    var isActiveForStatus = function () { return (payload.status || 'Active') === 'Active'; };
 
     var response, errBody;
 
@@ -338,11 +376,13 @@ async function sfTemplateCrud(op, payload) {
         var createBody = { Name: payload.name };
         if (map.content)  createBody[map.content]  = payload.content;
         if (map.category) createBody[map.category] = payload.category || '';
-        if (map.active)   createBody[map.active]   = true;
-        if (map.team)     createBody[map.team]     = teamValue();
+        if (map.active)   createBody[map.active]   = isActiveForStatus();
+        if (map.team)     createBody[map.team]     = resolveTeamId();
         if (map.versionLabel)  createBody[map.versionLabel]  = payload.versionLabel || '1.0';
         if (map.status)        createBody[map.status]        = payload.status || 'Active';
         if (map.changeReason)  createBody[map.changeReason]  = payload.changeReason || 'Initial version';
+        if (map.lastChangedByName)  createBody[map.lastChangedByName]  = user.fullName || '';
+        if (map.lastChangedByEmail) createBody[map.lastChangedByEmail] = user.email || '';
         if (map.documentId && payload.documentId)   createBody[map.documentId]    = payload.documentId;
         // UKAS dates are always populated (never blank): default effective=today,
         // review=effective + review period.
@@ -385,10 +425,13 @@ async function sfTemplateCrud(op, payload) {
         var updateBody = { Name: payload.name };
         if (map.content)  updateBody[map.content]  = payload.content;
         if (map.category) updateBody[map.category] = payload.category || '';
-        if (payload.teamScope && map.team) updateBody[map.team] = teamValue();
+        if (map.active)   updateBody[map.active]   = isActiveForStatus();
+        if (map.team)     updateBody[map.team]     = resolveTeamId();
         if (map.versionLabel)  updateBody[map.versionLabel]  = payload.versionLabel || '1.1';
         if (map.status)        updateBody[map.status]        = payload.status || 'Active';
         if (map.changeReason)  updateBody[map.changeReason]  = payload.changeReason || '';
+        if (map.lastChangedByName)  updateBody[map.lastChangedByName]  = user.fullName || '';
+        if (map.lastChangedByEmail) updateBody[map.lastChangedByEmail] = user.email || '';
         // A new version becomes effective when it's saved; default to today and
         // recompute the review date so neither field is ever left blank.
         var updateEffective = payload.effectiveDate || todayIso();

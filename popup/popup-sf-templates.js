@@ -205,41 +205,38 @@ function renderSfTemplatesStatus(state) {
             show(emailEl, !!(user && user.email));
         }
 
-        // Avatar: show initials immediately, then swap in the real profile photo
-        // once the background fetches it (the Salesforce photo URL needs the
-        // OAuth token, so a plain <img src> can't load it directly).
+        // Avatar. The initials are an UN-HIDEABLE base layer; the photo (an
+        // absolutely-positioned <img> over the top) is fetched by the background
+        // with the Salesforce session cookie and overlays the initials only once
+        // it genuinely decodes. So: a real photo covers the initials; a missing,
+        // transparent, or failed photo leaves the initials showing — the circle
+        // is never empty. (A plain <img src> from the extension page can't send
+        // Salesforce cookies, which is why the background fetch is the source.)
         if (avatar) {
             var img      = document.getElementById('sf-avatar-img');
             var fallback = document.getElementById('sf-avatar-fallback');
-            if (fallback) fallback.textContent = (name ? name.trim().charAt(0) : '?').toUpperCase();
+            if (fallback) {
+                fallback.textContent   = (name ? name.trim().charAt(0) : '?').toUpperCase();
+                fallback.style.display = '';   // always visible underneath
+            }
             show(avatar, true);
 
-            function showInitials() { if (img) img.style.display = 'none'; if (fallback) fallback.style.display = ''; }
-            function showPhoto()    { if (img) img.style.display = ''; if (fallback) fallback.style.display = 'none'; }
-
             if (img) {
-                img.onerror = showInitials;
-                img.onload  = showPhoto;
-                // If a previous render already loaded the photo, keep it shown
-                // (re-assigning the same src would not re-fire onload).
+                // NB: .auth-avatar-img is display:none in CSS, so the photo must be
+                // shown with an explicit 'block' (not '', which reverts to none).
+                img.onload  = function () { if (img.naturalWidth > 0) img.style.display = 'block'; };
+                img.onerror = function () { img.style.display = 'none'; };
+
                 if (img.src && img.complete && img.naturalWidth > 0) {
-                    showPhoto();
+                    img.style.display = 'block';   // already-loaded photo from a prior render
                 } else {
-                    showInitials();
-                    try {
-                        chrome.runtime.sendMessage({ action: 'sfOAuth.getProfilePhoto' }, function (r) {
-                            if (chrome.runtime.lastError) return;
-                            if (!(r && r.ok && r.dataUrl && img)) return; // no photo → initials stay
-                            if (img.src === r.dataUrl && img.complete && img.naturalWidth > 0) {
-                                showPhoto();
-                            } else {
-                                img.src = r.dataUrl;
-                            }
-                        });
-                    } catch (e) { /* ignore — initials remain */ }
+                    img.style.display = 'none';
+                    chrome.runtime.sendMessage({ action: 'sfOAuth.getProfilePhoto' }, function (r) {
+                        if (chrome.runtime.lastError || !(r && r.ok && r.dataUrl && img)) return; // keep initials
+                        if (img.src !== r.dataUrl) img.src = r.dataUrl;
+                        else if (img.complete && img.naturalWidth > 0) img.style.display = 'block';
+                    });
                 }
-            } else {
-                showInitials();
             }
         }
 

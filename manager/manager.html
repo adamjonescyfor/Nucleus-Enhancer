@@ -40,6 +40,13 @@
             <div class="mgr-list-header">
                 <p class="mgr-list-desc" id="mgr-list-desc"></p>
             </div>
+
+            <!-- Review-due dashboard (4a) -->
+            <details id="mgr-review-dash" class="mgr-review-dash" style="display:none">
+                <summary id="mgr-review-dash-summary" class="mgr-review-dash-summary">Review status</summary>
+                <div id="mgr-review-dash-body" class="mgr-review-dash-body"></div>
+            </details>
+
             <div id="mgr-empty" class="mgr-state-msg" style="display:none">
                 No templates found for your team yet. Click <strong>+ New Template</strong> to create one.
             </div>
@@ -103,18 +110,19 @@
                     <select id="mgr-status" class="mgr-input">
                         <option value="Draft">Draft</option>
                         <option value="Active" selected>Active</option>
-                        <option value="Deprecated">Deprecated</option>
+                        <option value="Under Review">Under Review</option>
+                        <option value="Superseded">Superseded</option>
+                        <option value="Retired">Retired</option>
                     </select>
                 </div>
             </div>
 
-            <!-- Row 1b: Scope (team vs global) -->
+            <!-- Row 1b: Team / scope (assign to any team, or Global) -->
             <div class="mgr-field-row">
                 <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-scope">Scope <small>(who sees this template)</small></label>
+                    <label class="mgr-label" for="mgr-scope">Team <small>(who sees this template)</small></label>
                     <select id="mgr-scope" class="mgr-input">
-                        <option value="team">My team</option>
-                        <option value="global">Global (all teams)</option>
+                        <option value="">Global (all teams)</option>
                     </select>
                 </div>
             </div>
@@ -200,6 +208,24 @@
 
             <div id="mgr-history-empty" class="mgr-state-msg" style="display:none">
                 No archived versions found. History is recorded automatically each time a template is updated.
+            </div>
+
+            <!-- History search + export (4b) -->
+            <div id="mgr-history-controls" class="mgr-history-controls" style="display:none">
+                <input type="search" id="mgr-history-search" class="mgr-input mgr-history-search"
+                    placeholder="Search version, reason or person…" autocomplete="off">
+                <label class="mgr-history-daterange">From <input type="date" id="mgr-history-start" class="mgr-input"></label>
+                <label class="mgr-history-daterange">To <input type="date" id="mgr-history-end" class="mgr-input"></label>
+                <button id="btn-history-export" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Export CSV</button>
+            </div>
+
+            <!-- Compare any two versions (4c) -->
+            <div id="mgr-compare-bar" class="mgr-compare-bar" style="display:none">
+                <span class="mgr-compare-label">Compare</span>
+                <select id="mgr-compare-from" class="mgr-input"></select>
+                <span class="mgr-compare-arrow">→</span>
+                <select id="mgr-compare-to" class="mgr-input"></select>
+                <button id="btn-compare-run" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Compare</button>
             </div>
 
             <div id="mgr-history-table-wrap" style="display:none">

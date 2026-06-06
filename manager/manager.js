@@ -7,8 +7,12 @@
 var currentEditId      = null;   // null = creating new, string = updating existing
 var currentEditVersion = null;   // version label of the template being edited
 var currentHistoryName = null;   // template name whose history is being viewed
-var allTemplates       = {};     // name → { id, content, category, teamCode, ...fields }
+var allTemplates       = {};     // name → { id, content, category, teamId, teamName, ...fields }
 var currentUser        = {};     // sfOAuthUser
+var allTeams           = [];     // [{ id, name, teamCode }] — for the "assign to any team" picker
+var statusOptions      = [];     // status picklist values (from describe) or default lifecycle
+var currentVersions    = [];     // archived versions for the template open in History
+var currentHistoryTemplate = null; // the live template whose History is open
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -30,6 +34,16 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('mgr-diff-panel').style.display = 'none';
     });
 
+    // History search / date filter (4b)
+    ['mgr-history-search', 'mgr-history-start', 'mgr-history-end'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', applyHistoryFilter);
+    });
+    document.getElementById('btn-history-export').addEventListener('click', exportHistoryCsv);
+
+    // Compare any two versions (4c)
+    document.getElementById('btn-compare-run').addEventListener('click', runCompare);
+
     loadTemplates();
 });
 
@@ -38,14 +52,28 @@ document.addEventListener('DOMContentLoaded', function () {
 function loadTemplates() {
     showState('loading');
 
-    chrome.runtime.sendMessage({ action: 'sfTemplates.list' }, function (response) {
-        if (chrome.runtime.lastError || !response || !response.ok) {
+    // Admin "manage all teams" view — every template (all teams + global, all
+    // statuses), live from Salesforce.
+    chrome.runtime.sendMessage({ action: 'sfTemplates.listAll' }, function (response) {
+        if (chrome.runtime.lastError || !response) {
             showState('not-connected');
             return;
         }
+        if (!response.ok) {
+            if (response.error === 'PERMISSION_DENIED') {
+                currentUser = response.user || {};
+                showState('not-admin');
+            } else {
+                showState('not-connected');
+            }
+            return;
+        }
 
-        currentUser  = response.user      || {};
-        allTemplates = response.templates || {};
+        currentUser   = response.user      || {};
+        allTemplates  = response.templates || {};
+        statusOptions = (response.statusOptions && response.statusOptions.length)
+            ? response.statusOptions
+            : ['Draft', 'Active', 'Under Review', 'Superseded', 'Retired'];
 
         if (!currentUser.isTemplateAdmin) {
             showState('not-admin');
@@ -53,23 +81,98 @@ function loadTemplates() {
         }
 
         var titleEl = document.getElementById('mgr-title');
-        if (titleEl && currentUser.teamName) {
-            titleEl.textContent = 'CYFOR Template Manager — ' + currentUser.teamName;
+        if (titleEl) {
+            titleEl.textContent = currentUser.teamName
+                ? 'CYFOR Template Manager — ' + currentUser.teamName + ' (admin)'
+                : 'CYFOR Template Manager';
         }
 
         document.getElementById('btn-new-template').disabled = false;
 
         var descEl = document.getElementById('mgr-list-desc');
         if (descEl) {
-            var teamLabel = currentUser.teamName || 'your team';
-            descEl.textContent = 'Showing templates for ' + teamLabel +
-                ' and shared global templates. You can edit and delete your team\'s templates.' +
-                ' Global templates are read-only.';
+            descEl.textContent = 'Managing all teams’ templates and shared global templates. '
+                + 'As an admin you can create, edit, delete and re-assign any template to any team or Global.';
         }
 
+        populateStatusOptions();
         renderTemplateList();
+        renderReviewDashboard();
         showState('list');
+
+        loadTeams(); // non-blocking — populates the "assign to any team" picker
     });
+}
+
+// Active teams for the editor's team picker (admins can assign to any team).
+function loadTeams() {
+    chrome.runtime.sendMessage({ action: 'sfTeams.list' }, function (r) {
+        allTeams = (!chrome.runtime.lastError && r && r.ok && r.teams) ? r.teams : [];
+        populateScopeOptions();
+    });
+}
+
+// Rebuild the editor Status dropdown from the real picklist values (or defaults).
+function populateStatusOptions() {
+    var sel = document.getElementById('mgr-status');
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML = '';
+    statusOptions.forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        sel.appendChild(o);
+    });
+    if (statusOptions.indexOf(current) >= 0) sel.value = current;
+    else if (statusOptions.indexOf('Active') >= 0) sel.value = 'Active';
+}
+
+// Make sure a template's existing status is selectable even if it's not in the
+// configured option list (e.g. a legacy value) — so editing never silently
+// changes it.
+function ensureStatusOption(status) {
+    if (!status) return;
+    var sel = document.getElementById('mgr-status');
+    if (!sel) return;
+    var exists = Array.prototype.some.call(sel.options, function (o) { return o.value === status; });
+    if (!exists) {
+        var o = document.createElement('option');
+        o.value = status; o.textContent = status;
+        sel.appendChild(o);
+    }
+}
+
+// Rebuild the editor Team dropdown: Global + every active team.
+function populateScopeOptions() {
+    var sel = document.getElementById('mgr-scope');
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML = '';
+    var g = document.createElement('option');
+    g.value = ''; g.textContent = 'Global (all teams)';
+    sel.appendChild(g);
+    allTeams.forEach(function (t) {
+        var o = document.createElement('option');
+        o.value = t.id;
+        o.textContent = t.name + (t.teamCode ? ' (' + t.teamCode + ')' : '');
+        sel.appendChild(o);
+    });
+    if (current) sel.value = current; // restore selection if still valid
+}
+
+// Guarantee a team is selectable even if the teams list hasn't loaded yet (race)
+// or the template points at a team not in the active list — so the assignment is
+// never silently lost to Global on save.
+function ensureTeamOption(teamId, teamName) {
+    if (!teamId) return;
+    var sel = document.getElementById('mgr-scope');
+    if (!sel) return;
+    var exists = Array.prototype.some.call(sel.options, function (o) { return o.value === teamId; });
+    if (!exists) {
+        var o = document.createElement('option');
+        o.value = teamId; o.textContent = (teamName || 'Team') + ' (current)';
+        sel.appendChild(o);
+    }
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -130,7 +233,7 @@ function renderTemplateList() {
         // Status
         var statTd    = document.createElement('td');
         var statBadge = document.createElement('span');
-        var statusVal = (t.status || 'Active').toLowerCase();
+        var statusVal = (t.status || 'Active').toLowerCase().replace(/\s+/g, '-');
         statBadge.className   = 'mgr-status-badge mgr-status-badge--' + statusVal;
         statBadge.textContent = t.status || 'Active';
         statTd.appendChild(statBadge);
@@ -141,11 +244,12 @@ function renderTemplateList() {
         catTd.textContent = t.category || '—';
         tr.appendChild(catTd);
 
-        // Scope
+        // Scope — show the actual team name (or Global); highlight the admin's own.
         var scopeTd = document.createElement('td');
         var badge   = document.createElement('span');
-        badge.className   = isMyTeam ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
-        badge.textContent = isMyTeam ? (currentUser.teamName || 'Team') : 'Global';
+        badge.className   = t.teamId ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
+        if (isMyTeam) badge.className += ' mgr-scope-badge--own';
+        badge.textContent = t.teamName || 'Global';
         scopeTd.appendChild(badge);
         tr.appendChild(scopeTd);
 
@@ -176,10 +280,11 @@ function renderTemplateList() {
         var actionsWrap = document.createElement('div');
         actionsWrap.className = 'mgr-col-actions-cell';
 
+        // Admins can edit/delete ANY team's + global templates (the whole manager
+        // is already admin-gated).
         var editBtn = document.createElement('button');
         editBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
         editBtn.textContent = 'Edit';
-        editBtn.disabled    = !isMyTeam;
         editBtn.setAttribute('aria-label', 'Edit ' + name);
 
         var histBtn = document.createElement('button');
@@ -190,7 +295,6 @@ function renderTemplateList() {
         var delBtn = document.createElement('button');
         delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
         delBtn.textContent = 'Delete';
-        delBtn.disabled    = !isMyTeam;
         delBtn.setAttribute('aria-label', 'Delete ' + name);
 
         actionsWrap.appendChild(editBtn);
@@ -199,18 +303,69 @@ function renderTemplateList() {
         actionsTd.appendChild(actionsWrap);
         tr.appendChild(actionsTd);
 
-        if (isMyTeam) {
-            (function (n) {
-                editBtn.addEventListener('click', function () { openEditEditor(n); });
-                delBtn.addEventListener('click',  function () { confirmDelete(n); });
-            }(name));
-        }
-
         (function (n) {
+            editBtn.addEventListener('click', function () { openEditEditor(n); });
+            delBtn.addEventListener('click',  function () { confirmDelete(n); });
             histBtn.addEventListener('click', function () { openHistory(n); });
         }(name));
 
         tbody.appendChild(tr);
+    });
+}
+
+// ── Review-due dashboard (4a) ─────────────────────────────────────────────────
+// Surfaces templates overdue / due-soon for review across every team, so nothing
+// lapses. Hidden when there's nothing to flag. Superseded/Retired are excluded.
+function renderReviewDashboard() {
+    var dash    = document.getElementById('mgr-review-dash');
+    var summary = document.getElementById('mgr-review-dash-summary');
+    var body    = document.getElementById('mgr-review-dash-body');
+    if (!dash || !summary || !body) return;
+
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var items = [];
+    Object.keys(allTemplates).forEach(function (name) {
+        var t = allTemplates[name];
+        if (!t.reviewDueDate) return;
+        var status = (t.status || '').toLowerCase();
+        if (status === 'superseded' || status === 'retired') return;
+        var due = new Date(t.reviewDueDate + 'T00:00:00');
+        if (isNaN(due.getTime())) return;
+        due.setHours(0, 0, 0, 0);
+        items.push({ name: name, team: t.teamName || 'Global', due: t.reviewDueDate,
+                     days: Math.round((due - today) / 86400000) });
+    });
+    items.sort(function (a, b) { return a.days - b.days; });
+
+    var overdue = items.filter(function (i) { return i.days < 0; });
+    var due30   = items.filter(function (i) { return i.days >= 0 && i.days <= 30; });
+    var due60   = items.filter(function (i) { return i.days > 30 && i.days <= 60; });
+
+    var flagged = overdue.concat(due30, due60);
+    if (!flagged.length) { dash.style.display = 'none'; return; }
+    dash.style.display = '';
+
+    summary.innerHTML = 'Review status — '
+        + '<strong class="mgr-rev-overdue">' + overdue.length + ' overdue</strong>, '
+        + '<strong class="mgr-rev-warn">' + due30.length + ' due ≤30d</strong>, '
+        + due60.length + ' due ≤60d';
+
+    body.innerHTML = '';
+    flagged.forEach(function (i) {
+        var row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'mgr-review-item ' +
+            (i.days < 0 ? 'mgr-review-item--overdue' : i.days <= 30 ? 'mgr-review-item--warn' : '');
+        var when = i.days < 0 ? (Math.abs(i.days) + 'd overdue') : ('in ' + i.days + 'd');
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'mgr-review-item-name'; nameSpan.textContent = i.name;
+        var teamSpan = document.createElement('span');
+        teamSpan.className = 'mgr-review-item-team'; teamSpan.textContent = i.team;
+        var dueSpan = document.createElement('span');
+        dueSpan.className = 'mgr-review-item-due'; dueSpan.textContent = formatDate(i.due) + ' · ' + when;
+        row.appendChild(nameSpan); row.appendChild(teamSpan); row.appendChild(dueSpan);
+        row.addEventListener('click', function () { openEditEditor(i.name); });
+        body.appendChild(row);
     });
 }
 
@@ -234,7 +389,9 @@ function openNewEditor() {
     docIdEl.readOnly    = true;            // assigned by Salesforce, not by hand
     docIdEl.placeholder = 'Assigned by Salesforce on save';
 
-    setScopeSelect('team');
+    // Default new templates to the admin's own team (or Global if none).
+    ensureTeamOption(currentUser.teamId, currentUser.teamName);
+    document.getElementById('mgr-scope').value = currentUser.teamId || '';
 
     document.getElementById('mgr-version-display').textContent = 'v1.0';
     document.getElementById('mgr-version-bump').style.display  = 'none';
@@ -259,6 +416,7 @@ function openEditEditor(name) {
     document.getElementById('mgr-category').value      = t.category      || '';
     document.getElementById('mgr-content').value       = t.content       || '';
     document.getElementById('mgr-change-reason').value = '';
+    ensureStatusOption(t.status);
     document.getElementById('mgr-status').value        = t.status        || 'Active';
     // A new version becomes effective today; pre-fill so the controlled-document
     // dates are never left blank (matches the background defaulting on save).
@@ -270,8 +428,9 @@ function openEditEditor(name) {
     docIdEl.value    = t.documentId || t.id || '';
     docIdEl.readOnly = true;            // Salesforce-managed identifier
 
-    // teamCode present = tagged to a team (the admin's own); empty = Global.
-    setScopeSelect(t.teamCode ? 'team' : 'global');
+    // Pre-select the template's current team (empty value = Global).
+    ensureTeamOption(t.teamId, t.teamName);
+    document.getElementById('mgr-scope').value = t.teamId || '';
 
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
     document.getElementById('mgr-version-bump').style.display  = '';
@@ -298,7 +457,7 @@ function saveTemplate() {
     var status       =  document.getElementById('mgr-status').value        || 'Active';
     var effectiveDate = document.getElementById('mgr-effective-date').value || null;
     var reviewDueDate = document.getElementById('mgr-review-date').value    || null;
-    var teamScope    = (document.getElementById('mgr-scope') || {}).value   || 'team';
+    var teamId       = (document.getElementById('mgr-scope') || {}).value;   // '' = Global
 
     if (!name)           { setEditorStatus('Name is required.', 'error'); return; }
     if (!content.trim()) { setEditorStatus('Content is required.', 'error'); return; }
@@ -326,7 +485,7 @@ function saveTemplate() {
             changeReason: changeReason,
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate,
-            teamScope:    teamScope
+            teamId:       teamId
         };
     } else {
         action  = 'sfTemplates.create';
@@ -338,7 +497,7 @@ function saveTemplate() {
             documentId:   '',   // assigned by Salesforce (Auto Number) — not generated client-side
             status:       status,
             changeReason: changeReason,
-            teamScope:    teamScope,
+            teamId:       teamId,
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate
         };
@@ -479,11 +638,19 @@ function openHistory(name) {
     if (t.lastChangedByName) parts.push('<strong>Last changed by:</strong> ' + escHtml(t.lastChangedByName));
     document.getElementById('mgr-history-meta').innerHTML = parts.join(' &nbsp;&nbsp; ');
 
+    currentVersions        = [];
+    currentHistoryTemplate = t;
+
     document.getElementById('mgr-history-loading').style.display     = '';
     document.getElementById('mgr-history-unavailable').style.display = 'none';
     document.getElementById('mgr-history-empty').style.display       = 'none';
     document.getElementById('mgr-history-table-wrap').style.display  = 'none';
+    document.getElementById('mgr-history-controls').style.display    = 'none';
+    document.getElementById('mgr-compare-bar').style.display         = 'none';
     document.getElementById('mgr-diff-panel').style.display          = 'none';
+    document.getElementById('mgr-history-search').value = '';
+    document.getElementById('mgr-history-start').value  = '';
+    document.getElementById('mgr-history-end').value    = '';
 
     showState('history');
 
@@ -503,25 +670,55 @@ function openHistory(name) {
         var versions = response.versions || [];
         if (!versions.length) {
             document.getElementById('mgr-history-empty').style.display = '';
+            // Still allow comparing — but with only "Current" there's nothing to
+            // diff, so keep the compare bar hidden when there are no archives.
             return;
         }
 
-        renderHistoryTable(name, versions, t);
+        currentVersions = versions;
+        renderHistoryTable(versions);
         document.getElementById('mgr-history-table-wrap').style.display = '';
+        document.getElementById('mgr-history-controls').style.display   = '';
+        populateCompareBar();
+        document.getElementById('mgr-compare-bar').style.display = '';
     });
 }
 
-function renderHistoryTable(name, versions, currentTemplate) {
+// Renders the (optionally filtered) version rows. Uses currentVersions for the
+// supersede chain and currentHistoryTemplate for the "Compare with current".
+function renderHistoryTable(versions) {
     var tbody = document.getElementById('mgr-history-rows');
+    var current = currentHistoryTemplate || {};
     tbody.innerHTML = '';
+
+    if (!versions.length) {
+        var tr0 = document.createElement('tr');
+        var td0 = document.createElement('td');
+        td0.colSpan = 5;
+        td0.className = 'mgr-history-noresult';
+        td0.textContent = 'No versions match the current filter.';
+        tr0.appendChild(td0);
+        tbody.appendChild(tr0);
+        return;
+    }
 
     versions.forEach(function (v) {
         var tr = document.createElement('tr');
 
         var verTd = document.createElement('td');
-        verTd.textContent      = v.VersionLabel__c ? 'v' + v.VersionLabel__c : '—';
         verTd.style.fontFamily = "'Menlo','Consolas',monospace";
         verTd.style.fontSize   = '12px';
+        verTd.textContent = v.VersionLabel__c ? 'v' + v.VersionLabel__c : '—';
+        // Supersede chain (4d): each archived version was superseded by the next
+        // newer version in currentVersions, or by the live template at the top.
+        var idx = currentVersions.indexOf(v);
+        var supBy = idx === 0 ? (current.versionLabel || '') : ((currentVersions[idx - 1] || {}).VersionLabel__c || '');
+        if (supBy) {
+            var sup = document.createElement('div');
+            sup.className = 'mgr-history-superseded';
+            sup.textContent = '→ superseded by v' + supBy;
+            verTd.appendChild(sup);
+        }
         tr.appendChild(verTd);
 
         var dateTd = document.createElement('td');
@@ -556,7 +753,8 @@ function renderHistoryTable(name, versions, currentTemplate) {
 
         (function (archivedContent, archivedVersion) {
             diffBtn.addEventListener('click', function () {
-                showDiff(archivedVersion, archivedContent, currentTemplate.content, currentTemplate.versionLabel);
+                showDiff('v' + archivedVersion, archivedContent,
+                         'Current (v' + (current.versionLabel || '?') + ')', current.content || '');
             });
         }(v.Content__c || '', v.VersionLabel__c || '?'));
 
@@ -564,7 +762,107 @@ function renderHistoryTable(name, versions, currentTemplate) {
     });
 }
 
-function showDiff(fromVersion, fromContent, toContent, toVersion) {
+// ── History search / date filter + CSV export (4b) ────────────────────────────
+
+function filteredVersions() {
+    var q     = (document.getElementById('mgr-history-search').value || '').trim().toLowerCase();
+    var start = document.getElementById('mgr-history-start').value;
+    var end   = document.getElementById('mgr-history-end').value;
+    var startTs = start ? new Date(start + 'T00:00:00').getTime() : null;
+    var endTs   = end   ? new Date(end   + 'T23:59:59').getTime() : null;
+
+    return currentVersions.filter(function (v) {
+        if (q) {
+            var hay = ('v' + (v.VersionLabel__c || '') + ' ' + (v.ChangeReason__c || '') + ' ' +
+                       (v.ChangedByName__c || '') + ' ' + (v.ChangedByEmail__c || '')).toLowerCase();
+            if (hay.indexOf(q) === -1) return false;
+        }
+        if (startTs || endTs) {
+            var ts = v.ArchivedAt__c ? new Date(v.ArchivedAt__c).getTime() : NaN;
+            if (isNaN(ts)) return false;
+            if (startTs && ts < startTs) return false;
+            if (endTs && ts > endTs) return false;
+        }
+        return true;
+    });
+}
+
+function applyHistoryFilter() {
+    renderHistoryTable(filteredVersions());
+}
+
+function csvCell(value) {
+    var s = String(value == null ? '' : value);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportHistoryCsv() {
+    var rows = filteredVersions();
+    if (!rows.length) { mgrAlert('Nothing to export for the current filter.', 'Export'); return; }
+
+    var header = ['Version', 'Archived', 'Changed By', 'Email', 'Reason for Change'];
+    var lines  = [header.map(csvCell).join(',')];
+    rows.forEach(function (v) {
+        lines.push([
+            v.VersionLabel__c || '',
+            v.ArchivedAt__c ? formatDateTime(v.ArchivedAt__c) : '',
+            v.ChangedByName__c || '',
+            v.ChangedByEmail__c || '',
+            v.ChangeReason__c || ''
+        ].map(csvCell).join(','));
+    });
+
+    var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    var safeName = (currentHistoryName || 'template').replace(/[^\w.-]+/g, '_');
+    a.href = url;
+    a.download = safeName + '_version-history.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+// ── Compare any two versions (4c) ─────────────────────────────────────────────
+
+// Selectable items: every archived version + the live "Current".
+function compareItems() {
+    var current = currentHistoryTemplate || {};
+    var items = [{
+        label:   'Current (v' + (current.versionLabel || '?') + ')',
+        content: current.content || ''
+    }];
+    currentVersions.forEach(function (v) {
+        items.push({ label: 'v' + (v.VersionLabel__c || '?'), content: v.Content__c || '' });
+    });
+    return items;
+}
+
+function populateCompareBar() {
+    var items = compareItems();
+    var fromSel = document.getElementById('mgr-compare-from');
+    var toSel   = document.getElementById('mgr-compare-to');
+    fromSel.innerHTML = '';
+    toSel.innerHTML   = '';
+    items.forEach(function (it, i) {
+        var o1 = document.createElement('option'); o1.value = i; o1.textContent = it.label; fromSel.appendChild(o1);
+        var o2 = document.createElement('option'); o2.value = i; o2.textContent = it.label; toSel.appendChild(o2);
+    });
+    // Default: previous (first archived = index 1) → Current (index 0).
+    fromSel.value = items.length > 1 ? '1' : '0';
+    toSel.value   = '0';
+}
+
+function runCompare() {
+    var items = compareItems();
+    var from  = items[parseInt(document.getElementById('mgr-compare-from').value, 10)] || items[0];
+    var to    = items[parseInt(document.getElementById('mgr-compare-to').value, 10)] || items[0];
+    if (from === to) { mgrAlert('Pick two different versions to compare.', 'Compare'); return; }
+    showDiff(from.label, from.content, to.label, to.content);
+}
+
+function showDiff(fromLabel, fromContent, toLabel, toContent) {
     var oldLines = (fromContent || '').split('\n');
     var newLines = (toContent   || '').split('\n');
     var diff     = computeDiff(oldLines, newLines);
@@ -572,11 +870,11 @@ function showDiff(fromVersion, fromContent, toContent, toVersion) {
     var added   = diff.filter(function (d) { return d.type === 'added';   }).length;
     var removed = diff.filter(function (d) { return d.type === 'removed'; }).length;
 
+    var unchanged = diff.length - added - removed;
     document.getElementById('mgr-diff-title').textContent =
-        'Changes from v' + fromVersion + ' → current (v' + (toVersion || '?') + ')';
+        'Changes: ' + fromLabel + ' → ' + toLabel;
     document.getElementById('mgr-diff-stats').textContent =
-        '+' + added + ' line' + (added !== 1 ? 's' : '') + ' added,  ' +
-        removed + ' line' + (removed !== 1 ? 's' : '') + ' removed';
+        '+' + added + ' added,  −' + removed + ' removed,  ' + unchanged + ' unchanged';
 
     var container = document.getElementById('mgr-diff-content');
     container.innerHTML = '';
@@ -661,19 +959,6 @@ function addMonths(isoDate, months) {
     return d.toISOString().slice(0, 10);
 }
 var REVIEW_PERIOD_MONTHS = 12;
-
-// Set the editor's Scope dropdown and label the "team" option with the admin's
-// actual team. If the admin has no team, only Global is meaningful.
-function setScopeSelect(scope) {
-    var sel = document.getElementById('mgr-scope');
-    if (!sel) return;
-    var teamOpt = sel.querySelector('option[value="team"]');
-    if (teamOpt) {
-        teamOpt.textContent = currentUser.teamName ? ('My team (' + currentUser.teamName + ')') : 'My team';
-        teamOpt.disabled = !currentUser.teamId;
-    }
-    sel.value = (scope === 'global' || !currentUser.teamId) ? 'global' : 'team';
-}
 
 function formatDate(isoDate) {
     if (!isoDate) return '';

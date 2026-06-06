@@ -216,19 +216,23 @@ async function fetchSalesforceUserInfo(instanceUrl, accessToken) {
         username:    data.preferred_username || '',
         orgId:       data.organization_id || '',
         instanceUrl: instanceUrl,
-        photoUrl:    (data.photos && data.photos.thumbnail) || data.picture || ''
+        photoUrl:    (data.photos && data.photos.thumbnail) || data.picture || '',
+        photoFull:   (data.photos && data.photos.picture)   || data.picture || ''
     };
 }
 
 // ── Profile photo ───────────────────────────────────────────────────────────
-// The Salesforce profile-photo URL needs the access token, so fetch it here and
-// return a data: URL the popup <img> can render. Cached in storage.
+// Returns a data: URL for the popup <img>. Salesforce profile-photo CDN URLs
+// authenticate by the browser's SESSION COOKIE, not the OAuth token — so we
+// fetch with credentials:'include' (the service worker shares the cookie jar
+// and has host permissions for the Salesforce domains). This mirrors the
+// original popup-auth.js mechanism that worked before the section merge.
 //
 // Robustness:
-//  - if the stored user predates photoUrl capture, re-fetch userinfo to get it;
-//  - validate the bytes are actually an image (magic bytes) so an HTML error /
-//    login page is never cached and shown as a broken photo;
-//  - log a one-line diagnostic so a failure is visible in the SW console.
+//  - self-heal a missing photoUrl from a pre-photoUrl session via userinfo;
+//  - try the thumbnail then the full picture;
+//  - validate magic bytes so an HTML login/error page is never cached as a photo;
+//  - one-line SW-console diagnostic on every outcome.
 
 function looksLikeImage(bytes, mime) {
     if (/^image\//i.test(mime || '')) {
@@ -244,44 +248,62 @@ function looksLikeImage(bytes, mime) {
     return false;
 }
 
+async function fetchPhotoAsDataUrl(photoUrl) {
+    try {
+        // Cookies (credentials:'include') — NOT a Bearer token. Bearer auth is
+        // rejected by the photo CDN; the session cookie is what authorises it.
+        var res = await fetch(photoUrl, { credentials: 'include', cache: 'no-store' });
+        if (!res.ok) { console.log('[CYFOR] profile photo: fetch ' + res.status + ' for ' + photoUrl); return ''; }
+
+        var bytes = new Uint8Array(await res.arrayBuffer());
+        var mime  = res.headers.get('content-type') || '';
+        if (!bytes.length || !looksLikeImage(bytes, mime)) {
+            console.log('[CYFOR] profile photo: not an image (mime=' + (mime || 'none') + ', bytes=' + bytes.length + ')');
+            return '';
+        }
+        var binary = '', chunk = 0x8000;
+        for (var i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+        }
+        console.log('[CYFOR] profile photo: loaded (' + bytes.length + ' bytes, ' + mime + ')');
+        return 'data:' + (mime || 'image/jpeg') + ';base64,' + btoa(binary);
+    } catch (e) {
+        console.log('[CYFOR] profile photo: error ' + (e.message || e));
+        return '';
+    }
+}
+
 async function getProfilePhotoDataUrl() {
     var stored = await chrome.storage.local.get([USER_KEY, 'sfOAuthPhoto']);
     if (stored.sfOAuthPhoto) return stored.sfOAuthPhoto;
 
     var user = stored[USER_KEY] || {};
-    var token = await getValidAccessToken();
 
     // Self-heal: older sessions stored a user without photoUrl — fetch it now.
-    if (!user.photoUrl && user.instanceUrl) {
+    if ((!user.photoUrl || !user.photoFull) && user.instanceUrl) {
         try {
+            var token = await getValidAccessToken();
             var fresh = await fetchSalesforceUserInfo(user.instanceUrl, token);
-            if (fresh && fresh.photoUrl) {
-                user = Object.assign({}, user, { photoUrl: fresh.photoUrl });
+            if (fresh && (fresh.photoUrl || fresh.photoFull)) {
+                user = Object.assign({}, user, { photoUrl: fresh.photoUrl, photoFull: fresh.photoFull });
                 var up = {}; up[USER_KEY] = user;
                 await chrome.storage.local.set(up);
             }
         } catch (e) { /* keep going — fallback initials will show */ }
     }
-    if (!user.photoUrl) { console.log('[CYFOR] profile photo: no photoUrl on user'); return ''; }
 
-    var res = await fetch(user.photoUrl, { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' });
-    if (!res.ok) { console.log('[CYFOR] profile photo: fetch ' + res.status); return ''; }
+    var candidates = [user.photoUrl, user.photoFull].filter(Boolean);
+    if (!candidates.length) { console.log('[CYFOR] profile photo: no photoUrl on user'); return ''; }
 
-    var bytes = new Uint8Array(await res.arrayBuffer());
-    var mime = res.headers.get('content-type') || '';
-    if (!bytes.length || !looksLikeImage(bytes, mime)) {
-        console.log('[CYFOR] profile photo: not an image (mime=' + (mime || 'none') + ', bytes=' + bytes.length + ') — using initials');
-        return '';
+    for (var i = 0; i < candidates.length; i++) {
+        var dataUrl = await fetchPhotoAsDataUrl(candidates[i]);
+        if (dataUrl) {
+            await chrome.storage.local.set({ sfOAuthPhoto: dataUrl });
+            return dataUrl;
+        }
     }
-
-    var binary = '', chunk = 0x8000;
-    for (var i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
-    }
-    var dataUrl = 'data:' + (mime || 'image/jpeg') + ';base64,' + btoa(binary);
-    await chrome.storage.local.set({ sfOAuthPhoto: dataUrl });
-    console.log('[CYFOR] profile photo: loaded (' + bytes.length + ' bytes, ' + mime + ')');
-    return dataUrl;
+    console.log('[CYFOR] profile photo: all candidates failed — using initials');
+    return '';
 }
 
 // ── Disconnect ────────────────────────────────────────────────────────────────
