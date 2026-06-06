@@ -119,8 +119,6 @@ Cyfor.cleanup = {
         if (Cyfor.observer) {
             try { Cyfor.observer.disconnect(); } catch (e) {}
         }
-
-        console.log('[CYFOR] Cleanup complete');
     }
 };
 

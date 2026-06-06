@@ -23,16 +23,24 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // Sidebar navigation
+    document.querySelectorAll('.mgr-nav-item').forEach(function (item) {
+        item.addEventListener('click', function () { setView(item.getAttribute('data-view')); });
+    });
+
     document.getElementById('btn-new-template').addEventListener('click', openNewEditor);
     document.getElementById('btn-editor-save').addEventListener('click', saveTemplate);
     document.getElementById('btn-editor-cancel').addEventListener('click', closeEditor);
-    document.getElementById('btn-history-back').addEventListener('click', function () { showState('list'); });
-    document.getElementById('btn-usage').addEventListener('click', openUsage);
-    document.getElementById('btn-usage-back').addEventListener('click', function () { showState('list'); });
+    document.getElementById('btn-history-back').addEventListener('click', function () { setView('templates'); });
     document.getElementById('btn-usage-clear').addEventListener('click', clearUsage);
+    document.getElementById('btn-settings-refresh').addEventListener('click', function () { loadTemplates(); });
     document.getElementById('btn-diff-close').addEventListener('click', function () {
         document.getElementById('mgr-diff-panel').style.display = 'none';
     });
+
+    // Live template filter
+    var filterEl = document.getElementById('mgr-filter');
+    if (filterEl) filterEl.addEventListener('input', renderTemplateList);
 
     // History search / date filter (4b)
     ['mgr-history-search', 'mgr-history-start', 'mgr-history-end'].forEach(function (id) {
@@ -46,6 +54,28 @@ document.addEventListener('DOMContentLoaded', function () {
 
     loadTemplates();
 });
+
+// ── View / sidebar navigation ──────────────────────────────────────────────────
+
+var VIEW_META = {
+    templates: { panel: 'mgr-list-panel',     title: 'Templates', sub: '' },
+    reviews:   { panel: 'mgr-reviews-panel',  title: 'Reviews',   sub: 'Documents overdue or due for review soon.' },
+    usage:     { panel: 'mgr-usage-panel',    title: 'Usage',     sub: 'Where templates have been inserted on this device.' },
+    settings:  { panel: 'mgr-settings-panel', title: 'Settings',  sub: 'Connection and Salesforce details.' }
+};
+
+// Switch the main nav view (Templates / Reviews / Usage / Settings). Editor and
+// History are separate overlay states reached from within Templates.
+function setView(view) {
+    if (!VIEW_META[view]) view = 'templates';
+    document.querySelectorAll('.mgr-nav-item').forEach(function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-view') === view);
+    });
+    if (view === 'usage')    openUsage();
+    if (view === 'settings') renderSettings();
+    if (view === 'reviews')  renderReviews();
+    showState(view === 'templates' ? 'list' : view);
+}
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -80,28 +110,36 @@ function loadTemplates() {
             return;
         }
 
-        var titleEl = document.getElementById('mgr-title');
-        if (titleEl) {
-            titleEl.textContent = currentUser.teamName
-                ? 'CYFOR Template Manager — ' + currentUser.teamName + ' (admin)'
-                : 'CYFOR Template Manager';
-        }
-
+        renderIdentity();
         document.getElementById('btn-new-template').disabled = false;
 
         var descEl = document.getElementById('mgr-list-desc');
         if (descEl) {
-            descEl.textContent = 'Managing all teams’ templates and shared global templates. '
-                + 'As an admin you can create, edit, delete and re-assign any template to any team or Global.';
+            descEl.textContent = 'Managing every team’s templates and shared global templates — '
+                + 'create, edit, delete and re-assign any template to any team or Global.';
         }
 
         populateStatusOptions();
+        renderStats();
         renderTemplateList();
-        renderReviewDashboard();
-        showState('list');
+        updateReviewBadge();
+        setView('templates');
 
         loadTeams(); // non-blocking — populates the "assign to any team" picker
     });
+}
+
+// Topbar identity chip (name + team + avatar initial).
+function renderIdentity() {
+    var box = document.getElementById('mgr-identity');
+    if (!box) return;
+    var name = currentUser.fullName || currentUser.username || currentUser.email || 'Admin';
+    document.getElementById('mgr-identity-name').textContent = name;
+    document.getElementById('mgr-identity-team').textContent =
+        (currentUser.teamName ? currentUser.teamName : 'All teams') + ' · admin';
+    var av = document.getElementById('mgr-identity-avatar');
+    if (av) av.textContent = name.trim().charAt(0).toUpperCase();
+    box.style.display = '';
 }
 
 // Active teams for the editor's team picker (admins can assign to any team).
@@ -183,13 +221,24 @@ function renderTemplateList() {
     var tableEl = document.getElementById('mgr-template-table');
     tbody.innerHTML = '';
 
-    var names    = Object.keys(allTemplates).sort(function (a, b) {
+    var q = ((document.getElementById('mgr-filter') || {}).value || '').trim().toLowerCase();
+    var names = Object.keys(allTemplates).filter(function (name) {
+        if (!q) return true;
+        var t = allTemplates[name];
+        var hay = (name + ' ' + (t.category || '') + ' ' + (t.teamName || 'global') + ' ' + (t.status || '')).toLowerCase();
+        return hay.indexOf(q) !== -1;
+    }).sort(function (a, b) {
         return a.toLowerCase().localeCompare(b.toLowerCase());
     });
     var teamCode = currentUser.teamCode || null;
 
     if (!names.length) {
-        if (emptyEl)  emptyEl.style.display  = '';
+        if (emptyEl) {
+            emptyEl.style.display = '';
+            emptyEl.innerHTML = q
+                ? 'No templates match “' + escHtml(q) + '”.'
+                : 'No templates yet. Click <strong>+ New Template</strong> to create one.';
+        }
         if (tableEl)  tableEl.style.display  = 'none';
         return;
     }
@@ -313,59 +362,134 @@ function renderTemplateList() {
     });
 }
 
-// ── Review-due dashboard (4a) ─────────────────────────────────────────────────
-// Surfaces templates overdue / due-soon for review across every team, so nothing
-// lapses. Hidden when there's nothing to flag. Superseded/Retired are excluded.
-function renderReviewDashboard() {
-    var dash    = document.getElementById('mgr-review-dash');
-    var summary = document.getElementById('mgr-review-dash-summary');
-    var body    = document.getElementById('mgr-review-dash-body');
-    if (!dash || !summary || !body) return;
-
+// ── Stat hero (Templates view) ────────────────────────────────────────────────
+// Compute the headline counts once; reused by the hero, the Reviews view and the
+// sidebar badge.
+function reviewSnapshot() {
     var today = new Date(); today.setHours(0, 0, 0, 0);
-    var items = [];
+    var active = 0, drafts = 0, teams = {};
+    var overdue = [], due30 = [], due60 = [];
     Object.keys(allTemplates).forEach(function (name) {
         var t = allTemplates[name];
-        if (!t.reviewDueDate) return;
         var status = (t.status || '').toLowerCase();
-        if (status === 'superseded' || status === 'retired') return;
+        if (status === 'active') active++;
+        if (status === 'draft') drafts++;
+        if (t.teamId) teams[t.teamId] = true;
+        if (!t.reviewDueDate || status === 'superseded' || status === 'retired') return;
         var due = new Date(t.reviewDueDate + 'T00:00:00');
         if (isNaN(due.getTime())) return;
         due.setHours(0, 0, 0, 0);
-        items.push({ name: name, team: t.teamName || 'Global', due: t.reviewDueDate,
-                     days: Math.round((due - today) / 86400000) });
+        var days = Math.round((due - today) / 86400000);
+        var item = { name: name, team: t.teamName || 'Global', due: t.reviewDueDate, days: days };
+        if (days < 0) overdue.push(item);
+        else if (days <= 30) due30.push(item);
+        else if (days <= 60) due60.push(item);
     });
-    items.sort(function (a, b) { return a.days - b.days; });
+    var byDays = function (a, b) { return a.days - b.days; };
+    overdue.sort(byDays); due30.sort(byDays); due60.sort(byDays);
+    return {
+        total: Object.keys(allTemplates).length, active: active, drafts: drafts,
+        teamCount: Object.keys(teams).length, overdue: overdue, due30: due30, due60: due60
+    };
+}
 
-    var overdue = items.filter(function (i) { return i.days < 0; });
-    var due30   = items.filter(function (i) { return i.days >= 0 && i.days <= 30; });
-    var due60   = items.filter(function (i) { return i.days > 30 && i.days <= 60; });
+function renderStats() {
+    var el = document.getElementById('mgr-stats');
+    if (!el) return;
+    var s = reviewSnapshot();
+    var cards = [
+        { label: 'Templates', value: s.total,           tone: '' },
+        { label: 'Active',    value: s.active,           tone: 'ok' },
+        { label: 'Due ≤30d',  value: s.due30.length,     tone: s.due30.length ? 'warn' : '' },
+        { label: 'Overdue',   value: s.overdue.length,   tone: s.overdue.length ? 'bad' : '' },
+        { label: 'Teams',     value: s.teamCount,        tone: '' }
+    ];
+    el.innerHTML = '';
+    cards.forEach(function (c) {
+        var card = document.createElement('div');
+        card.className = 'mgr-stat' + (c.tone ? ' mgr-stat--' + c.tone : '');
+        var v = document.createElement('div'); v.className = 'mgr-stat-value'; v.textContent = c.value;
+        var l = document.createElement('div'); l.className = 'mgr-stat-label'; l.textContent = c.label;
+        card.appendChild(v); card.appendChild(l);
+        if (c.label === 'Overdue' || c.label === 'Due ≤30d') {
+            card.setAttribute('role', 'button');
+            card.tabIndex = 0;
+            card.addEventListener('click', function () { setView('reviews'); });
+        }
+        el.appendChild(card);
+    });
+}
 
-    var flagged = overdue.concat(due30, due60);
-    if (!flagged.length) { dash.style.display = 'none'; return; }
-    dash.style.display = '';
+function updateReviewBadge() {
+    var s = reviewSnapshot();
+    var n = s.overdue.length + s.due30.length;
+    var badge = document.getElementById('mgr-nav-review-badge');
+    if (!badge) return;
+    badge.textContent = n;
+    badge.style.display = n ? '' : 'none';
+    badge.classList.toggle('mgr-nav-badge--bad', s.overdue.length > 0);
+}
 
-    summary.innerHTML = 'Review status — '
-        + '<strong class="mgr-rev-overdue">' + overdue.length + ' overdue</strong>, '
-        + '<strong class="mgr-rev-warn">' + due30.length + ' due ≤30d</strong>, '
-        + due60.length + ' due ≤60d';
-
+// ── Reviews view (4a) ─────────────────────────────────────────────────────────
+function renderReviews() {
+    var body  = document.getElementById('mgr-reviews-body');
+    var empty = document.getElementById('mgr-reviews-empty');
+    if (!body || !empty) return;
+    var s = reviewSnapshot();
+    var groups = [
+        { key: 'overdue', title: 'Overdue',        items: s.overdue, tone: 'bad'  },
+        { key: 'due30',   title: 'Due within 30 days', items: s.due30, tone: 'warn' },
+        { key: 'due60',   title: 'Due within 60 days', items: s.due60, tone: ''    }
+    ];
+    var anything = s.overdue.length + s.due30.length + s.due60.length;
     body.innerHTML = '';
-    flagged.forEach(function (i) {
-        var row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'mgr-review-item ' +
-            (i.days < 0 ? 'mgr-review-item--overdue' : i.days <= 30 ? 'mgr-review-item--warn' : '');
-        var when = i.days < 0 ? (Math.abs(i.days) + 'd overdue') : ('in ' + i.days + 'd');
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'mgr-review-item-name'; nameSpan.textContent = i.name;
-        var teamSpan = document.createElement('span');
-        teamSpan.className = 'mgr-review-item-team'; teamSpan.textContent = i.team;
-        var dueSpan = document.createElement('span');
-        dueSpan.className = 'mgr-review-item-due'; dueSpan.textContent = formatDate(i.due) + ' · ' + when;
-        row.appendChild(nameSpan); row.appendChild(teamSpan); row.appendChild(dueSpan);
-        row.addEventListener('click', function () { openEditEditor(i.name); });
-        body.appendChild(row);
+    empty.style.display = anything ? 'none' : '';
+
+    groups.forEach(function (g) {
+        if (!g.items.length) return;
+        var group = document.createElement('div');
+        group.className = 'mgr-review-group';
+        var h = document.createElement('div');
+        h.className = 'mgr-review-group-head mgr-review-group-head--' + g.tone;
+        h.innerHTML = '<span>' + g.title + '</span><span class="mgr-review-group-count">' + g.items.length + '</span>';
+        group.appendChild(h);
+
+        g.items.forEach(function (i) {
+            var row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'mgr-review-item mgr-review-item--' + g.tone;
+            var when = i.days < 0 ? (Math.abs(i.days) + 'd overdue') : ('in ' + i.days + 'd');
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'mgr-review-item-name'; nameSpan.textContent = i.name;
+            var teamSpan = document.createElement('span');
+            teamSpan.className = 'mgr-review-item-team'; teamSpan.textContent = i.team;
+            var dueSpan = document.createElement('span');
+            dueSpan.className = 'mgr-review-item-due'; dueSpan.textContent = formatDate(i.due) + ' · ' + when;
+            row.appendChild(nameSpan); row.appendChild(teamSpan); row.appendChild(dueSpan);
+            row.addEventListener('click', function () { openEditEditor(i.name); });
+            group.appendChild(row);
+        });
+        body.appendChild(group);
+    });
+}
+
+// ── Settings view ─────────────────────────────────────────────────────────────
+function renderSettings() {
+    var dl = document.getElementById('mgr-settings-info');
+    if (!dl) return;
+    var rows = [
+        ['Signed in as', currentUser.fullName || currentUser.username || '—'],
+        ['Email',        currentUser.email || '—'],
+        ['Team',         currentUser.teamName || 'No team (Global only)'],
+        ['Role',         currentUser.isTemplateAdmin ? 'Template admin' : 'Member'],
+        ['Templates',    String(Object.keys(allTemplates).length)],
+        ['Status values', (statusOptions || []).join(', ') || '—']
+    ];
+    dl.innerHTML = '';
+    rows.forEach(function (r) {
+        var dt = document.createElement('dt'); dt.textContent = r[0];
+        var dd = document.createElement('dd'); dd.textContent = r[1];
+        dl.appendChild(dt); dl.appendChild(dd);
     });
 }
 
@@ -446,7 +570,7 @@ function openEditEditor(name) {
 function closeEditor() {
     currentEditId      = null;
     currentEditVersion = null;
-    showState('list');
+    setView('templates');
 }
 
 function saveTemplate() {
@@ -1043,6 +1167,8 @@ function showState(state) {
         'not-connected': 'mgr-not-connected',
         'not-admin':     'mgr-not-admin',
         'list':          'mgr-list-panel',
+        'reviews':       'mgr-reviews-panel',
+        'settings':      'mgr-settings-panel',
         'editor':        'mgr-editor-panel',
         'history':       'mgr-history-panel',
         'usage':         'mgr-usage-panel'
@@ -1051,6 +1177,26 @@ function showState(state) {
         var el = document.getElementById(panels[key]);
         if (el) el.style.display = (key === state) ? '' : 'none';
     });
+
+    // Topbar title/subtitle: derive from the nav view; editor/history set their own.
+    var meta = { 'list': VIEW_META.templates, 'reviews': VIEW_META.reviews,
+                 'usage': VIEW_META.usage, 'settings': VIEW_META.settings }[state];
+    var titleEl = document.getElementById('mgr-view-title');
+    var subEl   = document.getElementById('mgr-view-sub');
+    if (meta && titleEl) {
+        titleEl.textContent = meta.title;
+        if (subEl) subEl.textContent = meta.sub;
+    } else if (titleEl && state === 'editor') {
+        titleEl.textContent = currentEditId ? 'Edit template' : 'New template';
+        if (subEl) subEl.textContent = '';
+    } else if (titleEl && state === 'history') {
+        titleEl.textContent = 'Version history';
+        if (subEl) subEl.textContent = '';
+    }
+
+    // "+ New Template" only belongs on the Templates view.
+    var newBtn = document.getElementById('btn-new-template');
+    if (newBtn) newBtn.style.display = (state === 'list') ? '' : 'none';
 }
 
 function setEditorStatus(msg, type) {

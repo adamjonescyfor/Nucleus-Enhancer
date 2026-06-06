@@ -231,8 +231,7 @@ async function fetchSalesforceUserInfo(instanceUrl, accessToken) {
 // Robustness:
 //  - self-heal a missing photoUrl from a pre-photoUrl session via userinfo;
 //  - try the thumbnail then the full picture;
-//  - validate magic bytes so an HTML login/error page is never cached as a photo;
-//  - one-line SW-console diagnostic on every outcome.
+//  - validate magic bytes so an HTML login/error page is never cached as a photo.
 
 function looksLikeImage(bytes, mime) {
     if (/^image\//i.test(mime || '')) {
@@ -253,22 +252,18 @@ async function fetchPhotoAsDataUrl(photoUrl) {
         // Cookies (credentials:'include') — NOT a Bearer token. Bearer auth is
         // rejected by the photo CDN; the session cookie is what authorises it.
         var res = await fetch(photoUrl, { credentials: 'include', cache: 'no-store' });
-        if (!res.ok) { console.log('[CYFOR] profile photo: fetch ' + res.status + ' for ' + photoUrl); return ''; }
+        if (!res.ok) return '';
 
         var bytes = new Uint8Array(await res.arrayBuffer());
         var mime  = res.headers.get('content-type') || '';
-        if (!bytes.length || !looksLikeImage(bytes, mime)) {
-            console.log('[CYFOR] profile photo: not an image (mime=' + (mime || 'none') + ', bytes=' + bytes.length + ')');
-            return '';
-        }
+        if (!bytes.length || !looksLikeImage(bytes, mime)) return '';
+
         var binary = '', chunk = 0x8000;
         for (var i = 0; i < bytes.length; i += chunk) {
             binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
         }
-        console.log('[CYFOR] profile photo: loaded (' + bytes.length + ' bytes, ' + mime + ')');
         return 'data:' + (mime || 'image/jpeg') + ';base64,' + btoa(binary);
     } catch (e) {
-        console.log('[CYFOR] profile photo: error ' + (e.message || e));
         return '';
     }
 }
@@ -293,7 +288,7 @@ async function getProfilePhotoDataUrl() {
     }
 
     var candidates = [user.photoUrl, user.photoFull].filter(Boolean);
-    if (!candidates.length) { console.log('[CYFOR] profile photo: no photoUrl on user'); return ''; }
+    if (!candidates.length) return '';
 
     for (var i = 0; i < candidates.length; i++) {
         var dataUrl = await fetchPhotoAsDataUrl(candidates[i]);
@@ -302,8 +297,7 @@ async function getProfilePhotoDataUrl() {
             return dataUrl;
         }
     }
-    console.log('[CYFOR] profile photo: all candidates failed — using initials');
-    return '';
+    return '';   // fall back to initials in the popup
 }
 
 // ── Disconnect ────────────────────────────────────────────────────────────────

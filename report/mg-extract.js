@@ -1,3 +1,10 @@
+// ████████████████████████████████████████████████████████████████████████████
+// MG22A / MG22B REPORT GENERATION — OWNED BY MITUL (work in progress)
+// This whole file is part of the MG22 feature, which is currently hidden behind
+// the MG22_ENABLED flag in content/case-report.js. Hidden, NOT deleted — left
+// intact for Mitul to continue. Related: background/sf-report-templates.js,
+// lib/docx-fill.js, lib/fflate.min.js, and the report.* handlers in background.js.
+// ████████████████████████████████████████████████████████████████████████████
 // ==================================================
 // CYFOR Nucleus Enhancer — MG22 data extraction
 // Turns a live case bundle (from case-report-fetch) into a flat

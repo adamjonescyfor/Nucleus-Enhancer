@@ -22,12 +22,6 @@ Cyfor.main = {
                 self._initFeatures();
                 self._startObserver();
                 self._bindLifecycle();
-
-                console.log(
-                    '%c[CYFOR]%c Nucleus Enhancer loaded',
-                    'color:#0070d2;font-weight:700',
-                    'color:inherit'
-                );
             });
         } catch (e) {
             console.warn('[CYFOR] Boot failed:', e);
@@ -113,7 +107,6 @@ Cyfor.main = {
         }
 
         Cyfor.downloads.scan();
-        this._cacheProfileIdentity();
 
         if (Cyfor.config.enableFormatNotes) {
             Cyfor.notes.formatAll();
@@ -172,7 +165,6 @@ Cyfor.main = {
 
         Cyfor.cleanup.setInterval(function () {
             if (Cyfor.utils.isContextInvalid()) {
-                console.log('[CYFOR] Context invalidated \u2014 cleaning up');
                 Cyfor.cleanup.destroyAll();
             }
         }, Cyfor.constants.CONTEXT_CHECK_INTERVAL_MS);
@@ -189,54 +181,6 @@ Cyfor.main = {
         Cyfor.templates.start();
     },
 
-    _cacheProfileIdentity: function () {
-        if (this._identityCached) return;
-
-        var selectors = [
-            'a.profile-link-label[href*="/lightning/r/User/"]',
-            'a.profile-link-label[href*="/User/"]',
-            'h1.profile-card-name a[href*="/lightning/r/User/"]',
-            'h1.profile-card-name'
-        ];
-
-        var profileName = '';
-
-        for (var i = 0; i < selectors.length; i++) {
-            var matches = Cyfor.utils.querySelectorAllDeep(selectors[i], document.body, 12);
-            for (var j = 0; j < matches.length; j++) {
-                var text = (matches[j].textContent || '').trim();
-                if (text && !/^(view profile|profile)$/i.test(text)) {
-                    profileName = text;
-                    break;
-                }
-            }
-            if (profileName) break;
-        }
-
-        if (!profileName) {
-            var titledEls = Cyfor.utils.querySelectorAllDeep('[title^="View profile for "], [aria-label^="View profile for "]', document.body, 12);
-            for (var k = 0; k < titledEls.length; k++) {
-                var raw = titledEls[k].getAttribute('title') || titledEls[k].getAttribute('aria-label') || '';
-                var extracted = raw.replace(/^View profile for\s+/i, '').trim();
-                if (extracted) {
-                    profileName = extracted;
-                    break;
-                }
-            }
-        }
-
-        if (!profileName || profileName === this._lastCachedProfileName) return;
-
-        this._lastCachedProfileName = profileName;
-        this._identityCached = true;
-        chrome.storage.local.set({
-            salesforceIdentityCache: {
-                domain: location.hostname,
-                fullName: profileName,
-                lastSeenAt: Date.now()
-            }
-        });
-    }
 };
 
 // ========================================
@@ -249,27 +193,6 @@ try {
             return true;
         }
 
-        if (msg.action === 'getSalesforceIdentityDom') {
-            resolveSalesforceIdentityFromDom()
-                .then(function (domId) {
-                    if (domId.fullName || domId.username || domId.email) {
-                        sendResponse({
-                            ok: true, source: 'dom', partial: true,
-                            user: {
-                                id: '', fullName: domId.fullName || '',
-                                username: domId.username || '', email: domId.email || '',
-                                organizationId: '', domain: location.hostname, instanceUrl: location.origin
-                            }
-                        });
-                    } else {
-                        sendResponse({ ok: false });
-                    }
-                })
-                .catch(function () {
-                    sendResponse({ ok: false });
-                });
-            return true;
-        }
     };
     chrome.runtime.onMessage.addListener(pingHandler);
     Cyfor.cleanup.register(function () {
@@ -277,100 +200,6 @@ try {
     });
 } catch (e) {}
 
-function extractIdentityFromDom() {
-    var exactSelectors = [
-        'a.profile-link-label[href*="/lightning/r/User/"]',
-        'a.profile-link-label[href*="/User/"]',
-        'h1.profile-card-name a[href*="/lightning/r/User/"]',
-        'h1.profile-card-name'
-    ];
-
-    for (var i = 0; i < exactSelectors.length; i++) {
-        var exactEls = Cyfor.utils.querySelectorAllDeep(exactSelectors[i], document.body, 12);
-        for (var j = 0; j < exactEls.length; j++) {
-            var exactText = sanitizeUserLabel(exactEls[j].textContent || '');
-            if (exactText) {
-                return { fullName: exactText, username: '', email: '' };
-            }
-        }
-    }
-
-    // Use shadow-DOM-aware search for elements whose title/aria-label explicitly
-    // says "View profile for <name>" — this is the most reliable Salesforce signal.
-    var profileSelectors = [
-        'button[title^="View profile for "]',
-        'a[title^="View profile for "]',
-        'button[aria-label^="View profile for "]'
-    ];
-
-    for (var k = 0; k < profileSelectors.length; k++) {
-        var els = Cyfor.utils.querySelectorAllDeep(profileSelectors[k], document.body, 12);
-        for (var m = 0; m < els.length; m++) {
-            var name = sanitizeUserLabel(
-                els[m].getAttribute('title') || els[m].getAttribute('aria-label') || ''
-            );
-            if (name) return { fullName: name, username: '', email: '' };
-        }
-    }
-
-    // Secondary: .profileName span inside the user-menu component
-    var profileNameEls = Cyfor.utils.querySelectorAllDeep('.profileName', document.body, 12);
-    for (var n = 0; n < profileNameEls.length; n++) {
-        var pn = sanitizeUserLabel(profileNameEls[n].textContent || '');
-        if (pn) return { fullName: pn, username: '', email: '' };
-    }
-
-    return { fullName: '', username: '', email: '' };
-}
-
-function resolveSalesforceIdentityFromDom() {
-    return new Promise(function (resolve) {
-        var directIdentity = extractIdentityFromDom();
-        if (directIdentity.fullName || directIdentity.username || directIdentity.email) {
-            resolve(directIdentity);
-            return;
-        }
-
-        var triggers = Cyfor.utils.querySelectorAllDeep(
-            '[title^="View profile for "], [aria-label^="View profile for "], one-app-nav-bar-user-menu button, button.slds-global-actions__item-action',
-            document.body,
-            12
-        );
-
-        var clicked = false;
-        for (var i = 0; i < triggers.length; i++) {
-            if (triggers[i] && typeof triggers[i].click === 'function') {
-                triggers[i].click();
-                clicked = true;
-                break;
-            }
-        }
-
-        if (!clicked) {
-            resolve(directIdentity);
-            return;
-        }
-
-        setTimeout(function () {
-            resolve(extractIdentityFromDom());
-        }, 400);
-    });
-}
-
-function sanitizeUserLabel(text) {
-
-    var value = (text || '')
-        .replace(/^View profile for\s+/i, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    if (!value) return '';
-    // Block known Salesforce UI chrome labels that are not user names
-    var BLOCKLIST = /^(profile|user|settings|help|guidance|guidance center|setup|search|notifications|home|apps|back|more|menu)$/i;
-    if (BLOCKLIST.test(value)) return '';
-    if (value.length < 2) return '';
-    return value;
-}
 
 // ========================================
 // BOOT

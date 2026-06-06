@@ -11,255 +11,321 @@
 </head>
 <body>
 
-    <header class="mgr-header">
-        <h1 class="mgr-title" id="mgr-title">CYFOR Template Manager</h1>
-        <div class="mgr-header-actions">
-            <button id="btn-new-template" class="mgr-btn mgr-btn-primary" disabled>+ New Template</button>
-            <button id="btn-usage" class="mgr-btn mgr-btn-secondary">Usage log</button>
-            <button id="btn-back" class="mgr-btn mgr-btn-secondary">← Back to Extension</button>
-        </div>
-    </header>
+<div class="mgr-shell">
 
-    <main class="mgr-main">
-
-        <!-- State panels -->
-        <div id="mgr-loading" class="mgr-state-msg">Loading…</div>
-
-        <div id="mgr-not-connected" class="mgr-state-msg" style="display:none">
-            <strong>Not connected to Salesforce.</strong><br>
-            Connect via the extension popup first, then re-open this page.
+    <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+    <aside class="mgr-sidebar">
+        <div class="mgr-brand">
+            <span class="mgr-brand-mark">C</span>
+            <span class="mgr-brand-text">CYFOR<small>Template Manager</small></span>
         </div>
 
-        <div id="mgr-not-admin" class="mgr-state-msg" style="display:none">
-            <strong>Access denied.</strong><br>
-            You are not a template admin for your team. Contact your Salesforce administrator to request access.
+        <nav class="mgr-nav" id="mgr-nav" aria-label="Sections">
+            <button type="button" class="mgr-nav-item is-active" data-view="templates">
+                <span class="mgr-nav-ico" aria-hidden="true">▦</span> Templates
+            </button>
+            <button type="button" class="mgr-nav-item" data-view="reviews">
+                <span class="mgr-nav-ico" aria-hidden="true">◷</span> Reviews
+                <span class="mgr-nav-badge" id="mgr-nav-review-badge" style="display:none">0</span>
+            </button>
+            <button type="button" class="mgr-nav-item" data-view="usage">
+                <span class="mgr-nav-ico" aria-hidden="true">▤</span> Usage
+            </button>
+            <button type="button" class="mgr-nav-item" data-view="settings">
+                <span class="mgr-nav-ico" aria-hidden="true">⚙</span> Settings
+            </button>
+        </nav>
+
+        <div class="mgr-sidebar-foot">
+            <button id="btn-back" type="button" class="mgr-sidebar-link">← Back to Extension</button>
         </div>
+    </aside>
 
-        <!-- Template list -->
-        <div id="mgr-list-panel" style="display:none">
-            <div class="mgr-list-header">
-                <p class="mgr-list-desc" id="mgr-list-desc"></p>
+    <!-- ── Content ─────────────────────────────────────────────────────────── -->
+    <div class="mgr-content">
+
+        <header class="mgr-topbar">
+            <div class="mgr-topbar-head">
+                <h1 class="mgr-view-title" id="mgr-view-title">Templates</h1>
+                <p class="mgr-view-sub" id="mgr-view-sub"></p>
             </div>
-
-            <!-- Review-due dashboard (4a) -->
-            <details id="mgr-review-dash" class="mgr-review-dash" style="display:none">
-                <summary id="mgr-review-dash-summary" class="mgr-review-dash-summary">Review status</summary>
-                <div id="mgr-review-dash-body" class="mgr-review-dash-body"></div>
-            </details>
-
-            <div id="mgr-empty" class="mgr-state-msg" style="display:none">
-                No templates found for your team yet. Click <strong>+ New Template</strong> to create one.
-            </div>
-            <table class="mgr-table" id="mgr-template-table" style="display:none">
-                <thead id="mgr-table-head">
-                    <tr>
-                        <th>Doc ID</th>
-                        <th>Name</th>
-                        <th>Version</th>
-                        <th>Status</th>
-                        <th>Category</th>
-                        <th>Scope</th>
-                        <th>Review Due</th>
-                        <th class="mgr-col-actions">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="mgr-template-rows"></tbody>
-            </table>
-        </div>
-
-        <!-- Usage log panel -->
-        <div id="mgr-usage-panel" style="display:none">
-            <div class="mgr-list-header">
-                <p class="mgr-list-desc">
-                    Local template-insertion log for this device (most recent first).
-                    Stored on this machine only — not synced across devices.
-                </p>
-                <div class="mgr-header-actions">
-                    <button id="btn-usage-clear" class="mgr-btn mgr-btn-secondary">Clear log</button>
-                    <button id="btn-usage-back" class="mgr-btn mgr-btn-secondary">← Back to list</button>
+            <div class="mgr-topbar-actions">
+                <div class="mgr-identity" id="mgr-identity" style="display:none">
+                    <span class="mgr-identity-avatar" id="mgr-identity-avatar" aria-hidden="true"></span>
+                    <span class="mgr-identity-text">
+                        <span class="mgr-identity-name" id="mgr-identity-name"></span>
+                        <span class="mgr-identity-team" id="mgr-identity-team"></span>
+                    </span>
                 </div>
+                <button id="btn-new-template" class="mgr-btn mgr-btn-primary" disabled>+ New Template</button>
             </div>
-            <div id="mgr-usage-empty" class="mgr-state-msg" style="display:none">
-                No template insertions recorded on this device yet.
+        </header>
+
+        <main class="mgr-main">
+
+            <!-- State panels -->
+            <div id="mgr-loading" class="mgr-state-msg">Loading…</div>
+
+            <div id="mgr-not-connected" class="mgr-state-msg" style="display:none">
+                <strong>Not connected to Salesforce.</strong>
+                Connect via the extension popup first, then re-open this page.
             </div>
-            <table class="mgr-table" id="mgr-usage-table" style="display:none">
-                <thead>
-                    <tr>
-                        <th>When</th>
-                        <th>Template</th>
-                        <th>Record</th>
-                        <th>User</th>
-                    </tr>
-                </thead>
-                <tbody id="mgr-usage-rows"></tbody>
-            </table>
-        </div>
 
-        <!-- Editor panel -->
-        <div id="mgr-editor-panel" class="mgr-editor-card" style="display:none">
-            <h2 class="mgr-editor-heading" id="mgr-editor-heading">New Template</h2>
+            <div id="mgr-not-admin" class="mgr-state-msg" style="display:none">
+                <strong>Access denied.</strong>
+                You are not a template admin. Contact your Salesforce administrator to request access.
+            </div>
 
-            <!-- Row 1: Doc ID + Status -->
-            <div class="mgr-field-row">
-                <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-doc-id">Document ID <small>(Salesforce-assigned)</small></label>
-                    <input type="text" id="mgr-doc-id" class="mgr-input" placeholder="Assigned by Salesforce on save" autocomplete="off" readonly>
+            <!-- ── Templates view ──────────────────────────────────────────── -->
+            <div id="mgr-list-panel" style="display:none">
+                <div class="mgr-stats" id="mgr-stats"></div>
+
+                <div class="mgr-toolbar">
+                    <div class="mgr-search">
+                        <span class="mgr-search-ico" aria-hidden="true">⌕</span>
+                        <input type="search" id="mgr-filter" class="mgr-search-input"
+                            placeholder="Filter by name, category or team…" autocomplete="off">
+                    </div>
+                    <p class="mgr-list-desc" id="mgr-list-desc"></p>
                 </div>
-                <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-status">Status</label>
-                    <select id="mgr-status" class="mgr-input">
-                        <option value="Draft">Draft</option>
-                        <option value="Active" selected>Active</option>
-                        <option value="Under Review">Under Review</option>
-                        <option value="Superseded">Superseded</option>
-                        <option value="Retired">Retired</option>
-                    </select>
+
+                <div id="mgr-empty" class="mgr-state-msg" style="display:none">
+                    No templates yet. Click <strong>+ New Template</strong> to create one.
+                </div>
+
+                <div class="mgr-table-card">
+                    <table class="mgr-table" id="mgr-template-table" style="display:none">
+                        <thead id="mgr-table-head">
+                            <tr>
+                                <th>Doc ID</th>
+                                <th>Name</th>
+                                <th>Version</th>
+                                <th>Status</th>
+                                <th>Category</th>
+                                <th>Scope</th>
+                                <th>Review Due</th>
+                                <th class="mgr-col-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mgr-template-rows"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Row 1b: Team / scope (assign to any team, or Global) -->
-            <div class="mgr-field-row">
-                <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-scope">Team <small>(who sees this template)</small></label>
-                    <select id="mgr-scope" class="mgr-input">
-                        <option value="">Global (all teams)</option>
-                    </select>
+            <!-- ── Reviews view ────────────────────────────────────────────── -->
+            <div id="mgr-reviews-panel" style="display:none">
+                <div id="mgr-reviews-empty" class="mgr-state-msg" style="display:none">
+                    <strong>All clear.</strong> Nothing is overdue or due for review in the next 60 days.
+                </div>
+                <div id="mgr-reviews-body" class="mgr-reviews-body"></div>
+            </div>
+
+            <!-- ── Usage view ──────────────────────────────────────────────── -->
+            <div id="mgr-usage-panel" style="display:none">
+                <div class="mgr-panel-head">
+                    <p class="mgr-list-desc">
+                        Local template-insertion log for this device (most recent first) —
+                        stored on this machine only, not synced across devices.
+                    </p>
+                    <button id="btn-usage-clear" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Clear log</button>
+                </div>
+                <div id="mgr-usage-empty" class="mgr-state-msg" style="display:none">
+                    No template insertions recorded on this device yet.
+                </div>
+                <div class="mgr-table-card">
+                    <table class="mgr-table" id="mgr-usage-table" style="display:none">
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th>Template</th>
+                                <th>Record</th>
+                                <th>User</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mgr-usage-rows"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Row 2: Name + Category -->
-            <div class="mgr-field-row">
-                <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-name">Name <span class="mgr-required">*</span></label>
-                    <input type="text" id="mgr-name" class="mgr-input" placeholder="e.g. Forensic Strategy" autocomplete="off">
-                </div>
-                <div class="mgr-field mgr-field--half">
-                    <label class="mgr-label" for="mgr-category">Category</label>
-                    <input type="text" id="mgr-category" class="mgr-input" placeholder="e.g. General, Notes, Report" autocomplete="off">
+            <!-- ── Settings view ───────────────────────────────────────────── -->
+            <div id="mgr-settings-panel" style="display:none">
+                <div class="mgr-settings-card">
+                    <h3 class="mgr-settings-title">Connection</h3>
+                    <dl class="mgr-settings-info" id="mgr-settings-info"></dl>
+                    <button id="btn-settings-refresh" class="mgr-btn mgr-btn-secondary mgr-btn-sm">↻ Refresh from Salesforce</button>
                 </div>
             </div>
 
-            <!-- Row 3: Version + Effective Date + Review Due Date -->
-            <div class="mgr-field-row">
-                <div class="mgr-field mgr-field--third">
-                    <label class="mgr-label">Version</label>
-                    <div class="mgr-version-wrap">
-                        <span class="mgr-version-display" id="mgr-version-display">v1.0</span>
-                        <div class="mgr-version-bump" id="mgr-version-bump" style="display:none">
-                            <span class="mgr-version-bump-label">Increment:</span>
-                            <label class="mgr-radio-label">
-                                <input type="radio" name="version-bump" value="minor" checked> Minor
-                            </label>
-                            <label class="mgr-radio-label">
-                                <input type="radio" name="version-bump" value="major"> Major
-                            </label>
+            <!-- ── Editor (overlay view) ───────────────────────────────────── -->
+            <div id="mgr-editor-panel" class="mgr-editor-card" style="display:none">
+                <h2 class="mgr-editor-heading" id="mgr-editor-heading">New Template</h2>
+
+                <section class="mgr-form-section">
+                    <h4 class="mgr-form-section-title">Identity &amp; status</h4>
+                    <div class="mgr-field-row">
+                        <div class="mgr-field mgr-field--half">
+                            <label class="mgr-label" for="mgr-doc-id">Document ID <small>(Salesforce-assigned)</small></label>
+                            <input type="text" id="mgr-doc-id" class="mgr-input" placeholder="Assigned by Salesforce on save" autocomplete="off" readonly>
+                        </div>
+                        <div class="mgr-field mgr-field--half">
+                            <label class="mgr-label" for="mgr-status">Status</label>
+                            <select id="mgr-status" class="mgr-input">
+                                <option value="Draft">Draft</option>
+                                <option value="Active" selected>Active</option>
+                                <option value="Under Review">Under Review</option>
+                                <option value="Superseded">Superseded</option>
+                                <option value="Retired">Retired</option>
+                            </select>
                         </div>
                     </div>
+                    <div class="mgr-field-row">
+                        <div class="mgr-field mgr-field--half">
+                            <label class="mgr-label" for="mgr-name">Name <span class="mgr-required">*</span></label>
+                            <input type="text" id="mgr-name" class="mgr-input" placeholder="e.g. Forensic Strategy" autocomplete="off">
+                        </div>
+                        <div class="mgr-field mgr-field--half">
+                            <label class="mgr-label" for="mgr-category">Category</label>
+                            <input type="text" id="mgr-category" class="mgr-input" placeholder="e.g. General, Notes, Report" autocomplete="off">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="mgr-form-section">
+                    <h4 class="mgr-form-section-title">Scope, version &amp; control dates</h4>
+                    <div class="mgr-field-row">
+                        <div class="mgr-field mgr-field--third">
+                            <label class="mgr-label" for="mgr-scope">Team <small>(who sees this)</small></label>
+                            <select id="mgr-scope" class="mgr-input">
+                                <option value="">Global (all teams)</option>
+                            </select>
+                        </div>
+                        <div class="mgr-field mgr-field--third">
+                            <label class="mgr-label" for="mgr-effective-date">Effective Date</label>
+                            <input type="date" id="mgr-effective-date" class="mgr-input">
+                        </div>
+                        <div class="mgr-field mgr-field--third">
+                            <label class="mgr-label" for="mgr-review-date">Review Due Date</label>
+                            <input type="date" id="mgr-review-date" class="mgr-input">
+                        </div>
+                    </div>
+                    <div class="mgr-field-row">
+                        <div class="mgr-field mgr-field--third">
+                            <label class="mgr-label">Version</label>
+                            <div class="mgr-version-wrap">
+                                <span class="mgr-version-display" id="mgr-version-display">v1.0</span>
+                                <div class="mgr-version-bump" id="mgr-version-bump" style="display:none">
+                                    <span class="mgr-version-bump-label">Increment:</span>
+                                    <label class="mgr-radio-label">
+                                        <input type="radio" name="version-bump" value="minor" checked> Minor
+                                    </label>
+                                    <label class="mgr-radio-label">
+                                        <input type="radio" name="version-bump" value="major"> Major
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="mgr-form-section">
+                    <h4 class="mgr-form-section-title">Content &amp; audit</h4>
+                    <div class="mgr-field">
+                        <label class="mgr-label" for="mgr-change-reason">
+                            Reason <span class="mgr-required">*</span>
+                            <span id="mgr-change-reason-hint" class="mgr-label-hint"></span>
+                        </label>
+                        <textarea id="mgr-change-reason" class="mgr-textarea mgr-textarea--short" rows="2"
+                            placeholder="Document the purpose or reason for this change — required for the audit trail"></textarea>
+                    </div>
+                    <div class="mgr-field">
+                        <label class="mgr-label" for="mgr-content">Content <span class="mgr-required">*</span></label>
+                        <textarea id="mgr-content" class="mgr-textarea" rows="18" spellcheck="false" placeholder="Template body…"></textarea>
+                    </div>
+                </section>
+
+                <div class="mgr-editor-actions">
+                    <button id="btn-editor-save" class="mgr-btn mgr-btn-primary">Save to Salesforce</button>
+                    <button id="btn-editor-cancel" class="mgr-btn mgr-btn-secondary">Cancel</button>
+                    <span id="mgr-editor-status" class="mgr-status-msg"></span>
                 </div>
-                <div class="mgr-field mgr-field--third">
-                    <label class="mgr-label" for="mgr-effective-date">Effective Date</label>
-                    <input type="date" id="mgr-effective-date" class="mgr-input">
+            </div>
+
+            <!-- ── History (overlay view) ──────────────────────────────────── -->
+            <div id="mgr-history-panel" style="display:none">
+                <div class="mgr-history-header">
+                    <div>
+                        <h2 class="mgr-editor-heading" id="mgr-history-heading">Version History</h2>
+                        <div class="mgr-history-meta" id="mgr-history-meta"></div>
+                    </div>
+                    <button id="btn-history-back" class="mgr-btn mgr-btn-secondary mgr-btn-sm">← Back to Templates</button>
                 </div>
-                <div class="mgr-field mgr-field--third">
-                    <label class="mgr-label" for="mgr-review-date">Review Due Date</label>
-                    <input type="date" id="mgr-review-date" class="mgr-input">
+
+                <div id="mgr-history-loading" class="mgr-state-msg">Loading history…</div>
+
+                <div id="mgr-history-unavailable" class="mgr-notice mgr-notice--warn" style="display:none">
+                    Version history requires the <code>NucleusTemplateVersion__c</code> Salesforce object.
+                    Contact your administrator to set it up.
+                </div>
+
+                <div id="mgr-history-empty" class="mgr-state-msg" style="display:none">
+                    No archived versions found. History is recorded automatically each time a template is updated.
+                </div>
+
+                <!-- History search + export (4b) -->
+                <div id="mgr-history-controls" class="mgr-history-controls" style="display:none">
+                    <div class="mgr-search">
+                        <span class="mgr-search-ico" aria-hidden="true">⌕</span>
+                        <input type="search" id="mgr-history-search" class="mgr-search-input"
+                            placeholder="Search version, reason or person…" autocomplete="off">
+                    </div>
+                    <label class="mgr-history-daterange">From <input type="date" id="mgr-history-start" class="mgr-input"></label>
+                    <label class="mgr-history-daterange">To <input type="date" id="mgr-history-end" class="mgr-input"></label>
+                    <button id="btn-history-export" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Export CSV</button>
+                </div>
+
+                <!-- Compare any two versions (4c) -->
+                <div id="mgr-compare-bar" class="mgr-compare-bar" style="display:none">
+                    <span class="mgr-compare-label">Compare</span>
+                    <select id="mgr-compare-from" class="mgr-input"></select>
+                    <span class="mgr-compare-arrow">→</span>
+                    <select id="mgr-compare-to" class="mgr-input"></select>
+                    <button id="btn-compare-run" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Compare</button>
+                </div>
+
+                <div class="mgr-table-card" id="mgr-history-table-wrap" style="display:none">
+                    <table class="mgr-table">
+                        <thead>
+                            <tr>
+                                <th style="width:96px">Version</th>
+                                <th style="width:170px">Archived</th>
+                                <th>Changed By</th>
+                                <th>Reason for Change</th>
+                                <th class="mgr-col-actions" style="width:120px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mgr-history-rows"></tbody>
+                    </table>
+                </div>
+
+                <!-- Diff viewer -->
+                <div id="mgr-diff-panel" class="mgr-diff-card" style="display:none">
+                    <div class="mgr-diff-header">
+                        <h3 class="mgr-diff-title" id="mgr-diff-title">Diff</h3>
+                        <button id="btn-diff-close" class="mgr-btn mgr-btn-secondary mgr-btn-sm">✕ Close</button>
+                    </div>
+                    <div class="mgr-diff-legend">
+                        <span class="mgr-diff-chip mgr-diff-chip--added">+ Added</span>
+                        <span class="mgr-diff-chip mgr-diff-chip--removed">– Removed</span>
+                        <span class="mgr-diff-chip mgr-diff-chip--same">Unchanged</span>
+                    </div>
+                    <div id="mgr-diff-stats" class="mgr-diff-stats"></div>
+                    <div id="mgr-diff-content" class="mgr-diff-content"></div>
                 </div>
             </div>
 
-            <!-- Change reason -->
-            <div class="mgr-field">
-                <label class="mgr-label" for="mgr-change-reason">
-                    Reason <span class="mgr-required">*</span>
-                    <span id="mgr-change-reason-hint" class="mgr-label-hint"></span>
-                </label>
-                <textarea id="mgr-change-reason" class="mgr-textarea mgr-textarea--short" rows="2"
-                    placeholder="Document the purpose or reason for this change — required for audit trail"></textarea>
-            </div>
-
-            <!-- Template content -->
-            <div class="mgr-field">
-                <label class="mgr-label" for="mgr-content">Content <span class="mgr-required">*</span></label>
-                <textarea id="mgr-content" class="mgr-textarea" rows="20" spellcheck="false" placeholder="Template body…"></textarea>
-            </div>
-
-            <div class="mgr-editor-actions">
-                <button id="btn-editor-save" class="mgr-btn mgr-btn-primary">Save to Salesforce</button>
-                <button id="btn-editor-cancel" class="mgr-btn mgr-btn-secondary">Cancel</button>
-            </div>
-            <div id="mgr-editor-status" class="mgr-status-msg"></div>
-        </div>
-
-        <!-- History panel -->
-        <div id="mgr-history-panel" style="display:none">
-            <div class="mgr-history-header">
-                <div>
-                    <h2 class="mgr-editor-heading" id="mgr-history-heading">Version History</h2>
-                    <div class="mgr-history-meta" id="mgr-history-meta"></div>
-                </div>
-                <button id="btn-history-back" class="mgr-btn mgr-btn-secondary">← Back to List</button>
-            </div>
-
-            <div id="mgr-history-loading" class="mgr-state-msg">Loading history…</div>
-
-            <div id="mgr-history-unavailable" class="mgr-notice mgr-notice--warn" style="display:none">
-                Version history requires the <code>NucleusTemplateVersion__c</code> Salesforce object.
-                Contact your administrator to set it up.
-            </div>
-
-            <div id="mgr-history-empty" class="mgr-state-msg" style="display:none">
-                No archived versions found. History is recorded automatically each time a template is updated.
-            </div>
-
-            <!-- History search + export (4b) -->
-            <div id="mgr-history-controls" class="mgr-history-controls" style="display:none">
-                <input type="search" id="mgr-history-search" class="mgr-input mgr-history-search"
-                    placeholder="Search version, reason or person…" autocomplete="off">
-                <label class="mgr-history-daterange">From <input type="date" id="mgr-history-start" class="mgr-input"></label>
-                <label class="mgr-history-daterange">To <input type="date" id="mgr-history-end" class="mgr-input"></label>
-                <button id="btn-history-export" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Export CSV</button>
-            </div>
-
-            <!-- Compare any two versions (4c) -->
-            <div id="mgr-compare-bar" class="mgr-compare-bar" style="display:none">
-                <span class="mgr-compare-label">Compare</span>
-                <select id="mgr-compare-from" class="mgr-input"></select>
-                <span class="mgr-compare-arrow">→</span>
-                <select id="mgr-compare-to" class="mgr-input"></select>
-                <button id="btn-compare-run" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Compare</button>
-            </div>
-
-            <div id="mgr-history-table-wrap" style="display:none">
-                <table class="mgr-table">
-                    <thead>
-                        <tr>
-                            <th style="width:80px">Version</th>
-                            <th style="width:160px">Archived</th>
-                            <th>Changed By</th>
-                            <th>Reason for Change</th>
-                            <th class="mgr-col-actions" style="width:120px">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="mgr-history-rows"></tbody>
-                </table>
-            </div>
-
-            <!-- Diff viewer -->
-            <div id="mgr-diff-panel" class="mgr-diff-card" style="display:none">
-                <div class="mgr-diff-header">
-                    <h3 class="mgr-diff-title" id="mgr-diff-title">Diff</h3>
-                    <button id="btn-diff-close" class="mgr-btn mgr-btn-secondary mgr-btn-sm">✕ Close</button>
-                </div>
-                <div class="mgr-diff-legend">
-                    <span class="mgr-diff-chip mgr-diff-chip--added">+ Added</span>
-                    <span class="mgr-diff-chip mgr-diff-chip--removed">– Removed</span>
-                    <span class="mgr-diff-chip mgr-diff-chip--same">Unchanged</span>
-                </div>
-                <div id="mgr-diff-stats" class="mgr-diff-stats"></div>
-                <div id="mgr-diff-content" class="mgr-diff-content"></div>
-            </div>
-        </div>
-
-    </main>
+        </main>
+    </div>
+</div>
 
     <script src="../config.js"></script>
     <script src="manager.js"></script>

@@ -14,6 +14,18 @@
     var GEN_BTN_ID = 'cyfor-generate-report-btn';
     var MENU_ID = 'cyfor-report-menu';
 
+    // ========================================================================
+    // MG22A / MG22B report generation — OWNED BY MITUL (work in progress)
+    // ------------------------------------------------------------------------
+    // The MG22 Word-report feature is feature-flagged OFF for now. Flip this to
+    // true to re-show the "Generate Report ▾" button on Forensic Case pages.
+    // The whole MG22 pipeline is intact and clearly marked with banners like
+    // this one — see also: report/mg-extract.js, background/sf-report-templates.js,
+    // lib/docx-fill.js, and the report.* handlers + generateReport() in
+    // background.js. Hidden, NOT deleted, so Mitul can pick it up.
+    // ========================================================================
+    var MG22_ENABLED = false;
+
     // Shared teardown registry (defined in content/config.js). When present we
     // route our observer / interval / listeners through it so they disconnect
     // on extension context invalidation, consistent with the other content
@@ -114,23 +126,31 @@
         li.appendChild(btn);
         ribbon.insertBefore(li, ribbon.firstChild); // first action — clean rounded-left join
 
-        // Generate Report (MG22) — sits right after Export Case Report.
-        var genLi = document.createElement('li');
-        genLi.className = 'slds-button-group-item';
-        genLi.setAttribute('data-cyfor-report', '1');
-        var genBtn = document.createElement('button');
-        genBtn.id = GEN_BTN_ID;
-        genBtn.type = 'button';
-        genBtn.className = 'slds-button slds-button_neutral cyfor-generate-report-btn';
-        genBtn.title = 'Pre-fill an MG22 report from this case';
-        genBtn.textContent = 'Generate Report ▾';
-        if (CLEAN) CLEAN.addEventListener(genBtn, 'click', function () { openReportMenu(genBtn); });
-        else genBtn.addEventListener('click', function () { openReportMenu(genBtn); });
-        genLi.appendChild(genBtn);
-        ribbon.insertBefore(genLi, li.nextSibling);
+        // ─── MG22A / MG22B (Mitul) — "Generate Report ▾" button, hidden via flag ───
+        // Sits right after Export Case Report when MG22_ENABLED is turned on.
+        if (MG22_ENABLED) {
+            var genLi = document.createElement('li');
+            genLi.className = 'slds-button-group-item';
+            genLi.setAttribute('data-cyfor-report', '1');
+            var genBtn = document.createElement('button');
+            genBtn.id = GEN_BTN_ID;
+            genBtn.type = 'button';
+            genBtn.className = 'slds-button slds-button_neutral cyfor-generate-report-btn';
+            genBtn.title = 'Pre-fill an MG22 report from this case';
+            genBtn.textContent = 'Generate Report ▾';
+            if (CLEAN) CLEAN.addEventListener(genBtn, 'click', function () { openReportMenu(genBtn); });
+            else genBtn.addEventListener('click', function () { openReportMenu(genBtn); });
+            genLi.appendChild(genBtn);
+            ribbon.insertBefore(genLi, li.nextSibling);
+        }
     }
 
-    // ── MG22 report generation ──────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // MG22A / MG22B report generation — OWNED BY MITUL (WIP, button hidden)
+    // Everything from here to downloadBase64() is the MG22 report menu + the
+    // generate/download flow. Currently unreachable because the button is gated
+    // by MG22_ENABLED above. Left intact for Mitul to continue.
+    // ════════════════════════════════════════════════════════════════════════
     function closeReportMenu() {
         var menu = document.getElementById(MENU_ID);
         if (menu) menu.remove();
@@ -199,9 +219,6 @@
                 templateId: templateId, templateName: templateName
             });
             if (!resp || !resp.ok) throw new Error((resp && resp.error) || 'Generation failed');
-            if (resp.meta && resp.meta.warnings && resp.meta.warnings.length) {
-                console.log('[CYFOR] Report notes (non-fatal):', resp.meta.warnings);
-            }
             downloadBase64(resp.base64, resp.filename,
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             toast('"' + templateName + '" downloaded.', 'success');
@@ -304,13 +321,6 @@
             if (!resp || !resp.ok) throw new Error((resp && resp.error) || 'Fetch failed');
 
             var data = resp.data || {};
-            if (data.meta) {
-                console.log('[CYFOR] Resolved objects:', data.meta.resolved);
-                console.log('[CYFOR] Case child relationships:', data.meta.childRelationships);
-                if (data.meta.warnings && data.meta.warnings.length) {
-                    console.log('[CYFOR] Report notes (non-fatal):', data.meta.warnings);
-                }
-            }
 
             if (!self.DisclosureReport) throw new Error('Report generator not loaded');
 

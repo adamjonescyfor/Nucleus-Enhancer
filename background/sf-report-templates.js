@@ -1,3 +1,10 @@
+// ████████████████████████████████████████████████████████████████████████████
+// MG22A / MG22B REPORT GENERATION — OWNED BY MITUL (work in progress)
+// This whole file is part of the MG22 feature, currently hidden behind the
+// MG22_ENABLED flag in content/case-report.js. Hidden, NOT deleted — left intact
+// for Mitul. Related: report/mg-extract.js, lib/docx-fill.js, and the report.*
+// handlers + generateReport() in background.js.
+// ████████████████████████████████████████████████████████████████████████████
 // ==================================================
 // CYFOR Nucleus Enhancer — MG22 report-template fetch (background)
 // Lists NucleusReportTemplate__c records (team-scoped, like text templates)

@@ -50,7 +50,7 @@
 .cyfor-template-btn:hover {
     opacity: 1;
     transform: scale(1.08);
-    box-shadow: 0 2px 10px rgba(0, 112, 210, 0.3);
+    box-shadow: 0 2px 10px rgba(14, 154, 167, 0.34);
     border-color: var(--cyfor-primary);
 }
 
@@ -274,7 +274,7 @@
 
 /* Search highlight (L-4) */
 .cyfor-template-item mark {
-    background: rgba(0, 112, 210, 0.15);
+    background: rgba(14, 154, 167, 0.18);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;

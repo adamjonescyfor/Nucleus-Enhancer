@@ -1,82 +1,122 @@
 /* ==================================================
    CYFOR Nucleus Enhancer — Design Tokens
    Single source of truth for the extension-page palette
-   (popup + manager). Both files used to define their own
-   near-identical :root blocks; this unifies the values and
-   the dark theme so they stay in sync.
+   (popup + manager). The injected Salesforce UI keeps its
+   own tokens in base.css (kept in sync with these values).
+
+   Identity: CYFOR teal (#0E9AA7) + deep navy (#0B2A3A).
+   Refined/premium but compact — depth comes from type,
+   hairlines and soft navy-tinted shadows, not whitespace.
 
    Theme model:
      - styles/theme.js sets html[data-theme="light|dark"].
      - "Auto" resolves to light/dark from the OS at runtime.
      - The @media block below is a no-JS first-paint fallback.
-   The injected Salesforce UI keeps its own tokens in base.css.
    ================================================== */
 
 :root {
-    /* Surfaces */
+    /* Surfaces (cool, near-white) */
     --surface:        #ffffff;
-    --surface-soft:   #f7f9fc;
-    --surface-muted:  #eef2f7;
-    --border:         #d8e0ec;
+    --surface-soft:   #f3f6f8;
+    --surface-muted:  #e8eef1;
+    --border:         #d5dee3;
+    --border-strong:  #c2ced5;
 
-    /* Text */
-    --text-primary:   #172b4d;
-    --text-secondary: #4a5568;
-    --text-muted:     #6f7f96;
-    --cyfor-text-muted: #6f7f96; /* legacy alias used in popup.css */
+    /* Text (navy-based for a premium feel) */
+    --text-primary:   #0d2a38;
+    --text-secondary: #3c5663;
+    --text-muted:     #6a8090;
+    --cyfor-text-muted: #6a8090; /* legacy alias used in popup.css */
 
-    /* Brand */
-    --brand:          #0070d2;
-    --brand-strong:   #005fb2;
-    --brand-dark:     #005fb2;
+    /* Brand — CYFOR teal + navy */
+    --brand:          #0e9aa7;
+    --brand-strong:   #0b7e8a;
+    --brand-dark:     #0b2a3a;
+    --brand-tint:     #e3f6f7;   /* teal-50 — hover/active/badge fills */
+    --brand-tint-2:   #cfeef0;   /* slightly deeper tint */
+    --brand-ring:     rgba(14, 154, 167, .38);  /* focus ring */
+    --on-brand:       #ffffff;   /* text on a teal fill */
+
+    /* Navy (headers, sidebar, table head) */
+    --navy:           #0b2a3a;
+    --navy-soft:      #12384a;
+    --navy-line:      #1d4d60;
+    --on-navy:        #eaf3f5;
+    --on-navy-muted:  #9fc0cb;
+    --brand-grad:     linear-gradient(135deg, #0b2a3a 0%, #0e6d78 75%, #0e9aa7 130%);
 
     /* Semantic */
     --success-bg:     #dff5e7;
     --success-text:   #0b7a3a;
+    --success-border: #9ce0b8;
     --danger-bg:      #fff1f1;
     --danger-text:    #b4232f;
     --danger-border:  #fca5a5;
-    --warn-bg:        #fffbeb;
-    --warn-text:      #92400e;
-    --warn-border:    #fcd34d;
-    --info-bg:        #eff6ff;
-    --info-text:      #1e40af;
-    --info-border:    #bfdbfe;
+    --warn-bg:        #fff8e8;
+    --warn-text:      #92510e;
+    --warn-border:    #f3cf86;
+    --info-bg:        #e3f6f7;   /* teal-tinted to match brand */
+    --info-text:      #0b7e8a;
+    --info-border:    #aee2e7;
 
-    /* Layout */
-    --radius:         6px;
-    --shadow:         0 1px 4px rgba(0, 0, 0, .10);
+    /* Shape */
+    --radius-sm:      6px;
+    --radius:         9px;
+    --radius-lg:      14px;
+    --radius-pill:    999px;
+
+    /* Elevation — soft, navy-tinted, layered */
+    --shadow-sm:      0 1px 2px rgba(11, 42, 58, .07), 0 1px 1px rgba(11, 42, 58, .04);
+    --shadow-md:      0 6px 16px rgba(11, 42, 58, .10), 0 2px 5px rgba(11, 42, 58, .06);
+    --shadow-lg:      0 18px 40px rgba(11, 42, 58, .16), 0 6px 14px rgba(11, 42, 58, .08);
+    --shadow:         var(--shadow-sm); /* legacy alias */
 }
 
-/* Dark palette — shared declarations */
+/* Dark palette — charcoal surfaces, brighter teal accent */
 :root[data-theme="dark"] {
-    --surface:        #1c1c1e;
-    --surface-soft:   #242426;
-    --surface-muted:  #2a2a2c;
-    --border:         #3e3e40;
+    --surface:        #16191c;
+    --surface-soft:   #1c2024;
+    --surface-muted:  #242a2f;
+    --border:         #333b41;
+    --border-strong:  #434d54;
 
-    --text-primary:   #e8e8e8;
-    --text-secondary: #b0b0b4;
-    --text-muted:     #8a8a8e;
-    --cyfor-text-muted: #8a8a8e;
+    --text-primary:   #e9eef0;
+    --text-secondary: #aeb9bf;
+    --text-muted:     #808d94;
+    --cyfor-text-muted: #808d94;
 
-    --brand:          #4da6ff;
-    --brand-strong:   #2d8ff0;
-    --brand-dark:     #2d8ff0;
+    --brand:          #22c7d2;
+    --brand-strong:   #16a8b3;
+    --brand-dark:     #0a1f29;
+    --brand-tint:     rgba(34, 199, 210, .13);
+    --brand-tint-2:   rgba(34, 199, 210, .20);
+    --brand-ring:     rgba(34, 199, 210, .42);
+    --on-brand:       #06181c;
+
+    --navy:           #0c1519;
+    --navy-soft:      #122029;
+    --navy-line:      #1d3540;
+    --on-navy:        #e6eff1;
+    --on-navy-muted:  #8aa7b0;
+    --brand-grad:     linear-gradient(135deg, #0a1f29 0%, #0e5b64 80%, #16a8b3 140%);
 
     --success-bg:     #0a2e1a;
     --success-text:   #4ade80;
+    --success-border: #1d5235;
     --danger-bg:      #2e0a0a;
     --danger-text:    #ff6b70;
     --danger-border:  #7f1d1d;
-    --warn-bg:        #1c1600;
+    --warn-bg:        #211a05;
     --warn-text:      #fcd34d;
-    --warn-border:    #78350f;
-    --info-bg:        #0c1a2e;
-    --info-text:      #7dd3fc;
-    --info-border:    #1e3a5f;
+    --warn-border:    #6e4f17;
+    --info-bg:        rgba(34, 199, 210, .12);
+    --info-text:      #7fe3ea;
+    --info-border:    #1d4d54;
 
-    --shadow:         0 1px 4px rgba(0, 0, 0, .4);
+    --shadow-sm:      0 1px 2px rgba(0, 0, 0, .45);
+    --shadow-md:      0 6px 16px rgba(0, 0, 0, .5);
+    --shadow-lg:      0 18px 40px rgba(0, 0, 0, .6);
+    --shadow:         var(--shadow-sm);
 }
 
 /* Shared spinner utility (popup + manager). */
@@ -94,35 +134,51 @@
 }
 
 /* No-JS / pre-script first-paint fallback: follow the OS until theme.js
-   sets an explicit data-theme. */
+   sets an explicit data-theme. Mirrors the dark block above. */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme]) {
-        --surface:        #1c1c1e;
-        --surface-soft:   #242426;
-        --surface-muted:  #2a2a2c;
-        --border:         #3e3e40;
+        --surface:        #16191c;
+        --surface-soft:   #1c2024;
+        --surface-muted:  #242a2f;
+        --border:         #333b41;
+        --border-strong:  #434d54;
 
-        --text-primary:   #e8e8e8;
-        --text-secondary: #b0b0b4;
-        --text-muted:     #8a8a8e;
-        --cyfor-text-muted: #8a8a8e;
+        --text-primary:   #e9eef0;
+        --text-secondary: #aeb9bf;
+        --text-muted:     #808d94;
+        --cyfor-text-muted: #808d94;
 
-        --brand:          #4da6ff;
-        --brand-strong:   #2d8ff0;
-        --brand-dark:     #2d8ff0;
+        --brand:          #22c7d2;
+        --brand-strong:   #16a8b3;
+        --brand-dark:     #0a1f29;
+        --brand-tint:     rgba(34, 199, 210, .13);
+        --brand-tint-2:   rgba(34, 199, 210, .20);
+        --brand-ring:     rgba(34, 199, 210, .42);
+        --on-brand:       #06181c;
+
+        --navy:           #0c1519;
+        --navy-soft:      #122029;
+        --navy-line:      #1d3540;
+        --on-navy:        #e6eff1;
+        --on-navy-muted:  #8aa7b0;
+        --brand-grad:     linear-gradient(135deg, #0a1f29 0%, #0e5b64 80%, #16a8b3 140%);
 
         --success-bg:     #0a2e1a;
         --success-text:   #4ade80;
+        --success-border: #1d5235;
         --danger-bg:      #2e0a0a;
         --danger-text:    #ff6b70;
         --danger-border:  #7f1d1d;
-        --warn-bg:        #1c1600;
+        --warn-bg:        #211a05;
         --warn-text:      #fcd34d;
-        --warn-border:    #78350f;
-        --info-bg:        #0c1a2e;
-        --info-text:      #7dd3fc;
-        --info-border:    #1e3a5f;
+        --warn-border:    #6e4f17;
+        --info-bg:        rgba(34, 199, 210, .12);
+        --info-text:      #7fe3ea;
+        --info-border:    #1d4d54;
 
-        --shadow:         0 1px 4px rgba(0, 0, 0, .4);
+        --shadow-sm:      0 1px 2px rgba(0, 0, 0, .45);
+        --shadow-md:      0 6px 16px rgba(0, 0, 0, .5);
+        --shadow-lg:      0 18px 40px rgba(0, 0, 0, .6);
+        --shadow:         var(--shadow-sm);
     }
 }

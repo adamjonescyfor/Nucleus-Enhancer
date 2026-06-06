@@ -208,7 +208,7 @@ Cyfor.editor = {
         // Method 1: execCommand (works with Quill's undo stack)
         try {
             inserted = document.execCommand('insertText', false, text);
-        } catch (e) { console.debug('[CYFOR] insertText method 1 failed:', e.message); }
+        } catch (e) { /* fall through to the next insert method */ }
 
         // Method 2: insertHTML with proper paragraph structure
         if (!inserted) {
@@ -217,7 +217,7 @@ Cyfor.editor = {
                     .map(line => `<p>${Cyfor.utils.escapeHtml(line) || '<br>'}</p>`)
                     .join('');
                 inserted = document.execCommand('insertHTML', false, html);
-            } catch (e) { console.debug('[CYFOR] insertText method 2 failed:', e.message); }
+            } catch (e) { /* fall through to the next insert method */ }
         }
 
         // Method 3: Direct DOM manipulation (last resort)

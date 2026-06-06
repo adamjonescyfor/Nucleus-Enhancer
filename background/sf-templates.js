@@ -120,14 +120,6 @@ async function fetchRemoteTemplates(forceRefresh) {
 
     var teamCode = sfUser.teamCode || null;
     var map = await resolveTemplateFields(base, accessToken, obj);
-
-    // Diagnostic: which fields were discovered (null = not found on the object).
-    console.log('[CYFOR] Template fields resolved:', {
-        content: map.content, category: map.category, team: map.team,
-        versionLabel: map.versionLabel, status: map.status, changeReason: map.changeReason,
-        effectiveDate: map.effectiveDate, reviewDueDate: map.reviewDueDate, documentId: map.documentId
-    });
-
     var query = buildQuery(map, teamCode);
     var url = base + '/query?q=' + encodeURIComponent(query);
     var response = await doFetch(url, accessToken);

@@ -4,41 +4,44 @@
    ================================================== */
 
 :root {
-    /* Brand */
-    --cyfor-primary: #0070d2;
-    --cyfor-primary-dark: #005fb2;
-    --cyfor-primary-light: #e3f2fd;
+    /* Brand — CYFOR teal + deep navy (kept in sync with styles/tokens.css) */
+    --cyfor-primary: #0e9aa7;
+    --cyfor-primary-dark: #0b7e8a;
+    --cyfor-primary-light: #e3f6f7;
+    --cyfor-navy: #0b2a3a;
+    --cyfor-navy-soft: #12384a;
+    --cyfor-on-brand: #ffffff;
 
     /* Semantic */
-    --cyfor-success: #027e46;
-    --cyfor-success-bg: #d4edda;
-    --cyfor-danger: #c23934;
+    --cyfor-success: #0b7a3a;
+    --cyfor-success-bg: #dff5e7;
+    --cyfor-danger: #b4232f;
     --cyfor-danger-bg: #ffeaea;
-    --cyfor-warning: #e65100;
+    --cyfor-warning: #92510e;
     --cyfor-warning-bg: #fff3cd;
-    --cyfor-info: #01579b;
-    --cyfor-info-bg: #d1ecf1;
+    --cyfor-info: #0b7e8a;
+    --cyfor-info-bg: #e3f6f7;
 
     /* Neutral */
-    --cyfor-text: #181818;
-    --cyfor-text-secondary: #3e3e3c;
-    --cyfor-text-muted: #706e6b;
-    --cyfor-border: #dddbda;
-    --cyfor-border-light: #f0f0f0;
+    --cyfor-text: #0d2a38;
+    --cyfor-text-secondary: #3c5663;
+    --cyfor-text-muted: #6a8090;
+    --cyfor-border: #d5dee3;
+    --cyfor-border-light: #eef2f4;
     --cyfor-surface: #ffffff;
-    --cyfor-surface-raised: #fafbfc;
+    --cyfor-surface-raised: #f6f9fa;
 
     /* Layout */
-    --cyfor-radius-sm: 4px;
-    --cyfor-radius: 6px;
-    --cyfor-radius-lg: 8px;
-    --cyfor-radius-pill: 20px;
+    --cyfor-radius-sm: 6px;
+    --cyfor-radius: 9px;
+    --cyfor-radius-lg: 13px;
+    --cyfor-radius-pill: 999px;
 
-    /* Shadows */
-    --cyfor-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-    --cyfor-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    --cyfor-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
-    --cyfor-shadow-xl: 0 12px 36px rgba(0, 0, 0, 0.2);
+    /* Shadows — soft, navy-tinted */
+    --cyfor-shadow-sm: 0 1px 3px rgba(11, 42, 58, 0.09);
+    --cyfor-shadow: 0 4px 14px rgba(11, 42, 58, 0.14);
+    --cyfor-shadow-lg: 0 12px 30px rgba(11, 42, 58, 0.18);
+    --cyfor-shadow-xl: 0 18px 44px rgba(11, 42, 58, 0.24);
 
     /* Typography */
     --cyfor-font: 'Salesforce Sans', -apple-system, BlinkMacSystemFont,
@@ -125,7 +128,7 @@
     bottom: 0;
     height: 3px;
     width: var(--cyfor-dl-progress, 0%);
-    background: var(--brand-primary, #0070d2);
+    background: var(--cyfor-primary, #0e9aa7);
     transition: width 0.3s ease;
     border-radius: 0 0 3px 3px;
 }
@@ -135,17 +138,21 @@
    ================================================== */
 @media (prefers-color-scheme: dark) {
     :root {
-        --cyfor-text: #e8e8e8;
-        --cyfor-text-secondary: #c0bebe;
-        --cyfor-text-muted: #9e9ea0;
-        --cyfor-border: #3e3e40;
-        --cyfor-border-light: #2a2a2c;
-        --cyfor-surface: #1c1c1e;
-        --cyfor-surface-raised: #242426;
-        --cyfor-primary-light: #0a2540;
+        --cyfor-text: #e9eef0;
+        --cyfor-text-secondary: #aeb9bf;
+        --cyfor-text-muted: #808d94;
+        --cyfor-border: #333b41;
+        --cyfor-border-light: #242a2f;
+        --cyfor-surface: #16191c;
+        --cyfor-surface-raised: #1f2429;
+        --cyfor-primary: #22c7d2;
+        --cyfor-primary-dark: #16a8b3;
+        --cyfor-primary-light: rgba(34, 199, 210, .13);
+        --cyfor-navy: #0c1519;
+        --cyfor-on-brand: #06181c;
         --cyfor-success-bg: #0a2e1a;
         --cyfor-danger-bg: #2e0a0a;
         --cyfor-warning-bg: #2a1a00;
-        --cyfor-info-bg: #0a1e30;
+        --cyfor-info-bg: rgba(34, 199, 210, .12);
     }
 }
