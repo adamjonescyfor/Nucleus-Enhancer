@@ -80,19 +80,50 @@
             syncLabel(); close(); trigger.focus();
         }
         function isOpen() { return menu.style.display !== 'none'; }
+        // Place the fixed menu under (or above) the trigger, sized to fit the
+        // viewport so it always scrolls within its own bounds.
+        function positionMenu() {
+            var r = trigger.getBoundingClientRect();
+            menu.style.left   = r.left + 'px';
+            menu.style.width  = r.width + 'px';
+            menu.style.maxHeight = 'none';
+            var desired     = Math.min(menu.scrollHeight, 300);
+            var spaceBelow  = window.innerHeight - r.bottom - 8;
+            var spaceAbove  = r.top - 8;
+            if (spaceBelow >= desired || spaceBelow >= spaceAbove) {
+                menu.style.top = (r.bottom + 4) + 'px';
+                menu.style.maxHeight = Math.max(72, Math.min(desired, spaceBelow)) + 'px';
+            } else {
+                var h = Math.max(72, Math.min(desired, spaceAbove));
+                menu.style.maxHeight = h + 'px';
+                menu.style.top = (r.top - h - 4) + 'px';
+            }
+        }
         function open() {
             buildMenu();
             menu.style.display = '';
             wrap.classList.add('is-open');
             trigger.setAttribute('aria-expanded', 'true');
+            positionMenu();
             setActive(selectEl.selectedIndex >= 0 ? selectEl.selectedIndex : 0);
             document.addEventListener('mousedown', onOutside, true);
+            window.addEventListener('scroll', onReposition, true);
+            window.addEventListener('resize', onReposition, true);
         }
         function close() {
             menu.style.display = 'none';
             wrap.classList.remove('is-open');
             trigger.setAttribute('aria-expanded', 'false');
             document.removeEventListener('mousedown', onOutside, true);
+            window.removeEventListener('scroll', onReposition, true);
+            window.removeEventListener('resize', onReposition, true);
+        }
+        // On scroll/resize, close if the trigger scrolled out of view, else reposition.
+        function onReposition(e) {
+            if (e && e.target && e.target.classList && e.target.classList.contains('cyf-cs-menu')) return; // ignore the menu's own scroll
+            var r = trigger.getBoundingClientRect();
+            if (r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
+            positionMenu();
         }
         function onOutside(e) { if (!wrap.contains(e.target)) close(); }
 

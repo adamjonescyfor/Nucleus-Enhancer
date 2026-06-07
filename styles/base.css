@@ -135,9 +135,31 @@
 
 /* ==================================================
    Dark Mode (L-6)
+   Driven by data-cyfor-theme on <html>, set by content/theme-apply.js from the
+   user's saved Auto/Light/Dark preference (updates live, no refresh). The @media
+   block is only a first-paint fallback for before that script runs.
    ================================================== */
+:root[data-cyfor-theme="dark"] {
+    --cyfor-text: #e9eef0;
+    --cyfor-text-secondary: #aeb9bf;
+    --cyfor-text-muted: #808d94;
+    --cyfor-border: #333b41;
+    --cyfor-border-light: #242a2f;
+    --cyfor-surface: #16191c;
+    --cyfor-surface-raised: #1f2429;
+    --cyfor-primary: #22c7d2;
+    --cyfor-primary-dark: #16a8b3;
+    --cyfor-primary-light: rgba(34, 199, 210, .13);
+    --cyfor-navy: #0c1519;
+    --cyfor-on-brand: #06181c;
+    --cyfor-success-bg: #0a2e1a;
+    --cyfor-danger-bg: #2e0a0a;
+    --cyfor-warning-bg: #2a1a00;
+    --cyfor-info-bg: rgba(34, 199, 210, .12);
+}
+
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-cyfor-theme]) {
         --cyfor-text: #e9eef0;
         --cyfor-text-secondary: #aeb9bf;
         --cyfor-text-muted: #808d94;
@@ -156,3 +178,5 @@
         --cyfor-info-bg: rgba(34, 199, 210, .12);
     }
 }
+/* When the user picked Light, data-cyfor-theme="light" is set: neither dark rule
+   above matches, so the base :root light tokens apply automatically. */

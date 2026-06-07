@@ -48,17 +48,17 @@
 .cyf-cs.is-open .cyf-cs-arrow { transform: rotate(180deg); }
 
 .cyf-cs-menu {
-    position: absolute;
-    top: calc(100% + 5px);
-    left: 0; right: 0;
-    z-index: 9000;
+    /* position:fixed + JS-computed coords so the list escapes any ancestor
+       overflow:hidden (e.g. popup sections) and scrolls normally. */
+    position: fixed;
+    z-index: 2147483000;
     background: var(--surface, #fff);
     border: 1px solid var(--border, #d5dee3);
     border-radius: var(--radius, 9px);
     box-shadow: var(--shadow-lg, 0 18px 40px rgba(11,42,58,.16));
     padding: 5px;
-    max-height: 260px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .cyf-cs-item {

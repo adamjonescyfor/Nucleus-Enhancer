@@ -60,6 +60,7 @@
             "matches": ["https://*.lightning.force.com/*"],
             "run_at": "document_idle",
             "js": [
+                "content/theme-apply.js",
                 "content/utils.js",
                 "content/config.js",
                 "content/toast.js",
