@@ -75,6 +75,59 @@ chrome.runtime.onInstalled.addListener((details) => {
     }
 });
 
+// ── Background template sync ──────────────────────────────────────────────────
+// Keeps every connected device current without the user opening the popup, so an
+// admin's template change reaches everyone within BG_SYNC_MINUTES.
+//
+// Cost: templates are fetched DIRECTLY from Salesforce (not via the Cloudflare
+// worker), so this poll adds NO worker requests — the worker is only hit by the
+// occasional OAuth token refresh (~once per ~2h token lifetime, independent of
+// sync frequency). The poll is further gated to connected users who actually have
+// a Salesforce tab open, so idle installs make zero requests.
+var BG_SYNC_ALARM   = 'cyforTemplateSync';
+var BG_SYNC_MINUTES = 20;
+
+// Create the alarm only if it doesn't already exist, so frequent service-worker
+// restarts can't keep resetting (and thus never firing) the timer.
+function ensureSyncAlarm() {
+    try {
+        chrome.alarms.get(BG_SYNC_ALARM, (existing) => {
+            if (!existing) chrome.alarms.create(BG_SYNC_ALARM, { periodInMinutes: BG_SYNC_MINUTES });
+        });
+    } catch (e) { /* alarms unavailable */ }
+}
+chrome.runtime.onInstalled.addListener(ensureSyncAlarm);
+chrome.runtime.onStartup.addListener(ensureSyncAlarm);
+ensureSyncAlarm(); // also on service-worker spin-up
+
+// True only when the user has Salesforce open (so we don't poll for idle installs).
+// Fails open if the query can't run, so we never silently stop syncing.
+function hasSalesforceTabOpen() {
+    return new Promise((resolve) => {
+        try {
+            chrome.tabs.query(
+                { url: ['https://*.lightning.force.com/*', 'https://*.my.salesforce.com/*'] },
+                (tabs) => {
+                    if (chrome.runtime.lastError) { resolve(true); return; }
+                    resolve(Array.isArray(tabs) && tabs.length > 0);
+                }
+            );
+        } catch (e) { resolve(true); }
+    });
+}
+
+async function runBackgroundSync() {
+    if (!self.SfOAuth || !self.SfTemplates) return;
+    var stored = await chrome.storage.local.get(['sfOAuthTokens']);
+    if (!stored.sfOAuthTokens || !stored.sfOAuthTokens.accessToken) return; // not connected
+    if (!(await hasSalesforceTabOpen())) return;                            // not actively using SF
+    try { await self.SfTemplates.fetchRemoteTemplates(true); } catch (e) { /* retry next cycle */ }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm && alarm.name === BG_SYNC_ALARM) runBackgroundSync();
+});
+
 // Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Defense-in-depth: only handle messages from this extension's own content
