@@ -95,7 +95,7 @@ body {
     padding: 6px 16px;
     font-size: 10px;
     font-weight: 600;
-    background: #f9fbfe;
+    background: var(--surface-soft);
     border-bottom: 1px solid var(--border);
     color: var(--text-muted);
     transition: background 0.3s, color 0.3s;
@@ -222,7 +222,7 @@ body {
 .section-close {
     background: none;
     border: none;
-    color: #999;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 14px;
     padding: 0 2px;
@@ -334,14 +334,14 @@ body {
    Keyboard Shortcut Hints
    ================================================== */
 kbd {
-    background: #eee;
-    border: 1px solid #ddd;
+    background: var(--surface-muted);
+    border: 1px solid var(--border-strong);
     border-radius: 3px;
     padding: 0 4px;
     font-size: 9px;
     font-family: -apple-system, 'SF Mono', monospace;
-    color: #555;
-    box-shadow: 0 1px 0 #ccc;
+    color: var(--text-secondary);
+    box-shadow: 0 1px 0 var(--border);
     line-height: 1.6;
 }
 
@@ -523,8 +523,8 @@ input:focus-visible + .slider {
     display: flex;
     align-items: center;
     padding: 8px 14px;
-    background: #fff;
-    border-bottom: 1px solid #f0f0f0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
     cursor: grab;
     font-size: 12px;
     font-weight: 500;
@@ -538,7 +538,7 @@ input:focus-visible + .slider {
 }
 
 .sortable-item:hover {
-    background: #f1f7ff;
+    background: var(--brand-tint);
 }
 
 .sortable-item:active {
@@ -547,18 +547,18 @@ input:focus-visible + .slider {
 
 .sortable-item.dragging {
     opacity: 0.5;
-    background: #e3f2fd;
+    background: var(--brand-tint-2);
 }
 
 .sortable-handle {
     margin-right: 10px;
-    color: #ccc;
+    color: var(--text-muted);
     font-size: 16px;
     line-height: 1;
 }
 
 .sortable-item:hover .sortable-handle {
-    color: #888;
+    color: var(--text-secondary);
 }
 
 /* ==================================================
@@ -568,17 +568,18 @@ input:focus-visible + .slider {
     max-height: 180px;
     overflow-y: auto;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    margin: 0 14px 10px;
+    border-radius: var(--radius-sm);
+    margin: 12px 14px;          /* even gap above & below (was flush top, gap bottom) */
+    padding: 4px 0;             /* even inset so first/last rows aren't flush to the border */
     background: var(--surface-soft);
 }
 
 .mapping-row {
-    padding: 7px 10px;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .mapping-row:last-child {
@@ -587,7 +588,7 @@ input:focus-visible + .slider {
 
 .process-name {
     font-size: 11px;
-    color: #444;
+    color: var(--text-secondary);
     font-weight: 600;
     min-width: 100px;
     flex-shrink: 0;
@@ -650,13 +651,13 @@ select.map-select:focus-visible {
     font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
     line-height: 1.5;
-    color: #333;
-    background: #fafbfc;
+    color: var(--text-secondary);
+    background: var(--surface-soft);
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 200px;
     overflow-y: auto;
-    border-top: 1px solid #f0f0f0;
+    border-top: 1px solid var(--border);
 }
 
 /* ==================================================
@@ -739,18 +740,22 @@ select.map-select:focus-visible {
    Upload Area
    ================================================== */
 .upload-area {
-    margin: 0 14px 10px;
-    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin: 12px;
+    padding: 18px 14px;
     background: var(--surface-soft);
     border-radius: var(--radius-sm);
     border: 2px dashed var(--border-strong);
     text-align: center;
-    transition: all 0.2s;
+    transition: border-color 0.2s, background 0.2s;
 }
 
 .upload-area.drag-over {
     border-color: var(--brand);
-    background: #eaf4ff;
+    background: var(--brand-tint);
 }
 
 #folder-input {
@@ -779,7 +784,7 @@ select.map-select:focus-visible {
 }
 
 .upload-hint {
-    margin-top: 8px;
+    margin-top: 0;
     font-size: 10px;
     line-height: 1.4;
     color: var(--text-muted);
@@ -811,10 +816,15 @@ select.map-select:focus-visible {
    ================================================== */
 .status-msg {
     font-size: 11px;
-    margin-top: 8px;
+    margin-top: 0;
     min-height: 16px;
     font-weight: 500;
     transition: color 0.2s;
+}
+
+/* When there's no message, don't reserve space (keeps the upload box tidy). */
+.status-msg:empty {
+    min-height: 0;
 }
 
 .status-success { color: var(--success-text); }
@@ -828,7 +838,7 @@ select.map-select:focus-visible {
     padding: 14px;
     text-align: center;
     font-size: 11px;
-    color: #999;
+    color: var(--text-muted);
 }
 
 /* ==================================================
@@ -1025,11 +1035,16 @@ html[data-theme="dark"] .header {
     background: var(--brand-grad);
 }
 
-/* Native dropdown list options — explicit colours so they're legible in dark
-   mode rather than inheriting a low-contrast/greyed default. */
+/* Native dropdown list options — EXPLICIT colours (not var(), which the OS-
+   rendered list doesn't reliably resolve). Light = white + dark text;
+   dark = dark + white text. theme.js always sets a concrete data-theme. */
 select option {
-    background: var(--surface);
-    color: var(--text-primary);
+    background-color: #ffffff;
+    color: #16242e;
+}
+html[data-theme="dark"] select option {
+    background-color: #20262b;
+    color: #ffffff;
 }
 
 html[data-theme="dark"] input,
@@ -1156,3 +1171,15 @@ html[data-theme="dark"] .cyfor-ctx-menu-item-badge--official {
     background: var(--surface);
     color: var(--text-primary);
 }
+
+/* ── Custom dropdown — popup context sizing ──────────────────────────────────
+   The shared .cyf-cs wrapper replaces each native <select>; size its trigger to
+   match the compact popup contexts (mappings row, quick-insert, preset bar). */
+.mapping-row .cyf-cs { flex: 1; min-width: 0; }
+.mapping-row .cyf-cs-trigger { font-size: 11px; padding: 5px 8px; }
+
+.quick-insert .cyf-cs { margin-bottom: 8px; }
+.quick-insert .cyf-cs-trigger { font-size: 12px; }
+
+.column-presets-bar .cyf-cs { flex: 1; min-width: 80px; }
+.column-presets-bar .cyf-cs-trigger { font-size: 11px; padding: 4px 8px; }

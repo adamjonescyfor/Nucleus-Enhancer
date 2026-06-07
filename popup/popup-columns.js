@@ -57,6 +57,12 @@ function renderPresetBar() {
             if (p) renderColumnList(p.order);
         }
     });
+
+    // Themed custom dropdown (native option lists are unstyleable on Linux).
+    if (window.CyforSelect) {
+        CyforSelect.enhance(select);
+        CyforSelect.sync(select);
+    }
 }
 
 function initColumns() {

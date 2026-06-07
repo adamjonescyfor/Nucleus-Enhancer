@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=340">
     <title>CYFOR Nucleus Enhancer</title>
     <link rel="stylesheet" href="../styles/tokens.css">
+    <link rel="stylesheet" href="../styles/custom-select.css">
     <link rel="stylesheet" href="popup.css">
     <!-- Sets html[data-theme] before first paint to avoid a flash. -->
     <script src="../styles/theme.js"></script>
@@ -232,8 +233,11 @@
             <span>Template Files</span>
         </div>
         <div class="upload-area" id="upload-area">
-            <button type="button" id="btn-open-loader" class="upload-label">📁 Load Templates from Folder…</button>
-            <div class="upload-hint">Opens a loader tab — pick a folder of <code>.txt</code> templates (one per file). Official Salesforce templates always take priority and can't be overridden.</div>
+            <input type="file" id="folder-input" webkitdirectory directory multiple aria-label="Select template folder">
+            <label for="folder-input" class="upload-label">
+                Select Template Folder
+            </label>
+            <div class="upload-hint">Load your own <code>.txt</code> templates. Official Salesforce templates always take priority and can't be overridden.</div>
             <div id="status-msg" class="status-msg"></div>
             <button id="btn-clear" class="btn btn-danger" style="display:none" aria-label="Clear all templates">
                 Clear All Templates
@@ -252,6 +256,7 @@
     </footer>
 
     <script src="../config.js"></script>
+    <script src="../styles/custom-select.js"></script>
     <script src="popup-columns.js"></script>
     <script src="popup-templates.js"></script>
     <script src="popup-sf-templates.js"></script>

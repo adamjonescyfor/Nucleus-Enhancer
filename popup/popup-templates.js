@@ -29,7 +29,8 @@ function bindTemplateEvents() {
 
         if (!text) {
             setStatus('Select a template first', 'error');
-            shakeElement(els.templateSelect);
+            // Shake the visible custom dropdown (the native <select> is hidden).
+            shakeElement(els.templateSelect.closest('.cyf-cs') || els.templateSelect);
             return;
         }
 
@@ -150,20 +151,8 @@ function bindTemplateEvents() {
         els.previewSection.style.display = 'none';
     });
 
-    // Folder loading now happens in a full-page tab (popup/template-files.html)
-    // because the OS folder dialog can dismiss the extension popup (common on
-    // Linux), which would abort an in-popup file selection.
-    var openLoaderBtn = document.getElementById('btn-open-loader');
-    if (openLoaderBtn) {
-        openLoaderBtn.addEventListener('click', function () {
-            chrome.tabs.create({ url: chrome.runtime.getURL('popup/template-files.html') });
-        });
-    }
-
-    // Legacy in-popup folder input (kept for environments where the popup stays
-    // open during folder selection; the element is no longer in the markup by
-    // default, so guard it).
-    if (els.folderInput) els.folderInput.addEventListener('change', function (e) {
+    // Folder upload
+    els.folderInput.addEventListener('change', function (e) {
         var files = Array.from(e.target.files);
         if (!files.length) return;
 
@@ -327,6 +316,8 @@ function renderMappings(types, templates, savedMap) {
 
         row.appendChild(label);
         row.appendChild(select);
+        // Themed custom dropdown (native option lists are unstyleable on Linux).
+        if (window.CyforSelect) CyforSelect.enhance(select);
         fragment.appendChild(row);
     }
 
@@ -350,6 +341,12 @@ function populateDropdown(templates) {
     }
 
     els.templateSelect.appendChild(fragment);
+
+    // Themed custom dropdown (native option lists are unstyleable on Linux).
+    if (window.CyforSelect) {
+        CyforSelect.enhance(els.templateSelect);
+        CyforSelect.sync(els.templateSelect);
+    }
 }
 
 function updateBadge(count) {

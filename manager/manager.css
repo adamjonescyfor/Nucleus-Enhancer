@@ -661,13 +661,14 @@ select.mgr-input {
     cursor: pointer;
 }
 
-/* The native dropdown list — give options explicit colours so they read clearly
-   in dark mode (otherwise they inherit a low-contrast/greyed default). */
+/* Native option colours as a fallback (Chrome on Linux/GTK ignores these, which
+   is why Status/Team use the custom dropdown below). */
 .mgr-input option,
-select.mgr-input option {
-    background: var(--surface);
-    color: var(--text-primary);
-}
+select.mgr-input option { background-color: #ffffff; color: #16242e; }
+html[data-theme="dark"] .mgr-input option,
+html[data-theme="dark"] select.mgr-input option { background-color: #20262b; color: #ffffff; }
+
+/* Custom dropdown styling lives in styles/custom-select.css (shared .cyf-cs*). */
 
 /* Version control */
 .mgr-version-wrap {
@@ -879,6 +880,7 @@ select.mgr-input option {
 .mgr-compare-label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
 .mgr-compare-arrow { color: var(--text-muted); }
 .mgr-compare-bar select { flex: 0 1 240px; }
+.mgr-compare-bar .cyf-cs { flex: 0 1 240px; }   /* wrapper takes the select's place */
 
 /* ── Diff card ───────────────────────────────────────────────────────────────── */
 

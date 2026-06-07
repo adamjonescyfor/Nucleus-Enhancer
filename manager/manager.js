@@ -52,8 +52,18 @@ document.addEventListener('DOMContentLoaded', function () {
     // Compare any two versions (4c)
     document.getElementById('btn-compare-run').addEventListener('click', runCompare);
 
+    // Custom dropdowns (shared component) — native <select> option lists are
+    // unstyleable on Chrome/Linux, so every select is rendered as a themed listbox.
+    ['mgr-status', 'mgr-scope', 'mgr-compare-from', 'mgr-compare-to'].forEach(function (id) {
+        CyforSelect.enhance(document.getElementById(id));
+    });
+
     loadTemplates();
 });
+
+// Thin wrapper around the shared component (window.CyforSelect) so the rest of
+// the manager can refresh a custom dropdown's label after changing its <select>.
+function syncCustomSelect(id) { if (window.CyforSelect) CyforSelect.sync(id); }
 
 // ── View / sidebar navigation ──────────────────────────────────────────────────
 
@@ -163,6 +173,7 @@ function populateStatusOptions() {
     });
     if (statusOptions.indexOf(current) >= 0) sel.value = current;
     else if (statusOptions.indexOf('Active') >= 0) sel.value = 'Active';
+    syncCustomSelect('mgr-status');
 }
 
 // Make sure a template's existing status is selectable even if it's not in the
@@ -196,6 +207,7 @@ function populateScopeOptions() {
         sel.appendChild(o);
     });
     if (current) sel.value = current; // restore selection if still valid
+    syncCustomSelect('mgr-scope');
 }
 
 // Guarantee a team is selectable even if the teams list hasn't loaded yet (race)
@@ -538,6 +550,8 @@ function openNewEditor() {
     var hintEl = document.getElementById('mgr-change-reason-hint');
     if (hintEl) hintEl.textContent = '(document the purpose of this template)';
 
+    syncCustomSelect('mgr-status');
+    syncCustomSelect('mgr-scope');
     setEditorStatus('', '');
     showState('editor');
     document.getElementById('mgr-name').focus();
@@ -584,6 +598,8 @@ function openEditEditor(name) {
     var hintEl = document.getElementById('mgr-change-reason-hint');
     if (hintEl) hintEl.textContent = '(required — describe what changed and why)';
 
+    syncCustomSelect('mgr-status');
+    syncCustomSelect('mgr-scope');
     setEditorStatus('', '');
     showState('editor');
     document.getElementById('mgr-name').focus();
@@ -998,6 +1014,8 @@ function populateCompareBar() {
     // Default: previous (first archived = index 1) → Current (index 0).
     fromSel.value = items.length > 1 ? '1' : '0';
     toSel.value   = '0';
+    syncCustomSelect('mgr-compare-from');
+    syncCustomSelect('mgr-compare-to');
 }
 
 function runCompare() {
