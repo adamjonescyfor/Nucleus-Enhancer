@@ -1,6 +1,7 @@
-# Salesforce OAuth configuration with real Consumer Key
-# Copy config.example.js to config.js and fill in your credentials
-config.js
+# Salesforce OAuth configuration (real proxy URL / local overrides).
+# Copy config.example.js to config.js. Anchored to the repo root so it does NOT
+# also match content/config.js (a real source file).
+/config.js
 
 # Build artefacts and OS noise
 *.crx
