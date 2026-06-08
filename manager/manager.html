@@ -167,9 +167,12 @@
                             history — they stay in Salesforce.</li>
                         <li><strong>Always current:</strong> the list is read live from Salesforce, so edits made
                             directly in Salesforce appear here too.</li>
-                        <li><strong>Version history</strong> is captured automatically when you edit
-                            <em>through this manager</em>. A direct Salesforce edit still updates the record, but
-                            only creates a version snapshot if your admin adds a Salesforce flow for it.</li>
+                        <li><strong>Version history</strong> is captured automatically for <em>every</em> content
+                            change — whether made through this manager or directly in Salesforce — by a Salesforce
+                            Flow. Editing only metadata (status, team, dates) does not create a new version.</li>
+                        <li><strong>Teams &amp; membership</strong> are managed in Salesforce
+                            (<code>NucleusTeam__c</code> / <code>NucleusTeamMember__c</code>). This manager uses a
+                            template’s team only to scope who sees it; add or move people in Salesforce.</li>
                         <li><strong>Team members</strong> see their team’s active templates plus Global in the
                             extension popup, refreshed on Sync.</li>
                     </ul>
@@ -251,7 +254,7 @@
                     <h4 class="mgr-form-section-title">Content &amp; audit</h4>
                     <div class="mgr-field">
                         <label class="mgr-label" for="mgr-change-reason">
-                            Reason <span class="mgr-required">*</span>
+                            Reason <span class="mgr-required" id="mgr-change-reason-req">*</span>
                             <span id="mgr-change-reason-hint" class="mgr-label-hint"></span>
                         </label>
                         <textarea id="mgr-change-reason" class="mgr-textarea mgr-textarea--short" rows="2"

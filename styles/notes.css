@@ -80,36 +80,31 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
    ================================================== */
 .cyfor-note .cyfor-n-header {
     font-weight: 700;
-    color: var(--cyfor-text);
-    font-size: 12.5px;
-    padding: 8px 0 2px;
-    margin-top: 6px;
-    margin-bottom: 2px;
-    border-bottom: none;
-    letter-spacing: 0.01em;
+    color: var(--cyfor-primary-dark);
+    font-size: 11.5px;
+    padding: 0 0 3px;
+    margin: 8px 0 4px;
+    border-bottom: 1px solid var(--cyfor-border-light);
+    letter-spacing: 0.03em;
     text-transform: uppercase;
 }
 
 .cyfor-note .cyfor-n-section:first-child > .cyfor-n-header {
-    padding-top: 0;
     margin-top: 0;
 }
 
 /* ==================================================
    Key: Value Rows
+   Inline flow (not flex) so long QA-question keys wrap cleanly with the answer.
    ================================================== */
 .cyfor-note .cyfor-n-row {
-    padding: 1px 0;
+    padding: 1.5px 0;
     line-height: 1.55;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 4px;
 }
 
 .cyfor-note .cyfor-n-key {
     font-weight: 600;
     color: var(--cyfor-text-secondary);
-    flex-shrink: 0;
 }
 
 .cyfor-note .cyfor-n-val {
@@ -117,13 +112,35 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
     color: var(--cyfor-text);
 }
 
+/* Standalone label (empty-value "Circumstances:", "Exhibit Reference:") — reads as
+   a mini sub-heading that introduces the lines beneath it. */
+.cyfor-note .cyfor-n-row-label {
+    margin-top: 3px;
+}
+.cyfor-note .cyfor-n-row-label .cyfor-n-key {
+    color: var(--cyfor-text);
+    font-weight: 700;
+}
+
 /* ==================================================
-   Plain Text Lines & Dividers
+   Plain Text Lines, Bullets & Dividers
    ================================================== */
 .cyfor-note .cyfor-n-text {
     padding: 2px 0;
     line-height: 1.5;
     color: var(--cyfor-text);
+}
+
+.cyfor-note .cyfor-n-bullet {
+    position: relative;
+    padding-left: 15px;
+}
+.cyfor-note .cyfor-n-bullet::before {
+    content: "•";
+    position: absolute;
+    left: 3px;
+    color: var(--cyfor-primary);
+    font-weight: 700;
 }
 
 .cyfor-note .cyfor-n-divider {

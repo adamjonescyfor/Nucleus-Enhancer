@@ -27,9 +27,10 @@ var TEMPLATE_CONCEPTS = {
     changeReason:       ['changereason', 'reasonforchange', 'reason'],
     effectiveDate:      ['effectivedate'],
     reviewDueDate:      ['reviewduedate', 'reviewdate'],
-    documentId:         ['documentid', 'docid'],
-    lastChangedByName:  ['lastchangedbyname', 'lastchangedby', 'changedbyname', 'changedby'],
-    lastChangedByEmail: ['lastchangedbyemail', 'changedbyemail']
+    documentId:         ['documentid', 'docid']
+    // "Last changed by" now comes from the system LastModifiedBy.Name (the custom
+    // Changed By / Changed By Email fields were removed once the version Flow went
+    // live — see docs/salesforce-version-history-flow.md).
 };
 
 // Describe NucleusTemplate__c once and map concepts -> real field API names.
@@ -39,8 +40,7 @@ async function resolveTemplateFields(base, token, obj) {
         obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
         team: 'Team__c', teamRel: 'Team__r',
         versionLabel: null, status: null, changeReason: null,
-        effectiveDate: null, reviewDueDate: null, documentId: null,
-        lastChangedByName: null, lastChangedByEmail: null
+        effectiveDate: null, reviewDueDate: null, documentId: null
     };
     try {
         var d = await self.SfUtils.describeObject(base, token, obj);
@@ -60,8 +60,7 @@ function buildQuery(map, teamCode) {
     if (map.category) sel.push(map.category);
     if (map.teamRel) sel.push(map.teamRel + '.TeamCode__c');
     sel.push('LastModifiedBy.Name');
-    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId',
-     'lastChangedByName', 'lastChangedByEmail']
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
 
     var teamField = map.team || 'Team__c';
@@ -150,8 +149,7 @@ async function fetchRemoteTemplates(forceRefresh) {
             content:            body,
             category:           (map.category && r[map.category]) || '',
             teamCode:           (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
-            lastChangedByName:  (map.lastChangedByName && r[map.lastChangedByName]) || (r.LastModifiedBy && r.LastModifiedBy.Name) || '',
-            lastChangedByEmail: (map.lastChangedByEmail && r[map.lastChangedByEmail]) || ''
+            lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
         if (map.status)        entry.status        = r[map.status]        || 'Active';
@@ -184,8 +182,7 @@ function buildAdminQuery(map) {
     if (map.team)     sel.push(map.team);
     if (map.teamRel)  { sel.push(map.teamRel + '.Name'); sel.push(map.teamRel + '.TeamCode__c'); }
     sel.push('LastModifiedBy.Name');
-    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId',
-     'lastChangedByName', 'lastChangedByEmail']
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
     return 'SELECT ' + sel.join(', ') + ' FROM ' + map.obj + ' ORDER BY Name ASC';
 }
@@ -258,8 +255,7 @@ async function fetchAllTemplatesForAdmin() {
             teamId:             (map.team && r[map.team]) || null,
             teamName:           (teamRel && teamRel.Name) || null,
             teamCode:           (teamRel && teamRel.TeamCode__c) || null,
-            lastChangedByName:  (map.lastChangedByName && r[map.lastChangedByName]) || (r.LastModifiedBy && r.LastModifiedBy.Name) || '',
-            lastChangedByEmail: (map.lastChangedByEmail && r[map.lastChangedByEmail]) || ''
+            lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
         if (map.status)        entry.status        = r[map.status]        || (entry.isActive ? 'Active' : 'Draft');

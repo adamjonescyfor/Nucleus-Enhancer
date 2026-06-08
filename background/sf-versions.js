@@ -1,10 +1,16 @@
 // ==================================================
-// CYFOR Nucleus Enhancer — Template Version Archive
-// Archives a NucleusTemplate__c version before each update and retrieves the
-// history. Field API names are DISCOVERED from the object describe (so labels
-// like "Change Reason" -> Change_Reason__c are matched even if the code would
-// have guessed ChangeReason__c). Who/when use the system CreatedBy/CreatedDate,
-// so no custom "changed by" fields are required.
+// CYFOR Nucleus Enhancer — Template Version History
+// Snapshots of NucleusTemplate__c content are now created by a record-triggered
+// Salesforce Flow (docs/salesforce-version-history-flow.md), which fires on every
+// Content change from ANY source — so the extension no longer archives versions
+// itself (that would double-snapshot). This module just:
+//   - reads the history for the manager's History/diff view, and
+//   - cascade-deletes a template's child version records before the template is
+//     deleted (the lookup restricts deletes otherwise).
+// Field API names are DISCOVERED from the object describe (so labels like
+// "Change Reason" -> Change_Reason__c are matched even if the code would have
+// guessed ChangeReason__c). Who/when use the system CreatedBy/CreatedDate, so no
+// custom "changed by" fields are required.
 // Exported as self.SfVersions.
 // ==================================================
 
@@ -83,39 +89,66 @@ async function getVersionHistory(templateId) {
     }
 }
 
-// payload: { templateId, versionLabel, content, changeReason }
-async function archiveCurrentVersion(payload) {
+// Delete all NucleusTemplateVersion__c child records for a template, so the
+// parent NucleusTemplate__c can be deleted (the lookup restricts the delete
+// otherwise). Best-effort: if the version object doesn't exist or has no rows,
+// resolves ok with deleted:0 and lets the parent delete proceed.
+// Returns { ok, deleted } or { ok:false, error }.
+async function deleteVersionsForTemplate(templateId) {
     var c;
-    try { c = await ctx(); } catch (e) { console.warn('[CYFOR] archive: ' + e.message); return; }
+    try { c = await ctx(); } catch (e) { return { ok: false, error: e.message }; }
 
     var map;
     try { map = await resolveVersionFields(c); }
-    catch (e) { console.warn('[CYFOR] archive: version object unavailable'); return; } // object not created — skip silently
+    catch (e) { return { ok: true, deleted: 0, unavailable: true }; } // object not created — nothing to clean up
 
-    if (!map.template) { console.warn('[CYFOR] archive: no Template lookup on ' + VERSION_OBJ); return; }
+    if (!map.template) return { ok: true, deleted: 0, unavailable: true };
 
-    var body = {};
-    body[map.template] = payload.templateId;
-    if (map.versionLabel) body[map.versionLabel] = payload.versionLabel || '1.0';
-    if (map.content)      body[map.content]      = payload.content || '';
-    if (map.changeReason) body[map.changeReason] = payload.changeReason || '';
-    if (map.archivedAt)   body[map.archivedAt]   = new Date().toISOString();
+    var esc = self.SfUtils.soqlEscape;
+    var soql = 'SELECT Id FROM ' + VERSION_OBJ
+             + " WHERE " + map.template + " = '" + esc(templateId) + "'";
 
+    var ids = [];
     try {
-        var res = await fetch(c.base + '/sobjects/' + VERSION_OBJ + '/', {
-            method: 'POST',
-            headers: { Authorization: 'Bearer ' + c.token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) {
-            var eb = await res.json().catch(function () { return [{}]; });
-            console.warn('[CYFOR] archiveCurrentVersion failed:', (eb[0] && eb[0].message) || res.status);
+        var qres = await fetch(c.base + '/query?q=' + encodeURIComponent(soql),
+            { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/json' } });
+        if (!qres.ok) {
+            var qeb = await qres.json().catch(function () { return []; });
+            var missing = Array.isArray(qeb) && qeb.some(function (e) { return e.errorCode === 'INVALID_TYPE' || e.errorCode === 'INVALID_FIELD'; });
+            if (missing) return { ok: true, deleted: 0, unavailable: true };
+            return { ok: false, error: 'Version lookup failed: ' + qres.status };
         }
+        var qdata = await qres.json();
+        ids = (qdata.records || []).map(function (r) { return r.Id; });
     } catch (e) {
-        console.warn('[CYFOR] archiveCurrentVersion error:', e.message);
+        return { ok: false, error: e.message };
     }
+
+    if (!ids.length) return { ok: true, deleted: 0 };
+
+    // Composite collection delete handles up to 200 ids per call.
+    var deleted = 0;
+    for (var i = 0; i < ids.length; i += 200) {
+        var chunk = ids.slice(i, i + 200);
+        try {
+            var dres = await fetch(c.base + '/composite/sobjects?ids=' + chunk.join(',') + '&allOrNone=false',
+                { method: 'DELETE', headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/json' } });
+            if (!dres.ok) {
+                var deb = await dres.json().catch(function () { return [{}]; });
+                return { ok: false, error: (deb[0] && deb[0].message) || ('Version delete failed: ' + dres.status) };
+            }
+            var ddata = await dres.json();
+            (ddata || []).forEach(function (r) {
+                if (r.success) deleted++;
+                else if (r.errors && r.errors[0]) throw new Error(r.errors[0].message);
+            });
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    }
+    return { ok: true, deleted: deleted };
 }
 
-self.SfVersions = { getVersionHistory: getVersionHistory, archiveCurrentVersion: archiveCurrentVersion };
+self.SfVersions = { getVersionHistory: getVersionHistory, deleteVersionsForTemplate: deleteVersionsForTemplate };
 
 }());

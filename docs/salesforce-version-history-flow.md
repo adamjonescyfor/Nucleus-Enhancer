@@ -3,17 +3,22 @@
 **For:** Callum (Salesforce admin)
 **Goal:** make **every** change to a template create a version-history snapshot — including edits made **directly in Salesforce**, not just edits made through the Nucleus Enhancer extension. This closes the only gap between "manage in the extension" and "manage in Salesforce".
 
+> ## ✅ Status: DEPLOYED & ACTIVE (2026‑06‑08)
+> The record‑triggered Flow below is **live** in Salesforce (Callum), and the
+> extension's own archiving has been **removed** (the `archiveCurrentVersion` call
+> on update is gone) so each edit snapshots exactly **once**. The custom
+> "Changed By / Changed By Email" fields have been retired — who/when now comes
+> from the standard **Created By / Created Date** on the version record. The two
+> systems are in full parity; this document is kept as the build reference.
+
 ---
 
-## Background (how it works today)
+## Background
 
 - Templates are `NucleusTemplate__c` records.
 - Version history is stored as `NucleusTemplateVersion__c` records (one per past revision), linked back to the template by a lookup.
-- **Today** the extension does the archiving: before it overwrites a template it first creates a `NucleusTemplateVersion__c` holding the *previous* content. So history is captured **only when someone edits via the extension**. A direct edit in Salesforce updates the record but leaves no snapshot.
-
-This spec moves that archiving into a **record‑triggered Flow** on `NucleusTemplate__c` so it happens for **all** edits, from any source.
-
-> **Coordination (important):** once this Flow is live, the extension's own archiving must be turned off, otherwise extension edits would create **two** snapshots. Tell Adam / the developer when the Flow is deployed and they'll remove the extension‑side archive in one line. Until then, leave the extension as‑is (it keeps history working without the Flow).
+- **Previously** the extension did the archiving: before overwriting a template it created a `NucleusTemplateVersion__c` holding the *previous* content — so history was captured **only** for edits made via the extension. A direct edit in Salesforce left no snapshot.
+- **Now** a **record‑triggered Flow** on `NucleusTemplate__c` does the archiving for **all** edits, from any source, and the extension no longer archives (avoiding double snapshots).
 
 ---
 
@@ -82,10 +87,9 @@ A bulk‑safe `after update` trigger on `NucleusTemplate__c` that, for each reco
 
 ---
 
-## Summary of the one decision
+## Outcome
 
-Pick **where** archiving lives:
-- **Flow only (recommended)** — one mechanism, identical for every edit source. Requires the small extension change to stop double‑archiving (developer, one line).
-- **Extension only (today)** — works without any Salesforce config, but direct‑in‑Salesforce edits aren't snapshotted.
-
-Once the Flow is active, tell the developer to drop the extension's `archiveCurrentVersion` call on update, and the two systems are fully in parity.
+Archiving lives in the **Flow only** — one mechanism, identical for every edit
+source. The extension‑side `archiveCurrentVersion` call has been removed, so
+there is no double‑archiving, and direct‑in‑Salesforce edits are snapshotted just
+like extension edits. ✅ Done.

@@ -75,6 +75,43 @@ chrome.runtime.onInstalled.addListener((details) => {
     }
 });
 
+// ── Self-heal already-open Salesforce tabs on install/update ───────────────────
+// Chrome does NOT re-inject content scripts into tabs that were already open when
+// the extension installs or updates (incl. a dev reload / auto-update). Those
+// tabs keep the OLD, now-invalidated runtime context (chrome.runtime.id is gone),
+// so the in-page features go dead until the user manually refreshes. Re-injecting
+// the declared scripts + CSS gives those tabs a fresh, working context with no
+// refresh. The content scripts guard their DOM injections (existing-element /
+// namespace checks), so re-running is idempotent.
+async function reinjectContentScripts() {
+    if (!chrome.scripting || !chrome.runtime.getManifest) return;
+    var specs = chrome.runtime.getManifest().content_scripts || [];
+    for (var s = 0; s < specs.length; s++) {
+        var spec = specs[s];
+        var matches = spec.matches || [];
+        if (!matches.length) continue;
+        var tabs;
+        try { tabs = await chrome.tabs.query({ url: matches }); }
+        catch (e) { continue; }
+        for (var t = 0; t < tabs.length; t++) {
+            var tabId = tabs[t].id;
+            if (tabId == null) continue;
+            try {
+                if (spec.css && spec.css.length) {
+                    await chrome.scripting.insertCSS({ target: { tabId: tabId }, files: spec.css });
+                }
+                if (spec.js && spec.js.length) {
+                    // One call preserves load order (utils before its dependents).
+                    await chrome.scripting.executeScript({ target: { tabId: tabId }, files: spec.js });
+                }
+            } catch (e) { /* tab not injectable (navigating, discarded, perms) — skip */ }
+        }
+    }
+}
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install' || details.reason === 'update') reinjectContentScripts();
+});
+
 // ── Background template sync ──────────────────────────────────────────────────
 // Keeps every connected device current without the user opening the popup, so an
 // admin's template change reaches everyone within BG_SYNC_MINUTES.
@@ -417,6 +454,35 @@ function addMonthsIso(isoDate, months) {
 var REVIEW_PERIOD_MONTHS = 12;
 
 /**
+ * Translate a Salesforce delete failure (errorCode or raw message) into a clear,
+ * actionable message. Salesforce sharing/permissions aren't something the
+ * extension can grant — so for access errors we point the user at an admin.
+ */
+function friendlyDeleteError(codeOrMsg, fallback, subject) {
+    var s = String(codeOrMsg || '').toUpperCase();
+    if (s.indexOf('INSUFFICIENT_ACCESS') !== -1 || s.indexOf('INSUFFICIENT ACCESS') !== -1) {
+        if (subject === 'versions') {
+            // A template with history can't be deleted until its child version
+            // records are — which needs Delete on the version OBJECT (and, if any
+            // were created by someone else's edit, Modify All to cross ownership).
+            return 'Couldn’t delete this template’s version history in Salesforce, so the '
+                 + 'template can’t be removed. You need Delete access on the Nucleus Template '
+                 + 'Version object — ask a Salesforce admin to grant Delete (or “Modify All”) on '
+                 + 'NucleusTemplateVersion__c. (Some versions may have been created by another '
+                 + 'user’s edit, which also requires Modify All.)';
+        }
+        return 'You don’t have permission to delete this template in Salesforce. '
+             + 'It may be owned by another user or team — ask a Salesforce admin to '
+             + 'delete it or grant you delete access (or “Modify All” on NucleusTemplate__c).';
+    }
+    if (s.indexOf('DELETE_FAILED') !== -1 || s.indexOf('REFERENCED') !== -1 || s.indexOf('RESTRICT') !== -1) {
+        return 'This template is still referenced by other records in Salesforce, so it '
+             + 'can’t be deleted. Remove those references first, or ask a Salesforce admin.';
+    }
+    return fallback || String(codeOrMsg || 'Delete failed');
+}
+
+/**
  * Create, update, or delete a NucleusTemplate__c record via Salesforce REST API.
  * Only proceeds if the stored sfOAuthUser has isTemplateAdmin === true.
  * When UKAS fields are available, includes version control data and archives
@@ -470,8 +536,6 @@ async function sfTemplateCrud(op, payload) {
         if (map.versionLabel)  createBody[map.versionLabel]  = payload.versionLabel || '1.0';
         if (map.status)        createBody[map.status]        = payload.status || 'Active';
         if (map.changeReason)  createBody[map.changeReason]  = payload.changeReason || 'Initial version';
-        if (map.lastChangedByName)  createBody[map.lastChangedByName]  = user.fullName || '';
-        if (map.lastChangedByEmail) createBody[map.lastChangedByEmail] = user.email || '';
         if (map.documentId && payload.documentId)   createBody[map.documentId]    = payload.documentId;
         // UKAS dates are always populated (never blank): default effective=today,
         // review=effective + review period.
@@ -494,22 +558,9 @@ async function sfTemplateCrud(op, payload) {
         return { ok: true, id: created.id };
 
     } else if (op === 'update') {
-        // Archive the current version before overwriting (audit trail).
-        if (self.SfVersions) {
-            var current = null;
-            var tNames = Object.keys(templates);
-            for (var i = 0; i < tNames.length; i++) {
-                if (templates[tNames[i]].id === payload.id) { current = templates[tNames[i]]; break; }
-            }
-            if (current) {
-                await self.SfVersions.archiveCurrentVersion({
-                    templateId:   payload.id,
-                    versionLabel: current.versionLabel || '1.0',
-                    content:      current.content || '',
-                    changeReason: payload.changeReason || ''
-                });
-            }
-        }
+        // NOTE: version snapshots are created by the Salesforce Flow on Content
+        // change (docs/salesforce-version-history-flow.md) — the extension must
+        // NOT archive here too, or every edit would snapshot twice.
 
         var updateBody = { Name: payload.name };
         if (map.content)  updateBody[map.content]  = payload.content;
@@ -518,9 +569,9 @@ async function sfTemplateCrud(op, payload) {
         if (map.team)     updateBody[map.team]     = resolveTeamId();
         if (map.versionLabel)  updateBody[map.versionLabel]  = payload.versionLabel || '1.1';
         if (map.status)        updateBody[map.status]        = payload.status || 'Active';
-        if (map.changeReason)  updateBody[map.changeReason]  = payload.changeReason || '';
-        if (map.lastChangedByName)  updateBody[map.lastChangedByName]  = user.fullName || '';
-        if (map.lastChangedByEmail) updateBody[map.lastChangedByEmail] = user.email || '';
+        // Only write a change reason when one was supplied (content edits). A
+        // metadata-only edit sends no reason and must not blank the existing one.
+        if (map.changeReason && payload.changeReason) updateBody[map.changeReason] = payload.changeReason;
         // A new version becomes effective when it's saved; default to today and
         // recompute the review date so neither field is ever left blank.
         var updateEffective = payload.effectiveDate || todayIso();
@@ -541,13 +592,25 @@ async function sfTemplateCrud(op, payload) {
         return { ok: true };
 
     } else if (op === 'delete') {
+        // Remove child version snapshots first — the NucleusTemplate__c lookup on
+        // NucleusTemplateVersion__c restricts the parent delete while they exist.
+        if (self.SfVersions) {
+            var vres = await self.SfVersions.deleteVersionsForTemplate(payload.id);
+            if (vres && vres.ok === false) {
+                throw new Error(friendlyDeleteError(vres.error,
+                    'Couldn’t remove this template’s version history: ' + vres.error, 'versions'));
+            }
+        }
+
         response = await fetch(baseUrl + '/' + payload.id, {
             method:  'DELETE',
             headers: { 'Authorization': 'Bearer ' + accessToken }
         });
         if (!response.ok) {
             errBody = await response.json().catch(function () { return [{}]; });
-            throw new Error(errBody[0] && errBody[0].message ? errBody[0].message : 'Delete failed: ' + response.status);
+            var rawMsg = (errBody[0] && errBody[0].message) ? errBody[0].message : ('Delete failed: ' + response.status);
+            var code   = errBody[0] && errBody[0].errorCode;
+            throw new Error(friendlyDeleteError(code || rawMsg, rawMsg));
         }
         await self.SfTemplates.fetchRemoteTemplates(true);
         return { ok: true };

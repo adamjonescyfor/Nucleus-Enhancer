@@ -6,6 +6,7 @@
 
 var currentEditId      = null;   // null = creating new, string = updating existing
 var currentEditVersion = null;   // version label of the template being edited
+var editorOriginalContent = ''; // content as opened — used to tell content vs metadata-only edits
 var currentHistoryName = null;   // template name whose history is being viewed
 var allTemplates       = {};     // name → { id, content, category, teamId, teamName, ...fields }
 var currentUser        = {};     // sfOAuthUser
@@ -31,6 +32,14 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-new-template').addEventListener('click', openNewEditor);
     document.getElementById('btn-editor-save').addEventListener('click', saveTemplate);
     document.getElementById('btn-editor-cancel').addEventListener('click', closeEditor);
+
+    // Only a CONTENT change creates a new version (matching the Salesforce Flow).
+    // Re-evaluate the version/reason UI live as the body or bump option changes.
+    var contentEl = document.getElementById('mgr-content');
+    if (contentEl) contentEl.addEventListener('input', updateEditorVersionUI);
+    document.querySelectorAll('input[name="version-bump"]').forEach(function (r) {
+        r.addEventListener('change', updateEditorVersionUI);
+    });
     document.getElementById('btn-history-back').addEventListener('click', function () { setView('templates'); });
     document.getElementById('btn-usage-clear').addEventListener('click', clearUsage);
     document.getElementById('btn-settings-refresh').addEventListener('click', function () { loadTemplates(); });
@@ -563,6 +572,7 @@ function openEditEditor(name) {
 
     currentEditId      = t.id;
     currentEditVersion = t.versionLabel || '1.0';
+    editorOriginalContent = t.content || '';
 
     document.getElementById('mgr-editor-heading').textContent = 'Edit: ' + name;
     document.getElementById('mgr-name').value          = name;
@@ -592,17 +602,41 @@ function openEditEditor(name) {
     ensureTeamOption(t.teamId, t.teamName);
     document.getElementById('mgr-scope').value = t.teamId || '';
 
+    // Version bump + reason are only relevant once the CONTENT actually changes;
+    // updateEditorVersionUI() sets the initial (unchanged) state and keeps it live.
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
-    document.getElementById('mgr-version-bump').style.display  = '';
-
-    var hintEl = document.getElementById('mgr-change-reason-hint');
-    if (hintEl) hintEl.textContent = '(required — describe what changed and why)';
+    updateEditorVersionUI();
 
     syncCustomSelect('mgr-status');
     syncCustomSelect('mgr-scope');
     setEditorStatus('', '');
     showState('editor');
     document.getElementById('mgr-name').focus();
+}
+
+// Reflect whether the open edit changes CONTENT (→ new version + reason required)
+// or only metadata (status/team/category/dates → no version bump, reason optional).
+// No-op in create mode (a new template always starts a v1.0 with a reason).
+function updateEditorVersionUI() {
+    if (!currentEditId) return;
+    var changed     = document.getElementById('mgr-content').value !== editorOriginalContent;
+    var bumpWrap    = document.getElementById('mgr-version-bump');
+    var versionDisp = document.getElementById('mgr-version-display');
+    var reasonReq   = document.getElementById('mgr-change-reason-req');
+    var hintEl      = document.getElementById('mgr-change-reason-hint');
+
+    bumpWrap.style.display = changed ? '' : 'none';
+    if (reasonReq) reasonReq.style.display = changed ? '' : 'none';
+
+    if (changed) {
+        var bumpInput = document.querySelector('input[name="version-bump"]:checked');
+        var newV = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
+        versionDisp.textContent = 'v' + currentEditVersion + ' → v' + newV;
+        if (hintEl) hintEl.textContent = '(required — describe what changed and why)';
+    } else {
+        versionDisp.textContent = 'v' + currentEditVersion;
+        if (hintEl) hintEl.textContent = '(optional — status, team & date changes don’t create a new version)';
+    }
 }
 
 function closeEditor() {
@@ -623,7 +657,18 @@ function saveTemplate() {
 
     if (!name)           { setEditorStatus('Name is required.', 'error'); return; }
     if (!content.trim()) { setEditorStatus('Content is required.', 'error'); return; }
-    if (!changeReason)   { setEditorStatus('Reason is required for the audit trail.', 'error'); return; }
+
+    // A reason (and version bump) is only required when CONTENT changes — that's
+    // what the Salesforce Flow snapshots. Metadata-only edits (status/team/dates)
+    // save without a bump or reason. A brand-new template always needs a reason.
+    var isEdit         = !!currentEditId;
+    var contentChanged = isEdit ? (content !== editorOriginalContent) : true;
+    if (!changeReason && (!isEdit || contentChanged)) {
+        setEditorStatus(isEdit
+            ? 'Reason is required when the content changes.'
+            : 'Reason is required for the audit trail.', 'error');
+        return;
+    }
 
     var saveBtn = document.getElementById('btn-editor-save');
     saveBtn.disabled    = true;
@@ -633,8 +678,13 @@ function saveTemplate() {
     var action, payload;
 
     if (currentEditId) {
-        var bumpInput  = document.querySelector('input[name="version-bump"]:checked');
-        var newVersion = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
+        // Bump the version ONLY when content changed; a metadata-only edit keeps
+        // the current version (so the Flow doesn't snapshot and history stays clean).
+        var newVersion = currentEditVersion;
+        if (contentChanged) {
+            var bumpInput = document.querySelector('input[name="version-bump"]:checked');
+            newVersion = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
+        }
 
         action  = 'sfTemplates.update';
         payload = {
@@ -644,7 +694,7 @@ function saveTemplate() {
             category:     category,
             versionLabel: newVersion,
             status:       status,
-            changeReason: changeReason,
+            changeReason: contentChanged ? changeReason : '',
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate,
             teamId:       teamId

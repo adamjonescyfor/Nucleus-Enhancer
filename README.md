@@ -97,15 +97,26 @@ The extension reads/writes a small set of custom objects in your org:
 
 Field **API names are auto‑detected** from each object's describe, so they don't need to match exactly — the extension adapts to whatever your admin created.
 
-### 🕘 Version history (and full Salesforce parity)
+### 🔑 Admin permissions (delete & manage templates)
 
-Editing a template **in the Template Manager** automatically archives the previous version to `NucleusTemplateVersion__c` (with who / when / why), shown in the History tab.
+The extension acts **as the signed‑in user** over OAuth, so it can only do what that user can do in Salesforce. Two object permissions matter for managing templates — set them on the template‑admin **permission set** (Permission Set → Object Settings → each object):
 
-To capture history for edits made **directly in Salesforce** too — so there's a single, complete trail no matter where a change is made — set up the record‑triggered Flow documented here:
+| To do this | Grant on `NucleusTemplate__c` | Grant on `NucleusTemplateVersion__c` |
+|---|---|---|
+| **Delete a template that has version history** (the manager removes its child version records first, so the parent's restrict‑delete lookup lets go) | Delete | **Delete** |
+| **Edit/delete templates owned by anyone** (incl. people who've left) | **Modify All** | **Modify All** |
 
-➡️ **[docs/salesforce-version-history-flow.md](docs/salesforce-version-history-flow.md)**
+Notes:
+- **Delete on `NucleusTemplateVersion__c` is required to delete *any* template that has been edited** — even your own. Without it you'll see *"Couldn't delete this template's version history…"*. This is the most common gotcha.
+- **Modify All** (preferred over the org‑wide *Modify All Data*) lets admins manage every team's templates regardless of record owner, which is what the manager's all‑teams admin view is built for, and covers the "owner left the company" case.
 
-Once that Flow is live, Salesforce becomes the single source of versioning and the extension hands archiving over to it (a one‑line change on the extension side), keeping both perfectly in sync. Until then, history still works for every edit made through the extension.
+### 🕘 Version history (full Salesforce parity ✅)
+
+Every change to a template is snapshotted to `NucleusTemplateVersion__c` (with who / when / why), shown in the History tab with a side‑by‑side diff.
+
+Archiving is handled by a **record‑triggered Flow** in Salesforce, so it captures **every** edit from **any** source — through the Template Manager *or* directly in Salesforce — as a single, complete trail. The extension no longer archives itself, so each edit creates exactly one snapshot, and "Changed By / When" comes from the standard Salesforce **Created By / Created Date**.
+
+➡️ Flow build reference: **[docs/salesforce-version-history-flow.md](docs/salesforce-version-history-flow.md)**
 
 ---
 

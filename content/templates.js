@@ -32,31 +32,43 @@ Cyfor.templates = {
         const containers = Cyfor.utils.querySelectorAllDeep('.slds-rich-text-editor');
 
         for (const container of containers) {
-            if (this._processed.has(container)) continue;
-            if (!container.querySelector('.slds-rich-text-editor__toolbar')) continue;
+            const processed = this._processed.has(container);
+            // Fast path: already set up and our button is still present.
+            if (processed && container.querySelector('.cyfor-template-btn')) continue;
 
+            if (!container.querySelector('.slds-rich-text-editor__toolbar')) continue; // not ready — retry next scan
+            if (!Cyfor.editor.isTemplatableField(container)) { this._processed.add(container); continue; }
+
+            const firstTime = !processed;
             this._processed.add(container);
 
-            if (!Cyfor.editor.isTemplatableField(container)) continue;
+            // (Re)attach the button + menu if missing. Lightning sometimes
+            // re-renders an editor we'd already processed and strips our button —
+            // previously that required a page refresh to recover; now it self-heals.
+            if (!container.querySelector('.cyfor-template-btn')) {
+                container.style.position = 'relative';
+                const orphanMenu = container.querySelector('.cyfor-template-menu');
+                if (orphanMenu) orphanMenu.remove(); // avoid a duplicate menu
+                this._attachButton(container);
+                this._attachMenu(container);
+            }
 
-            container.style.position = 'relative';
-
-            this._attachButton(container);
-            this._attachMenu(container);
-
-            // Smart suggestions on an empty field:
+            // Smart suggestions run ONCE per editor (re-attaches above must not
+            // re-trigger an auto-insert / re-show a suggestion on every re-render):
             //  - Notes: auto-insert (if enabled) the process→template mapping,
             //    otherwise offer it as a one-click suggestion.
             //  - Forensic Strategy: never auto-inserted, but offer the Forensic
             //    Strategy template as a one-click suggestion.
-            if (Cyfor.editor.isMainNotesField(container)) {
-                if (Cyfor.config.enableAutoInsert) {
-                    this._attemptAutoInsert(container);
-                } else {
-                    this._suggestByType(container);
+            if (firstTime) {
+                if (Cyfor.editor.isMainNotesField(container)) {
+                    if (Cyfor.config.enableAutoInsert) {
+                        this._attemptAutoInsert(container);
+                    } else {
+                        this._suggestByType(container);
+                    }
+                } else if (Cyfor.editor.isForensicStrategyField(container)) {
+                    this._suggestForensicStrategy(container);
                 }
-            } else if (Cyfor.editor.isForensicStrategyField(container)) {
-                this._suggestForensicStrategy(container);
             }
         }
     },

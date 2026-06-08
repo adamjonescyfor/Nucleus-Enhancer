@@ -17,9 +17,14 @@ var currentTableColumns = [];
 // are not user uploads. (Historically called "built-in"; built-ins are gone.)
 var builtinTemplateKeys = [];
 
+// Popup-side mirror of content/builtin-templates.js `Cyfor.getMergedTemplates`.
+// It can't call that function directly (it lives in the content-script world and
+// merges from RAW sfRemoteTemplates), so this re-derives the same precedence from
+// what the popup already has: the previously-stored merged map. The single rule
+// both must honour — OFFICIAL (Salesforce-synced) wins over a same-named user
+// upload — is enforced here by overlaying the official keys last. Keep the two in
+// sync if that precedence ever changes.
 function mergeTemplates(userTemplates) {
-    // Fallback merge for when the content script hasn't stored mergedTemplates yet.
-    // Official (synced) templates win collisions, matching getMergedTemplates.
     var merged = {};
     if (userTemplates) {
         for (var key in userTemplates) merged[key] = userTemplates[key];

@@ -86,7 +86,6 @@
                 "styles/templates.css",
                 "styles/toast.css",
                 "styles/context-menu.css",
-                "styles/animations.css",
                 "styles/case-report.css"
             ]
         }

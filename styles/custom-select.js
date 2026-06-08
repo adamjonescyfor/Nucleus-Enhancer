@@ -131,6 +131,10 @@
         // On scroll/resize, close if the trigger scrolled out of view, else reposition.
         function onReposition(e) {
             if (e && e.target && e.target.classList && e.target.classList.contains('cyf-cs-menu')) return; // ignore the menu's own scroll
+            // If the wrapped <select>/trigger was torn out of the DOM while open (e.g.
+            // the panel that hosts it re-rendered), close so the window scroll/resize
+            // listeners added in open() are removed — otherwise they leak.
+            if (!document.contains(trigger)) { close(); return; }
             var r = trigger.getBoundingClientRect();
             if (r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
             positionMenu();
