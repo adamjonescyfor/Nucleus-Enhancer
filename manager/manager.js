@@ -557,7 +557,11 @@ function openNewEditor() {
     document.getElementById('mgr-version-bump').style.display  = 'none';
 
     var hintEl = document.getElementById('mgr-change-reason-hint');
-    if (hintEl) hintEl.textContent = '(document the purpose of this template)';
+    if (hintEl) hintEl.textContent = '(describe the purpose of this template)';
+    // A new template always needs a reason — make sure the asterisk shows even if
+    // a previous metadata-only edit had hidden it.
+    var newReq = document.getElementById('mgr-change-reason-req');
+    if (newReq) newReq.style.display = '';
 
     syncCustomSelect('mgr-status');
     syncCustomSelect('mgr-scope');
@@ -602,9 +606,11 @@ function openEditEditor(name) {
     ensureTeamOption(t.teamId, t.teamName);
     document.getElementById('mgr-scope').value = t.teamId || '';
 
-    // Version bump + reason are only relevant once the CONTENT actually changes;
-    // updateEditorVersionUI() sets the initial (unchanged) state and keeps it live.
+    // The reason hint is CONSTANT (it states the rule once); only the asterisk and
+    // the version preview change as you edit — updateEditorVersionUI() keeps those live.
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
+    var editHint = document.getElementById('mgr-change-reason-hint');
+    if (editHint) editHint.textContent = '(required only when you change the content — status, team & date edits don’t create a new version)';
     updateEditorVersionUI();
 
     syncCustomSelect('mgr-status');
@@ -623,8 +629,9 @@ function updateEditorVersionUI() {
     var bumpWrap    = document.getElementById('mgr-version-bump');
     var versionDisp = document.getElementById('mgr-version-display');
     var reasonReq   = document.getElementById('mgr-change-reason-req');
-    var hintEl      = document.getElementById('mgr-change-reason-hint');
 
+    // The hint text stays constant (set in openEditEditor). Only the required
+    // asterisk and the version preview reflect whether the content has changed.
     bumpWrap.style.display = changed ? '' : 'none';
     if (reasonReq) reasonReq.style.display = changed ? '' : 'none';
 
@@ -632,10 +639,8 @@ function updateEditorVersionUI() {
         var bumpInput = document.querySelector('input[name="version-bump"]:checked');
         var newV = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
         versionDisp.textContent = 'v' + currentEditVersion + ' → v' + newV;
-        if (hintEl) hintEl.textContent = '(required — describe what changed and why)';
     } else {
         versionDisp.textContent = 'v' + currentEditVersion;
-        if (hintEl) hintEl.textContent = '(optional — status, team & date changes don’t create a new version)';
     }
 }
 
