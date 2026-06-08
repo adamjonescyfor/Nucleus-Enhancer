@@ -26,7 +26,7 @@ ALLOWED_REDIRECT_PREFIX = "https://gclnaehibkhhgkmjkafanapejahkonch.chromiumapp.
 # unknown/forked clients that report a lower or absent version.
 # IMPORTANT: reload the extension to >=2.4.0 BEFORE deploying this. If you ever
 # lock yourself out, set this back to "" (or raise nothing) and redeploy.
-MIN_CLIENT_VERSION = "2.4.0"
+MIN_CLIENT_VERSION = "3.0.0"
 
 # Native per-IP rate limit. Generous so a shared office IP (many users behind
 # one NAT) won't trip it; OAuth calls are infrequent per user. period must be
