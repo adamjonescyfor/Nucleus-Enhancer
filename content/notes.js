@@ -144,13 +144,23 @@ Cyfor.notes = {
      * signatures, so normal long sentences and "Label - value" lines are left alone.
      */
     _looksGlued(line) {
-        if (line.length < 55) return false;
+        if (line.length < 45) return false;
         if (/^[-–—_=*\s]+$/.test(line)) return false; // a pure divider rule is not "glued"
-        return /[a-z0-9]:[A-Z]/.test(line)                  // word:Word (colon glued to a capital)
-            || /\d:\d{2}[A-Za-z]/.test(line)                 // 12:02Word (time glued to a letter)
-            || /\b(?:YES|NO|N\/A)[A-Za-z]/.test(line)        // YESWord
-            || /[^\s\-–—_=*][-–—_=*]{5,}/.test(line)         // text----- (divider glued to real text)
-            || /[a-z]\.[A-Z]/.test(line);                    // word.Word (sentence glued)
+
+        // Count glue signatures. A single CamelCase word (e.g. "GrayKey") in an
+        // otherwise clean line scores 1 and is left alone; concatenated cells score
+        // several (many CamelCase/number joins, colon-glue, sentence-glue…) and get
+        // un-glued. Threshold of 2 keeps real tokens safe while catching free-form
+        // notes that Salesforce ran together.
+        let signals = 0;
+        if (/[a-z0-9]:[A-Z]/.test(line)) signals++;          // word:Word
+        if (/\d:\d{2}[A-Za-z]/.test(line)) signals++;         // 12:02Word
+        if (/\b(?:YES|NO|N\/A)[A-Za-z]/.test(line)) signals++; // YESWord
+        if (/[^\s\-–—_=*][-–—_=*]{5,}/.test(line)) signals++;  // text-----
+        if (/[a-z]\.[A-Z]/.test(line)) signals++;              // word.Word (sentence glued)
+        signals += (line.match(/[a-z]{3}[A-Z][a-z]/g) || []).length; // CamelCase joins
+        signals += (line.match(/[\d\])][A-Z][a-z]/g) || []).length;  // 3Word / )Word / ]Word
+        return signals >= 2;
     },
 
     /**
@@ -269,10 +279,26 @@ Cyfor.notes = {
                 regex: /\b(YES|NO|N\/A)([A-Z])/g,
                 offsetFn: (m) => m.index + m[1].length
             },
-            // NOTE: a CamelCase splitter used to live here ([a-z]{3,}[A-Z][a-z]) but it
-            // wrecked real tokens — "GrayKey" -> "Gray Key", "MetaData" -> "Meta Data",
-            // "[ExhibRef]" -> "[Exhib Ref]", "[ActualExhibit]" -> "[Actual Exhibit]" — so
-            // it has been removed. The remaining glue signatures are unambiguous.
+            // Digit glued to a Capital-led word (e.g. "verified 3Discord", "0769Unsealed").
+            // Requires the capital to start a real word (Upper+lower) so versions/codes
+            // like "MG22A" or "2.0" aren't split.
+            {
+                regex: /(\d)([A-Z][a-z])/g,
+                offsetFn: (m) => m.index + 1
+            },
+            // Closing bracket/paren glued to a Capital-led word (e.g. "[257]Excluded", "(86)Error").
+            {
+                regex: /([\])])([A-Z][a-z])/g,
+                offsetFn: (m) => m.index + 1
+            },
+            // CamelCase gluing (e.g. "NotesLive", "MediaTotal", "extractionChatGPT",
+            // "TeleguardUnsealed"). This ONLY runs on text already judged "glued"
+            // (concatenated cells), never on clean template lines — so real tokens like
+            // "GrayKey"/"[ExhibRef]" on their own line are untouched.
+            {
+                regex: /([a-z]{3,})([A-Z][a-z])/g,
+                offsetFn: (m) => m.index + m[1].length
+            },
             // Sentence boundary glued: period + Capital letter (e.g. "Nucleus.Seal")
             {
                 regex: /([.?!])([A-Z])/g,
