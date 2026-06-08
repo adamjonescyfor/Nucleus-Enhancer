@@ -12,9 +12,12 @@
 // ==================================================
 
 (function () {
+    var csUid = 0;   // unique id seed for ARIA wiring
+
     function enhance(selectEl) {
         if (!selectEl || selectEl.__cyforCS) return;
         selectEl.__cyforCS = true;
+        var uid = 'cyf-cs-' + (++csUid);
 
         var wrap = document.createElement('div');
         wrap.className = 'cyf-cs';
@@ -29,6 +32,7 @@
         trigger.className = 'cyf-cs-trigger';
         trigger.setAttribute('aria-haspopup', 'listbox');
         trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-controls', uid + '-menu');
         if (selectEl.getAttribute('aria-label')) trigger.setAttribute('aria-label', selectEl.getAttribute('aria-label'));
         var labelEl = document.createElement('span'); labelEl.className = 'cyf-cs-label';
         var arrowEl = document.createElement('span'); arrowEl.className = 'cyf-cs-arrow'; arrowEl.textContent = '▾'; arrowEl.setAttribute('aria-hidden', 'true');
@@ -37,6 +41,7 @@
 
         var menu = document.createElement('div');
         menu.className = 'cyf-cs-menu';
+        menu.id = uid + '-menu';
         menu.setAttribute('role', 'listbox');
         menu.style.display = 'none';
         wrap.appendChild(menu);
@@ -55,6 +60,7 @@
                 item.className = 'cyf-cs-item'
                     + (i === selectEl.selectedIndex ? ' is-selected' : '')
                     + (opt.disabled ? ' is-disabled' : '');
+                item.id = uid + '-opt-' + i;
                 item.setAttribute('role', 'option');
                 item.setAttribute('aria-selected', i === selectEl.selectedIndex ? 'true' : 'false');
                 item.textContent = opt.textContent;
@@ -70,7 +76,10 @@
             if (i > list.length - 1) i = 0;
             activeIdx = i;
             list.forEach(function (el, idx) { el.classList.toggle('is-active', idx === i); });
-            if (list[i]) list[i].scrollIntoView({ block: 'nearest' });
+            if (list[i]) {
+                trigger.setAttribute('aria-activedescendant', list[i].id);
+                list[i].scrollIntoView({ block: 'nearest' });
+            }
         }
         function choose(i) {
             var opt = selectEl.options[i];
@@ -114,6 +123,7 @@
             menu.style.display = 'none';
             wrap.classList.remove('is-open');
             trigger.setAttribute('aria-expanded', 'false');
+            trigger.removeAttribute('aria-activedescendant');
             document.removeEventListener('mousedown', onOutside, true);
             window.removeEventListener('scroll', onReposition, true);
             window.removeEventListener('resize', onReposition, true);

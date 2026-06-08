@@ -50,13 +50,16 @@ function renderPresetBar() {
         select.appendChild(opt);
     });
     deleteBtn.style.display = 'none';
-    select.addEventListener('change', function () {
+    // Assign (not addEventListener) so re-rendering the preset bar replaces the
+    // handler instead of stacking a new one each time. Fires for the custom
+    // dropdown too (it dispatches a 'change' Event).
+    select.onchange = function () {
         deleteBtn.style.display = select.value ? '' : 'none';
         if (select.value) {
             var p = prefs.presets.find(function (x) { return x.name === select.value; });
             if (p) renderColumnList(p.order);
         }
-    });
+    };
 
     // Themed custom dropdown (native option lists are unstyleable on Linux).
     if (window.CyforSelect) {
@@ -86,7 +89,11 @@ function requestActiveTableColumns(tabId) {
         var displayContext = currentTableContextId.replace('__c', '').replace('__r', '').replace(/_/g, ' ');
         if (displayContext.startsWith('Table')) displayContext = 'Custom Table';
 
-        els.tableContextLbl.innerHTML = '⚙️ Active Table: <b>' + displayContext + '</b>';
+        // Build with DOM nodes (not innerHTML) — displayContext is page-derived.
+        els.tableContextLbl.textContent = '⚙️ Active Table: ';
+        var ctxBold = document.createElement('b');
+        ctxBold.textContent = displayContext;
+        els.tableContextLbl.appendChild(ctxBold);
         els.btnResetCols.style.display = 'block';
 
         chrome.storage.local.get(['tableColumnPrefs'], function (res) {
@@ -121,7 +128,13 @@ function renderColumnList(columns) {
         li.className = 'sortable-item';
         li.draggable = true;
         li.setAttribute('data-name', colName);
-        li.innerHTML = '<span class="sortable-handle">≡</span> ' + colName;
+        // colName is a Salesforce column label (page-derived) — append as text,
+        // not innerHTML, so it can never inject markup.
+        var handle = document.createElement('span');
+        handle.className = 'sortable-handle';
+        handle.textContent = '≡';
+        li.appendChild(handle);
+        li.appendChild(document.createTextNode(' ' + colName));
 
         li.addEventListener('dragstart', handleDragStart);
         li.addEventListener('dragend', handleDragEnd);

@@ -50,25 +50,36 @@ Cyfor.main = {
         }, Cyfor.constants.COLUMN_SCAN_DEBOUNCE_MS);
 
         this._observer = new MutationObserver(function (mutations) {
-            self._debouncedHandler();
-
-            // Re-scan columns only when a lightning-datatable is newly inserted
+            // Single pass over the mutations to learn two things:
+            //  (a) did the light DOM gain any element nodes? — the expensive
+            //      shadow-piercing scanners in _onDomChange only need to run then
+            //      (most Lightning mutations are attribute/text-only);
+            //  (b) was a lightning-datatable inserted? — triggers a column re-scan.
+            var addedEl = false;
+            var datatableAdded = false;
             var prefs = Cyfor.config && Cyfor.config.tableColumnPrefs;
-            if (prefs && Object.keys(prefs).length > 0) {
-                for (var i = 0; i < mutations.length; i++) {
-                    var added = mutations[i].addedNodes;
-                    for (var j = 0; j < added.length; j++) {
-                        var node = added[j];
-                        if (node.nodeType !== 1) continue;
+            var checkDatatable = !!(prefs && Object.keys(prefs).length > 0);
+
+            for (var i = 0; i < mutations.length; i++) {
+                var added = mutations[i].addedNodes;
+                for (var j = 0; j < added.length; j++) {
+                    var node = added[j];
+                    if (node.nodeType !== 1) continue;        // element nodes only
+                    addedEl = true;
+                    if (checkDatatable && !datatableAdded) {
                         var tag = node.tagName ? node.tagName.toLowerCase() : '';
                         if (tag === 'lightning-datatable' ||
                             (node.querySelector && node.querySelector('lightning-datatable'))) {
-                            self._columnScanDebounced();
-                            return;
+                            datatableAdded = true;
                         }
                     }
                 }
+                if (addedEl && (datatableAdded || !checkDatatable)) break; // nothing more to learn
             }
+
+            if (addedEl) self._domAdded = true;   // consumed + reset in _onDomChange
+            self._debouncedHandler();
+            if (datatableAdded) self._columnScanDebounced();
         });
 
         this._observer.observe(document.body, {
@@ -92,12 +103,18 @@ Cyfor.main = {
             return;
         }
 
+        // Consume the "elements were added" signal accumulated since the last run.
+        var domAdded = this._domAdded;
+        this._domAdded = false;
+
         var url = location.href;
-        if (url !== this._lastUrl) {
+        var navigated = (url !== this._lastUrl);
+        if (navigated) {
             this._lastUrl = url;
             this._onNavigate();
         }
 
+        // Cheap work runs on every cycle.
         this._scrapeIfNeeded();
 
         if (Cyfor.config.enableNav &&
@@ -105,6 +122,12 @@ Cyfor.main = {
             !document.getElementById('cyfor-nav-left')) {
             Cyfor.navigation.injectButtons();
         }
+
+        // The shadow-piercing scanners (downloads / notes / editors) are the
+        // expensive part — only run them when the light DOM actually gained
+        // elements, or we just navigated. This skips the bulk of Lightning's
+        // attribute/text-only mutations where a rescan would find nothing new.
+        if (!domAdded && !navigated) return;
 
         Cyfor.downloads.scan();
 

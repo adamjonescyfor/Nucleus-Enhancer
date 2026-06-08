@@ -25,8 +25,8 @@
     /* Text (navy-based for a premium feel) */
     --text-primary:   #0d2a38;
     --text-secondary: #3c5663;
-    --text-muted:     #6a8090;
-    --cyfor-text-muted: #6a8090; /* legacy alias used in popup.css */
+    --text-muted:     #5e7585; /* darkened to clear WCAG AA (4.5:1) on white */
+    --cyfor-text-muted: #5e7585; /* legacy alias used in popup.css */
 
     /* Brand — CYFOR teal + navy */
     --brand:          #0e9aa7;

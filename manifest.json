@@ -77,9 +77,7 @@
                 "content/templates.js",
                 "content/context-menu.js",
                 "content/downloads.js",
-                "content/main.js",
-                "report/disclosure-report.js",
-                "content/case-report.js"
+                "content/main.js"
             ],
             "css": [
                 "styles/base.css",

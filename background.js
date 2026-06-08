@@ -128,6 +128,39 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm && alarm.name === BG_SYNC_ALARM) runBackgroundSync();
 });
 
+// ── Lazy report-script injection ──────────────────────────────────────────────
+// The disclosure-report generator + its in-page button injector are only useful
+// on Forensic Case record pages, so they are NOT in manifest content_scripts.
+// They're injected on demand here (and ensured before a popup-triggered export),
+// which keeps ~47 KB of script + a per-page MutationObserver/1s timer off every
+// other Salesforce page. The scripts self-guard (window.__cyforCaseReportLoaded),
+// so re-injection is harmless.
+var REPORT_FILES = ['report/disclosure-report.js', 'content/case-report.js'];
+var injectedReportTabs = new Set();
+
+function isForensicCaseUrl(url) {
+    var m = (url || '').match(/\/lightning\/r\/([^/]+)\/[^/]+\/view/);
+    return !!(m && /forensic.*case/i.test(m[1]));
+}
+
+function injectReportScripts(tabId) {
+    return chrome.scripting.executeScript({ target: { tabId: tabId }, files: REPORT_FILES })
+        .then(() => { injectedReportTabs.add(tabId); return true; })
+        .catch(() => false); // tab navigated away / not injectable
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // A full navigation starting tears down the page (and our injected script) —
+    // allow re-injection on the next 'complete'.
+    if (changeInfo.status === 'loading') injectedReportTabs.delete(tabId);
+
+    // Inject on full load (status complete) AND on Lightning SPA URL changes.
+    var url = changeInfo.url || (changeInfo.status === 'complete' ? (tab && tab.url) : null);
+    if (!url || !isForensicCaseUrl(url) || injectedReportTabs.has(tabId)) return;
+    injectReportScripts(tabId);
+});
+chrome.tabs.onRemoved.addListener((tabId) => injectedReportTabs.delete(tabId));
+
 // Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Defense-in-depth: only handle messages from this extension's own content
@@ -279,6 +312,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.warn('[CYFOR] showDownload error:', e);
         }
         sendResponse({ ok: true });
+        return true;
+    }
+
+    // Ensure the lazy-injected report scripts are present in a tab before the
+    // popup triggers an export (covers the race where the popup opens the instant
+    // a case page loads, before onUpdated injection has run).
+    if (message.action === 'caseReport.ensureInjected') {
+        var tid = (typeof message.tabId === 'number') ? message.tabId
+                : (sender.tab && sender.tab.id);
+        if (typeof tid !== 'number') { sendResponse({ ok: false }); return true; }
+        injectReportScripts(tid).then((ok) => sendResponse({ ok: ok }));
         return true;
     }
 

@@ -25,7 +25,7 @@
     /* Neutral */
     --cyfor-text: #0d2a38;
     --cyfor-text-secondary: #3c5663;
-    --cyfor-text-muted: #6a8090;
+    --cyfor-text-muted: #5e7585; /* AA-contrast on white */
     --cyfor-border: #d5dee3;
     --cyfor-border-light: #eef2f4;
     --cyfor-surface: #ffffff;
