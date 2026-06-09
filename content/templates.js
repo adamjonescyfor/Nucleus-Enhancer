@@ -118,6 +118,18 @@ Cyfor.templates = {
                 if (search) {
                     Cyfor.cleanup.setTimeout(() => search.focus(), 50);
                 }
+
+                // Pre-warm: Salesforce lazy-loads the rich-text (Quill) editor only
+                // once the field is activated, which is what made inserting take a
+                // few seconds. If it isn't active yet, kick that off NOW so it's
+                // ready by the time a template is chosen — the insert then feels
+                // instant. Re-assert the search focus afterwards, since activating
+                // the field can steal it.
+                if (!Cyfor.editor.findEditor(container)) {
+                    Cyfor.editor.activate(container).then(() => {
+                        if (search && menu.classList.contains('visible')) search.focus();
+                    }).catch(() => {});
+                }
             }
         });
 

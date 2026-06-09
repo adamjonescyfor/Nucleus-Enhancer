@@ -150,34 +150,44 @@ Cyfor.editor = {
      * Unresolved variables become [variableName] placeholders.
      */
     substituteVariables(text) {
+        // Fast path: most templates have no variables — skip all the work.
+        if (text.indexOf('{{') === -1) return text;
+
         const today = new Date();
         const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        let result = text.replace(/\{\{date\}\}/gi, dateStr);
 
-        const examiner = (Cyfor.main && Cyfor.main._lastCachedProfileName)
-            || ((Cyfor.config && Cyfor.config._cachedIdentity && Cyfor.config._cachedIdentity.fullName))
-            || '[examiner]';
+        // Only resolve the examiner / case ref if the template references them —
+        // the case-ref lookup does a (relatively costly) shadow-piercing DOM scan,
+        // and running it on every insert was a big part of the insert delay.
+        if (/\{\{examiner\}\}/i.test(result)) {
+            const examiner = (Cyfor.main && Cyfor.main._lastCachedProfileName)
+                || ((Cyfor.config && Cyfor.config._cachedIdentity && Cyfor.config._cachedIdentity.fullName))
+                || '[examiner]';
+            result = result.replace(/\{\{examiner\}\}/gi, examiner);
+        }
 
-        let caseRef = '[caseRef]';
-        try {
-            const headerSelectors = [
-                'h1.slds-page-header__title',
-                '.slds-page-header__title .slds-truncate',
-                'lightning-formatted-text.slds-page-header__title'
-            ];
-            for (const sel of headerSelectors) {
-                const el = document.querySelector(sel) ||
-                    (Cyfor.utils.querySelectorAllDeep(sel, document.body, 5)[0]);
-                if (el) {
-                    const t = (el.textContent || '').trim();
-                    if (t) { caseRef = t; break; }
+        if (/\{\{caseRef\}\}/i.test(result)) {
+            let caseRef = '[caseRef]';
+            try {
+                const headerSelectors = [
+                    'h1.slds-page-header__title',
+                    '.slds-page-header__title .slds-truncate',
+                    'lightning-formatted-text.slds-page-header__title'
+                ];
+                for (const sel of headerSelectors) {
+                    const el = document.querySelector(sel) ||
+                        (Cyfor.utils.querySelectorAllDeep(sel, document.body, 5)[0]);
+                    if (el) {
+                        const t = (el.textContent || '').trim();
+                        if (t) { caseRef = t; break; }
+                    }
                 }
-            }
-        } catch {}
+            } catch {}
+            result = result.replace(/\{\{caseRef\}\}/gi, caseRef);
+        }
 
-        return text
-            .replace(/\{\{date\}\}/gi, dateStr)
-            .replace(/\{\{examiner\}\}/gi, examiner)
-            .replace(/\{\{caseRef\}\}/gi, caseRef);
+        return result;
     },
 
     /**

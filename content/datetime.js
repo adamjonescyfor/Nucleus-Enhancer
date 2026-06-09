@@ -15,32 +15,36 @@ Cyfor.datetime = {
             if (!Cyfor.config.enableDate) return;
 
             const el = e.target;
+            if (!el || typeof el.closest !== 'function') return;
 
-            // Only act on enabled, writable input elements
-            if (!el || el.tagName !== 'INPUT' || el.disabled || el.readOnly) return;
+            // Find the Lightning date/time picker around the click. Forgiving of
+            // landing on the calendar icon, the field padding, or a wrapper rather
+            // than the <input> itself — the old code required an exact <input> hit,
+            // which is why it felt unreliable and "worked on the second try".
+            const picker = el.closest('lightning-timepicker, lightning-datepicker');
+            if (!picker) return;
 
-            // Determine whether this is a Lightning date or time picker
-            const isTime = el.closest('lightning-timepicker') !== null;
-            const isDate = el.closest('lightning-datepicker') !== null;
-            if (!isTime && !isDate) return;
+            const input = (el.tagName === 'INPUT') ? el : picker.querySelector('input');
+            if (!input || input.disabled || input.readOnly) return;
 
-            // Prevent default context menu
+            // We're handling this click — suppress the native context menu.
             e.preventDefault();
 
             const now = new Date();
+            const isTime = picker.tagName.toLowerCase() === 'lightning-timepicker';
 
             if (isTime) {
                 const value = now.toLocaleTimeString('en-GB', {
                     hour: '2-digit',
                     minute: '2-digit'
                 });
-                Cyfor.utils.setFieldValue(el, value);
-                Cyfor.utils.flashElement(el);
+                Cyfor.utils.setFieldValue(input, value);
+                Cyfor.utils.flashElement(input);
                 Cyfor.toast.success(`Time set to ${value}`, 1500);
             } else {
                 const value = now.toLocaleDateString('en-GB');
-                Cyfor.utils.setFieldValue(el, value);
-                Cyfor.utils.flashElement(el);
+                Cyfor.utils.setFieldValue(input, value);
+                Cyfor.utils.flashElement(input);
                 Cyfor.toast.success(`Date set to ${value}`, 1500);
             }
         };
