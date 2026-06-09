@@ -499,6 +499,11 @@ async function sfTemplateCrud(op, payload) {
 
     if (!user.isTemplateAdmin) throw new Error('PERMISSION_DENIED');
 
+    // The record id goes into the REST URL — only accept a well-formed SF id.
+    if ((op === 'update' || op === 'delete') && !(self.SfUtils && self.SfUtils.isValidSfId(payload.id))) {
+        throw new Error('Invalid template ID');
+    }
+
     var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
     if (!instanceUrl) throw new Error('No Salesforce instance URL');
 
@@ -625,19 +630,31 @@ async function sfTemplateCrud(op, payload) {
 async function downloadOneFile(msg) {
     const { url, filename, subfolder } = msg;
 
+    // Only download over https (blocks data:/javascript:/file:/chrome: schemes).
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch (e) { throw new Error('Invalid download URL'); }
+    if (parsedUrl.protocol !== 'https:') throw new Error('Invalid download URL');
+
     const cleanFolder = (subfolder || '')
         .trim()
         .replace(/^[/\\]+|[/\\]+$/g, '')
         .replace(/[<>:"|?*\x00-\x1F]/g, '_')
         .replace(/[/\\]{2,}/g, '/');
 
+    // Same character hygiene as the folder, plus no path separators at all —
+    // the filename must stay a single path component.
+    const cleanFile = (filename || '')
+        .trim()
+        .replace(/[<>:"|?*\x00-\x1F]/g, '_')
+        .replace(/[/\\]+/g, '_');
+
     const options = {
         url: url,
         conflictAction: 'uniquify'
     };
 
-    if (filename) {
-        options.filename = cleanFolder ? cleanFolder + '/' + filename : filename;
+    if (cleanFile) {
+        options.filename = cleanFolder ? cleanFolder + '/' + cleanFile : cleanFile;
     } else if (cleanFolder) {
         options.filename = cleanFolder + '/photograph';
     }

@@ -41,7 +41,8 @@ function renderPresetBar() {
     if (!bar || !select || !currentTableContextId) return;
 
     var prefs = getContextPrefs(currentTableContextId);
-    bar.style.display = prefs.presets.length > 0 || true ? '' : 'none';
+    // Always visible (even with no presets yet) so users can save their first one.
+    bar.style.display = '';
     select.innerHTML = '<option value="">Load preset…</option>';
     prefs.presets.forEach(function (p) {
         var opt = document.createElement('option');

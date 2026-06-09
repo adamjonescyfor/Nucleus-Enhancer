@@ -184,6 +184,18 @@ Cyfor.notes = {
         // Regex-based transition patterns (ungluing logic)
         this._findRegexBreaks(text, bp);
 
+        // Never split INSIDE a protected token ("DuckDuckGo" stays whole).
+        // Breaks at a token's START remain allowed, so "extractionChatGPT"
+        // still splits before "ChatGPT".
+        const pre = data.protectedTokenRe;
+        if (pre && bp.size) {
+            pre.lastIndex = 0;
+            let m;
+            while ((m = pre.exec(text)) !== null) {
+                for (let p = m.index + 1; p < m.index + m[0].length; p++) bp.delete(p);
+            }
+        }
+
         return bp;
     },
 

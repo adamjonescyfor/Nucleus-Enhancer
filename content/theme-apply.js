@@ -9,6 +9,13 @@
 // ==================================================
 
 (function () {
+    // Idempotency guard: this file is registered FIRST in content_scripts, i.e.
+    // BEFORE utils.js whose `const Cyfor` throws on a same-world double-injection
+    // (manifest auto-injection racing the onInstalled re-inject). Without this,
+    // the storage/matchMedia listeners below would be registered twice.
+    if (window.__cyforThemeApplied) return;
+    window.__cyforThemeApplied = true;
+
     var KEY = 'uiTheme';
     var pref = 'auto';
     var mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;

@@ -154,7 +154,23 @@ async function exchangeCodeForTokens(proxyUrl, code, codeVerifier, redirectUri) 
 
 // ── Token refresh ─────────────────────────────────────────────────────────────
 
-async function refreshAccessToken() {
+// Single in-flight refresh shared by all concurrent callers (background sync +
+// popup + manager can all hit an expired token at once). Without this, parallel
+// refreshes waste quota — and if Salesforce refresh-token rotation is enabled,
+// the second refresh presents the already-consumed token, gets a 400, and the
+// 400-handler wipes ALL tokens = a surprise logout. (Per-SW-lifetime state is
+// exactly the right scope: concurrency only exists within one SW lifetime.)
+var refreshInFlight = null;
+
+function refreshAccessToken() {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = doRefreshAccessToken().finally(function () {
+        refreshInFlight = null;
+    });
+    return refreshInFlight;
+}
+
+async function doRefreshAccessToken() {
     var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY]);
     var config  = results[CONFIG_KEY] || {};
     var tokens  = results[TOKENS_KEY] || {};

@@ -293,15 +293,20 @@ Cyfor.contextMenu = {
                     }
                 });
 
-                // Hover preview (L-12)
-                let previewTimeout;
+                // Hover preview (L-12). The pending timer lives on the instance
+                // (only one item is hovered at a time) so hide() can cancel it —
+                // a per-item closure timer kept firing after hover-then-click
+                // closed the menu, leaving a ghost preview anchored to a
+                // detached item.
                 item.addEventListener('mouseenter', () => {
-                    previewTimeout = setTimeout(() => {
+                    clearTimeout(this._previewTimer);
+                    this._previewTimer = setTimeout(() => {
+                        if (!item.isConnected || !this._menuEl) return;
                         this._showItemPreview(item, key, templates[key]);
                     }, 400);
                 });
                 item.addEventListener('mouseleave', () => {
-                    clearTimeout(previewTimeout);
+                    clearTimeout(this._previewTimer);
                     this._hideItemPreview();
                 });
 
@@ -429,6 +434,7 @@ Cyfor.contextMenu = {
 
     // Template preview overlay on hover (L-12)
     _previewEl: null,
+    _previewTimer: null,
 
     _showItemPreview(anchorItem, key, text) {
         this._hideItemPreview();
@@ -478,6 +484,8 @@ Cyfor.contextMenu = {
     },
 
     _hideItemPreview() {
+        clearTimeout(this._previewTimer);
+        this._previewTimer = null;
         if (this._previewEl && this._previewEl.parentNode) {
             this._previewEl.remove();
         }

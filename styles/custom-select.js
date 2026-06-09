@@ -150,6 +150,8 @@
             }
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive(activeIdx + 1); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); }
+            else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
+            else if (e.key === 'End') { e.preventDefault(); setActive(items().length - 1); }
             else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(activeIdx); }
         });
 
