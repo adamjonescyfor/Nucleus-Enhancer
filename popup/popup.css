@@ -115,7 +115,7 @@ body {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #ccc;
+    background: var(--border-strong);
     flex-shrink: 0;
     transition: background 0.3s;
     /* Pulses while in the initial "Checking…" state (no state class yet). */
@@ -421,7 +421,7 @@ kbd {
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid #eef2f7;
+    border-bottom: 1px solid var(--border);
     transition: background 0.15s;
 }
 
@@ -472,7 +472,7 @@ kbd {
     position: absolute;
     cursor: pointer;
     inset: 0;
-    background: #c1c7cd;
+    background: var(--border-strong);
     transition: background 0.25s;
     border-radius: 20px;
 }
@@ -507,8 +507,8 @@ input:focus-visible + .slider {
    Dynamic Column Header
    ================================================== */
 .table-context-header {
-    background: #eaf4ff;
-    color: #105ea8;
+    background: var(--info-bg);
+    color: var(--info-text);
     font-size: 11px;
     font-weight: 600;
     padding: 6px 14px;
@@ -940,14 +940,14 @@ select.map-select:focus-visible {
 .mapping-container::-webkit-scrollbar-thumb,
 .preview-content::-webkit-scrollbar-thumb,
 .sortable-list::-webkit-scrollbar-thumb {
-    background: #ccc;
+    background: var(--border-strong);
     border-radius: 2px;
 }
 
 .mapping-container::-webkit-scrollbar-thumb:hover,
 .preview-content::-webkit-scrollbar-thumb:hover,
 .sortable-list::-webkit-scrollbar-thumb:hover {
-    background: #aaa;
+    background: var(--text-muted);
 }
 
 /* ==================================================

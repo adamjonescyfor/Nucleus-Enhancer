@@ -381,7 +381,7 @@ html:not([data-theme="dark"]) .mgr-nav-item.is-active {
 }
 
 .mgr-stat--ok::before   { background: var(--brand); }
-.mgr-stat--warn::before { background: #d9870a; }
+.mgr-stat--warn::before { background: var(--warn-text); }
 .mgr-stat--bad::before  { background: var(--danger-text); }
 
 .mgr-stat[role="button"] { cursor: pointer; transition: box-shadow .15s, transform .15s; }
@@ -395,7 +395,7 @@ html:not([data-theme="dark"]) .mgr-nav-item.is-active {
     line-height: 1.1;
 }
 
-.mgr-stat--warn .mgr-stat-value { color: #b9770a; }
+.mgr-stat--warn .mgr-stat-value { color: var(--warn-text); }
 .mgr-stat--bad  .mgr-stat-value { color: var(--danger-text); }
 
 .mgr-stat-label {
@@ -564,7 +564,7 @@ html:not([data-theme="dark"]) .mgr-nav-item.is-active {
 .mgr-status-badge--retired      { background: var(--surface-muted); color: var(--text-muted); border-color: var(--border); }
 
 /* Review-due cell colours */
-.mgr-review-warn    { color: #b9770a; font-weight: 700; }
+.mgr-review-warn    { color: var(--warn-text); font-weight: 700; }
 .mgr-review-overdue { color: var(--danger-text); font-weight: 700; }
 .mgr-review-ok      { color: var(--text-muted); }
 
@@ -611,7 +611,7 @@ html:not([data-theme="dark"]) .mgr-nav-item.is-active {
 }
 .mgr-btn-danger:hover:not(:disabled) { background: var(--danger-bg); }
 
-.mgr-btn-sm { padding: 5px 11px; font-size: 12px; font-weight: 600; }
+.mgr-btn-sm { padding: 4px 8px; font-size: 11.5px; font-weight: 600; } /* 4 row actions — keep the column compact */
 
 /* ── Editor card + form sections ─────────────────────────────────────────────── */
 
@@ -764,7 +764,7 @@ html[data-theme="dark"] select.mgr-input option { background-color: #20262b; col
     border-bottom: 1px solid var(--border);
 }
 .mgr-review-group-head--bad  { color: var(--danger-text); background: var(--danger-bg); }
-.mgr-review-group-head--warn { color: #b9770a; background: var(--warn-bg); }
+.mgr-review-group-head--warn { color: var(--warn-text); background: var(--warn-bg); }
 .mgr-review-group-head--     { color: var(--text-secondary); background: var(--surface-muted); }
 
 .mgr-review-group-count {
@@ -800,7 +800,7 @@ html[data-theme="dark"] select.mgr-input option { background-color: #20262b; col
 .mgr-review-item:last-child { border-bottom: 0; }
 .mgr-review-item:hover { background: var(--brand-tint); }
 .mgr-review-item--bad  { border-left-color: var(--danger-text); }
-.mgr-review-item--warn { border-left-color: #d9870a; }
+.mgr-review-item--warn { border-left-color: var(--warn-text); }
 
 .mgr-review-item-name { font-weight: 700; }
 .mgr-review-item-team { color: var(--text-muted); }

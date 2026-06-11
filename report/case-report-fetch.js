@@ -153,8 +153,18 @@ function normalize(row, relToField) {
 // 2) constrained fuzzy fallback (custom __c objects only) so an org-specific
 //    name still resolves instead of silently dropping the section.
 function resolveChild(parentDesc, candidates, override, fuzzy) {
+    // Both values end up inside SOQL — accept only well-formed API names,
+    // whatever the source (describe OR the caseReportConfig storage override).
+    function safe(object, linkField) {
+        if (self.SfUtils.isValidApiName(object) && self.SfUtils.isValidApiName(linkField)) {
+            return { object: object, linkField: linkField };
+        }
+        return null;
+    }
+
     if (override && override.object && override.linkField) {
-        return { object: override.object, linkField: override.linkField };
+        var o = safe(override.object, override.linkField);
+        if (o) return o;
     }
     var rels = parentDesc.childRelationships || [];
     for (var i = 0; i < candidates.length; i++) {
@@ -162,7 +172,8 @@ function resolveChild(parentDesc, candidates, override, fuzzy) {
         for (var j = 0; j < rels.length; j++) {
             var r = rels[j];
             if (r.childSObject && r.field && r.childSObject.toLowerCase() === cand) {
-                return { object: r.childSObject, linkField: r.field };
+                var m = safe(r.childSObject, r.field);
+                if (m) return m;
             }
         }
     }
@@ -170,7 +181,8 @@ function resolveChild(parentDesc, candidates, override, fuzzy) {
         for (var k = 0; k < rels.length; k++) {
             var rr = rels[k];
             if (rr.childSObject && rr.field && /__c$/i.test(rr.childSObject) && fuzzy.test(rr.childSObject)) {
-                return { object: rr.childSObject, linkField: rr.field };
+                var f = safe(rr.childSObject, rr.field);
+                if (f) return f;
             }
         }
     }
