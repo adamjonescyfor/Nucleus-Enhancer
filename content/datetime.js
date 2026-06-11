@@ -155,7 +155,13 @@ Cyfor.datetime = {
                     : null;
                 if (!pick) pick = real[0];
                 if (pick) {
-                    const pickedText = (pick.textContent || '').trim().split('\n')[0].trim();
+                    // textContent glues the option's sub-spans together with no
+                    // separator ("Adam JonesDigital Forensic Examiner"), so prefer
+                    // the matched user name, then the option's title attribute.
+                    const raw = (pick.textContent || '').trim();
+                    const pickedText = (userName && raw.indexOf(userName) !== -1)
+                        ? userName
+                        : ((pick.getAttribute('title') || '').trim() || raw);
                     pick.click();
                     Cyfor.utils.flashElement(el);
                     Cyfor.toast.success(`Set to ${pickedText || 'you'}`, 1500);

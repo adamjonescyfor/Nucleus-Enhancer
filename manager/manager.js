@@ -1393,7 +1393,9 @@ function openUsage() {
 function loadLocalUsage(descEl, clearBtn) {
     if (descEl) {
         descEl.textContent = 'Local template-insertion log for this device (most recent first) — '
-            + 'stored on this machine only, not synced across devices.';
+            + 'stored on this machine only, not synced across devices. Record links appear when '
+            + 'the insert happened on a record’s own page; inserts made in a pop-up form over '
+            + 'a list don’t carry a record reference.';
     }
     if (clearBtn) clearBtn.style.display = '';
     chrome.storage.local.get([USAGE_KEY], function (res) {

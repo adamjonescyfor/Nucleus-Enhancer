@@ -72,3 +72,8 @@ Cyfor.usage = {
         } catch (e) { /* ignore */ }
     }
 };
+
+// Prime the user name at load: it resolves asynchronously, so without this the
+// FIRST insert after a page load raced the lookup and logged user = null
+// ("—" in the manager's Usage view); later inserts had it cached.
+Cyfor.usage._loadUser();
