@@ -18,8 +18,8 @@ Field API names never need to match exactly — the extension discovers them fro
 
 ### Everyone (all ~100 analysts)
 - Access to the **connected app** (OAuth login).
-- **Read** on `NucleusTemplate__c`, `NucleusTemplateVersion__c`, `NucleusTeam__c`, `NucleusTeamMember__c`.
-- **Create + Read** on `NucleusTemplateUsage__c` once it exists (no Edit/Delete — audit log).
+- **Read ONLY** on `NucleusTemplate__c`, `NucleusTemplateVersion__c`, `NucleusTeam__c`, `NucleusTeamMember__c` — explicitly **no Create/Edit/Delete**. Templates are controlled documents: every change must go through an admin so versioning, change reasons and the Active-only publishing flow can't be bypassed by editing directly in Salesforce. (Read-only on Team Member also stops users reassigning teams or self-ticking the admin flag.) The extension needs nothing more — all its write paths are admin-gated.
+- The one exception: **Create + Read** on `NucleusTemplateUsage__c` once it exists (insert-only audit log; no Edit/Delete).
 - A **`NucleusTeamMember__c` record** linking them to their team (this is what scopes which templates they see and powers the read-only "View Templates" page).
 
 ### Template admins (per team)
