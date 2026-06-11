@@ -35,18 +35,33 @@ Everything above, plus on the **template-admin permission set**:
 
 > The most common gotcha: **Delete on the Version object is required to delete *any* edited template — even your own**, because the version lookup restricts the parent delete.
 
+## Readable record names (recommended, ~10 mins)
+
+Two objects use Auto Number names, so list views show meaningless `NTV-0042` / `NTM-0017` instead of what the record is about. The extension never reads either `Name` field (verified), so both changes are safe; existing records keep their old names.
+
+1. **`NucleusTemplateVersion__c`** — Object Manager → change `Name` from Auto Number to **Text**, then in the archiving Flow's Create Records element set Name with
+   `LEFT({!$Record.Name}, 70) & " v" & {!$Record__Prior.Version_Label__c}`
+   → snapshots are created as e.g. **"Forensic Strategy v2.1"**. (Also in the [Flow doc addendum](salesforce-version-history-flow.md).)
+2. **`NucleusTeamMember__c`** — Object Manager → change `Name` from Auto Number to **Text**. These records are created by hand, so whoever creates them just types the user's name as the record Name. Optional zero-effort version: a small **before-save record-triggered Flow** on create/update — Get Records (User where Id = `{!$Record.User__c}`) → assign `{!$Record.Name}` = that user's Name — so the record always names itself after its user.
+
 ## Rollout checklist
 
+**Admin-only (Callum / Andy / Law):**
 1. ☐ Connected-app access for all users (profile/permission-set assignment).
-2. ☐ Read perms on the four Nucleus objects for all users.
-3. ☐ `NucleusTeamMember__c` rows for everyone (right team, admin flags for the chosen admins).
-4. ☐ Template-admin permission set updated per the table above (esp. Delete/Modify All on `NucleusTemplateVersion__c`).
-5. ☐ Create `NucleusTemplateUsage__c` ([spec](salesforce-usage-object.md)) — optional but recommended; zero extension work needed after.
-6. ☐ Optional cleanup: delete the unused custom **Changed By / Changed By Email** fields on the template + version objects (the extension stopped writing them; standard Created/Last Modified By replaced them).
+2. ☐ Read perms on the four existing Nucleus objects for all users (a "user" permission set or profile update).
+3. ☐ Assign the template-admin permission set to each chosen admin (per the table above — esp. Delete/Modify All on `NucleusTemplateVersion__c`).
+4. ☐ Create `NucleusTemplateUsage__c` ([spec](salesforce-usage-object.md)) — the **only new object**; optional but recommended, zero extension work after.
+5. ☐ Readable record names (section above) — nice-to-have.
+6. ☐ Optional cleanup: delete the unused custom **Changed By / Changed By Email** fields (the extension stopped writing them; standard Created/Last Modified By replaced them).
 7. ☐ After everyone is on the current extension version: tell the developer, who can raise the Cloudflare worker's `MIN_CLIENT_VERSION` to retire old builds.
+
+**Data entry (anyone with access — e.g. Adam, once step 2 is done):**
+8. ☐ A `NucleusTeamMember__c` record per user (right team; the user's name as the record Name once step 5.2 is done).
+9. ☐ Tick `IsAdmin__c` on the chosen admins' Team Member records (remember: admins need BOTH this flag — which unlocks the manager UI — and the permission set from step 3, which is what Salesforce enforces).
 
 ## How responsibilities split
 
-- **Salesforce (you):** objects, permissions, sharing, the version-history Flow, team membership. All access control is enforced here — the extension can only do what the signed-in user can do.
-- **Extension:** UI over the same records (popup insert menus, Template Manager, read-only viewer, version diffs, usage views). Uninstalling it never touches the data.
+- **Salesforce admin (Callum/Andy/Law):** objects/fields/Flows, permission sets and their assignment, connected-app access. All access control is enforced here — the extension can only do what the signed-in user can do.
+- **Record data entry (Adam or anyone with access):** Team Member rows (team assignment + admin flags), templates themselves via the Template Manager.
+- **Extension (developer):** UI over the same records. Uninstalling it never touches the data.
 - **Cloudflare worker (developer):** OAuth only. Salesforce data calls go direct from the extension to Salesforce.
