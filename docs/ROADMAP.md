@@ -1,6 +1,6 @@
 # Roadmap — CYFOR Nucleus Enhancer
 
-Implementable backlog beyond v3.1. Each item is specced so a developer (or future AI session) can build it without re-deriving context. Ordered within each wave by impact ÷ effort. **Hard rules that always apply:** Salesforce field API names are describe-discovered (never hardcode); OAuth secrets stay in Cloudflare; `report/disclosure-report.js` + `styles/case-report.css` are the CTO's (don't edit); the MG22 feature is Mitul's (flagged off via `MG22_ENABLED` in `content/case-report.js`).
+Implementable backlog beyond v3.0. Each item is specced so a developer (or future AI session) can build it without re-deriving context. Ordered within each wave by impact ÷ effort. **Hard rules that always apply:** Salesforce field API names are describe-discovered (never hardcode); OAuth secrets stay in Cloudflare; `report/disclosure-report.js` + `styles/case-report.css` are the CTO's (don't edit); the MG22 feature is Mitul's (flagged off via `MG22_ENABLED` in `content/case-report.js`).
 
 ## Wave 2 (next)
 
