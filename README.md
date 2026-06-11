@@ -2,7 +2,7 @@
 
 # 🧭 CYFOR Nucleus Enhancer
 
-### Supercharging Salesforce / Nucleus Lightning for CYFOR's digital‑forensics teams.
+### Supercharging Salesforce / Nucleus for CYFOR's various teams.
 
 Faster casework, consistent reporting, and centrally‑managed templates — right inside Nucleus.
 
@@ -27,10 +27,10 @@ Faster casework, consistent reporting, and centrally‑managed templates — rig
 ## 🚀 Getting started
 
 1. **Install** the extension.
-2. Open the popup and click **Connect Salesforce** — a normal Salesforce login window appears. That's the only setup you'll ever do.
+2. Open the popup and click **Connect Salesforce** — a normal Salesforce login window appears. That's the only setup you'll ever do. Select Remember Password to avoid having to repeatedly log in.
 3. In any **Notes** or **Forensic Strategy** box, click the **📄 button** or **right‑click** to insert a template. 🎉
 
-> 💡 Your team's official templates appear automatically and stay up to date in the background. The popup's **Help & tips** section lists every feature — including the easy‑to‑miss ones below.
+> 💡 Your team's official templates appear automatically and stay up to date in the background along with any global templates. The popup's **Help & tips** section lists every feature — including the easy‑to‑miss ones below.
 
 <!-- 📸 Screenshot: docs/screenshots/popup.png — the extension popup -->
 
@@ -45,7 +45,7 @@ Faster casework, consistent reporting, and centrally‑managed templates — rig
 | 🧭 | **Record navigation** | **Alt+← / Alt+→** (or the on‑page arrows) move between Exhibit Process records in list order. |
 | 📝 | **Notes formatting** | Notes columns in list views are expanded into readable, structured blocks automatically. |
 | ↔️ | **Column presets** | Drag column names in the popup to reorder list‑view tables; save layouts as presets per table. |
-| 📷 | **Photograph download** | A **Download All Photographs** button appears on Uploaded Documents sections and grabs everything in one go. |
+| 📷 | **Photograph download** | A **Download All Photographs** button appears on Uploaded Documents sections and grabs everything in one go. Ensure that your browser settings do not ask you choose the location for each download before running this or you may be stuck doing this for each and every picture until it has completed. |
 | 📄 | **Case Disclosure Report** | One‑click, commercially‑sanitised HTML report from any Forensic Case page, with a **Save as PDF** print view. |
 | 🗂️ | **Template Manager** | Admins manage the whole template estate; everyone else gets a **read‑only viewer** — content, versions, review dates and history. |
 | 🎨 | **Auto / Light / Dark** | One theme choice covers the popup, the manager **and** the in‑page UI, live with no refresh. |
@@ -133,6 +133,6 @@ The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)** 
 
 <div align="center">
 
-**CYFOR Group — internal tooling.** Built for the digital‑forensics floor. 🔬
+**CYFOR Group — internal tooling.** Built for the digital forensics, cyber, cell site, and eDiscovery teams. 🔬
 
 </div>
