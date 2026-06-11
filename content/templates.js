@@ -51,6 +51,7 @@ Cyfor.templates = {
                 if (orphanMenu) orphanMenu.remove(); // avoid a duplicate menu
                 this._attachButton(container);
                 this._attachMenu(container);
+                this._maybeShowFirstUseTip();
             }
 
             // Smart suggestions run ONCE per editor (re-attaches above must not
@@ -71,6 +72,28 @@ Cyfor.templates = {
                 }
             }
         }
+    },
+
+    /**
+     * One-time discoverability tip: the first time a template button ever
+     * appears for this user (any device — chrome.storage.sync flag), point out
+     * how to insert. Analysts who never open the popup would otherwise never
+     * learn the feature exists.
+     */
+    _tipChecked: false,
+    _maybeShowFirstUseTip() {
+        if (this._tipChecked) return;
+        this._tipChecked = true;
+        try {
+            chrome.storage.sync.get(['tipInsertSeen'], (res) => {
+                if (chrome.runtime.lastError || (res && res.tipInsertSeen)) return;
+                try { chrome.storage.sync.set({ tipInsertSeen: true }); } catch (e) { /* ignore */ }
+                Cyfor.toast.info(
+                    'Tip: click the 📄 button or right-click in this box to insert your team’s templates',
+                    8000
+                );
+            });
+        } catch (e) { /* context invalidated — skip */ }
     },
 
     /**
@@ -176,9 +199,15 @@ Cyfor.templates = {
         );
 
         // Pin Forensic Strategy template to top if appropriate
-        const keys = (Cyfor.editor.isForensicStrategyField(container))
+        const baseKeys = (Cyfor.editor.isForensicStrategyField(container))
             ? this._sortKeysForensicFirst(allKeys)
             : allKeys;
+
+        // User-pinned templates float to the very top (★, set in the popup).
+        const pinnedSet = new Set((Cyfor.config.pinnedTemplates || []).filter(k => templates[k]));
+        const keys = pinnedSet.size
+            ? [...baseKeys.filter(k => pinnedSet.has(k)), ...baseKeys.filter(k => !pinnedSet.has(k))]
+            : baseKeys;
 
         // Recently used (top 3) — rendered above search box (L-3)
         const recentKeys = (Cyfor.config.recentTemplates || []).filter(k => templates[k]);
@@ -315,6 +344,7 @@ Cyfor.templates = {
             const item = document.createElement('div');
             item.className = 'cyfor-template-item';
             if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
+            if (pinnedSet.has(key)) item.classList.add('cyfor-template-item--pinned');
             item.textContent = key;
             item.title = `Insert "${key}"`;
             item.setAttribute('role', 'menuitem');

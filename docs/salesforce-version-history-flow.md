@@ -93,3 +93,22 @@ Archiving lives in the **Flow only** — one mechanism, identical for every edit
 source. The extension‑side `archiveCurrentVersion` call has been removed, so
 there is no double‑archiving, and direct‑in‑Salesforce edits are snapshotted just
 like extension edits. ✅ Done.
+
+---
+
+## Addendum — give snapshots readable names (requested 2026‑06‑10)
+
+Auto‑numbered names (`NTV-0003`) don't say which template a snapshot belongs to
+without opening it. Fix in two small steps:
+
+1. **Object Manager → Nucleus Template Version → the `Name` field → change
+   Data Type from Auto Number to Text.** (One‑way but safe — existing records
+   keep their `NTV‑…` values; nothing in the extension reads this field.)
+2. **In the archiving Flow's Create Records element, set `Name` from the
+   template:** a formula resource like
+   `LEFT({!$Record.Name}, 70) & " v" & {!$Record__Prior.Version_Label__c}`
+   → snapshots are created as e.g. **"Forensic Strategy v2.1"**.
+   (`LEFT(...,70)` keeps long template names inside Name's 80‑char limit.)
+
+Optional extra: add the **Template** lookup column to the Nucleus Template
+Version list view so even old `NTV‑…` records show their parent at a glance.

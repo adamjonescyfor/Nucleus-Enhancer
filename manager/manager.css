@@ -12,7 +12,9 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
     color: var(--text-primary);
-    background: var(--surface-soft);
+    /* Painted as the two shell columns (navy sidebar | soft main) so any strip
+       of document below/beside the shell is invisible instead of a pale gap. */
+    background: linear-gradient(to right, var(--navy) 232px, var(--surface-soft) 232px);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
 }
@@ -91,14 +93,14 @@ body {
 .mgr-nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 11px;
     width: 100%;
-    padding: 9px 12px;
+    padding: 11px 12px;
     border: 0;
     border-radius: var(--radius);
     background: transparent;
     color: var(--on-navy-muted);
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 600;
     text-align: left;
     cursor: pointer;
@@ -157,6 +159,42 @@ html:not([data-theme="dark"]) .mgr-nav-item.is-active {
     background: #ff6b70;
     color: #2a0606;
 }
+
+/* At-a-glance counts under the nav — keeps the headline numbers visible from
+   every view and fills the sidebar's empty space. */
+.mgr-side-stats {
+    margin-top: 16px;
+    padding: 12px 0 14px;
+    border-top: 1px solid var(--navy-line);
+}
+
+.mgr-side-stats-title {
+    padding: 0 12px 7px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--on-navy-muted);
+}
+
+.mgr-side-stat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    font-size: 12.5px;
+    color: var(--on-navy-muted);
+}
+
+.mgr-side-stat-value {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: var(--on-navy);
+    font-variant-numeric: tabular-nums;
+}
+
+.mgr-side-stat--warn .mgr-side-stat-value { color: #fcd34d; }
+.mgr-side-stat--bad  .mgr-side-stat-value { color: #ff8a8e; }
 
 .mgr-sidebar-foot {
     border-top: 1px solid var(--navy-line);
@@ -830,8 +868,26 @@ html[data-theme="dark"] select.mgr-input option { background-color: #20262b; col
 }
 
 .mgr-modal-title { margin: 0 0 8px; font-size: 16px; font-weight: 800; color: var(--text-primary); }
-.mgr-modal-body { margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+.mgr-modal-body { margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: var(--text-secondary); white-space: pre-line; }
 .mgr-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Template-content viewer (read-only mode) */
+.mgr-modal--wide { max-width: min(720px, 92vw); }
+.mgr-modal-pre {
+    margin: -6px 0 16px;
+    padding: 12px 14px;
+    max-height: 55vh;
+    overflow: auto;
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-primary);
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
 
 /* ── History panel ───────────────────────────────────────────────────────────── */
 
@@ -944,6 +1000,7 @@ html[data-theme="dark"] select.mgr-input option { background-color: #20262b; col
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 
 @media (max-width: 720px) {
+    body { background: var(--surface-soft); } /* single column — no split gradient */
     .mgr-sidebar {
         position: static;
         height: auto;
@@ -957,7 +1014,7 @@ html[data-theme="dark"] select.mgr-input option { background-color: #20262b; col
     }
     .mgr-shell { flex-direction: column; }
     .mgr-brand { border: 0; padding: 0; }
-    .mgr-brand-text, .mgr-sidebar-foot { display: none; }
+    .mgr-brand-text, .mgr-sidebar-foot, .mgr-side-stats { display: none; }
     .mgr-nav { flex-direction: row; flex: 1; }
     .mgr-nav-item.is-active::before { display: none; }
     .mgr-stats { grid-template-columns: repeat(2, 1fr); }

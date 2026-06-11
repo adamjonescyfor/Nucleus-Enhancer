@@ -49,12 +49,18 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
 
 /* ==================================================
    Note Container
+
+   IMPORTANT: formatted notes render INSIDE Salesforce's own (always-light)
+   list-view table, so their colours are PINNED to the light palette and must
+   NOT follow the extension's data-cyfor-theme. Otherwise dark mode paints
+   near-white text onto Salesforce's white cells (faded/unreadable). The
+   floating menus/toasts bring their own themed surfaces — they still theme.
    ================================================== */
 .cyfor-note {
     font-family: var(--cyfor-font);
     font-size: 12.5px;
     line-height: 1.55;
-    color: var(--cyfor-text);
+    color: #0d2a38;
     padding: 4px 0;
     word-break: break-word;
     overflow-wrap: anywhere;
@@ -80,11 +86,11 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
    ================================================== */
 .cyfor-note .cyfor-n-header {
     font-weight: 700;
-    color: var(--cyfor-primary-dark);
+    color: #0b7e8a;
     font-size: 11.5px;
     padding: 0 0 3px;
     margin: 8px 0 4px;
-    border-bottom: 1px solid var(--cyfor-border-light);
+    border-bottom: 1px solid #eef2f4;
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
@@ -104,12 +110,12 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
 
 .cyfor-note .cyfor-n-key {
     font-weight: 600;
-    color: var(--cyfor-text-secondary);
+    color: #3c5663;
 }
 
 .cyfor-note .cyfor-n-val {
     font-weight: 400;
-    color: var(--cyfor-text);
+    color: #0d2a38;
 }
 
 /* Standalone label (empty-value "Circumstances:", "Exhibit Reference:") — reads as
@@ -118,7 +124,7 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
     margin-top: 3px;
 }
 .cyfor-note .cyfor-n-row-label .cyfor-n-key {
-    color: var(--cyfor-text);
+    color: #0d2a38;
     font-weight: 700;
 }
 
@@ -128,7 +134,7 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
 .cyfor-note .cyfor-n-text {
     padding: 2px 0;
     line-height: 1.5;
-    color: var(--cyfor-text);
+    color: #0d2a38;
 }
 
 .cyfor-note .cyfor-n-bullet {
@@ -139,7 +145,7 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
     content: "•";
     position: absolute;
     left: 3px;
-    color: var(--cyfor-primary);
+    color: #0e9aa7;
     font-weight: 700;
 }
 
@@ -156,22 +162,22 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
    ================================================== */
 .cyfor-note .cyfor-val-yes {
     font-weight: 700;
-    color: var(--cyfor-success);
+    color: #0b7a3a;
 }
 
 .cyfor-note .cyfor-val-no {
     font-weight: 700;
-    color: var(--cyfor-danger);
+    color: #b4232f;
 }
 
 .cyfor-note .cyfor-val-na {
-    color: var(--cyfor-text-muted);
+    color: #5e7585;
     font-style: italic;
 }
 
 .cyfor-note .cyfor-val-pending {
     font-weight: 600;
-    color: var(--cyfor-warning);
+    color: #92510e;
 }
 
 /* ==================================================

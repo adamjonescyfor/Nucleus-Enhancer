@@ -14,7 +14,8 @@ try {
 try {
     importScripts(
         'background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js',
-        'background/sf-team.js', 'background/sf-versions.js', 'report/case-report-fetch.js',
+        'background/sf-team.js', 'background/sf-versions.js', 'background/sf-usage.js',
+        'report/case-report-fetch.js',
         // MG22A/MG22B report generation — OWNED BY MITUL (feature hidden via the
         // MG22_ENABLED flag in content/case-report.js). These modules stay loaded
         // so the feature is one flag-flip away; they're inert while the button is hidden.
@@ -310,6 +311,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         self.SfVersions.getVersionHistory(message.templateId)
             .then((r) => sendResponse(r))
             .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // Org-wide usage logging — silent no-op until NucleusTemplateUsage__c exists
+    // (see docs/salesforce-usage-object.md). Never errors back to the caller.
+    if (message.action === 'usage.push') {
+        if (!self.SfUsage) { sendResponse({ ok: true, skipped: true }); return true; }
+        self.SfUsage.pushUsage(message.entry || {})
+            .then((r) => sendResponse(r))
+            .catch(() => sendResponse({ ok: true, skipped: true }));
+        return true;
+    }
+
+    // Org-wide usage listing for the manager (template admins only).
+    if (message.action === 'usage.listOrg') {
+        if (!self.SfUsage) { sendResponse({ ok: true, available: false, entries: [] }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) {
+                sendResponse({ ok: false, error: 'PERMISSION_DENIED' });
+                return;
+            }
+            self.SfUsage.listOrgUsage(200)
+                .then((r) => sendResponse(r))
+                .catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
         return true;
     }
 

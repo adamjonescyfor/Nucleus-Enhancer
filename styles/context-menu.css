@@ -172,6 +172,12 @@
     flex: 1;
 }
 
+/* Pinned (★) templates float to the top of the menu */
+.cyfor-ctx-menu-item--pinned .cyfor-ctx-menu-item-label::before {
+    content: "★ ";
+    color: var(--cyfor-primary);
+}
+
 .cyfor-ctx-menu-item-badge {
     font-size: 9px;
     font-weight: 700;

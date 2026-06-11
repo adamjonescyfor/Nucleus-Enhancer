@@ -280,6 +280,21 @@
     padding: 0 1px;
 }
 
+/* Pinned (★) templates — ::before so it survives search-highlight rewriting
+   the item's text/innerHTML. */
+.cyfor-template-item--pinned {
+    padding-left: 26px;
+}
+.cyfor-template-item--pinned::before {
+    content: "★";
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--cyfor-primary);
+    font-size: 11px;
+}
+
 /* Official (Salesforce-synced) template badge. Absolutely positioned so it
    survives the search highlight rewriting the item's text/innerHTML. */
 .cyfor-template-item--official {

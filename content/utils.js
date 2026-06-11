@@ -223,11 +223,19 @@ Cyfor.utils = {
             el._cyforFlashFadeTimer = null;
         }
 
-        // Save the original inline styles (NOT computed — just what's on the element)
-        const origBg = el.style.backgroundColor;
-        const origShadow = el.style.boxShadow;
-        const origTransition = el.style.transition;
-        const origOutline = el.style.outline;
+        // Save the original inline styles ONCE per flash cycle. If a flash is
+        // already showing when the next one starts (rapid re-clicks), reading the
+        // element's current styles would capture the GREEN as the "original" and
+        // the fade would restore green permanently — so reuse the stash instead.
+        if (!el._cyforFlashOrig) {
+            el._cyforFlashOrig = {
+                bg:         el.style.backgroundColor,
+                shadow:     el.style.boxShadow,
+                transition: el.style.transition,
+                outline:    el.style.outline
+            };
+        }
+        const orig = el._cyforFlashOrig;
 
         // Phase 1: Snap to green (fast transition in)
         el.style.transition = 'background-color 0.12s ease, box-shadow 0.12s ease, outline 0.12s ease';
@@ -239,13 +247,14 @@ Cyfor.utils = {
         el._cyforFlashTimer = setTimeout(() => {
             // Slow transition out
             el.style.transition = 'background-color 0.5s ease, box-shadow 0.5s ease, outline 0.5s ease';
-            el.style.backgroundColor = origBg;
-            el.style.boxShadow = origShadow;
-            el.style.outline = origOutline;
+            el.style.backgroundColor = orig.bg;
+            el.style.boxShadow = orig.shadow;
+            el.style.outline = orig.outline;
 
-            // Phase 3: Clean up transition property after fade completes
+            // Phase 3: Clean up after the fade completes
             el._cyforFlashFadeTimer = setTimeout(() => {
-                el.style.transition = origTransition;
+                el.style.transition = orig.transition;
+                el._cyforFlashOrig = null;
                 el._cyforFlashTimer = null;
                 el._cyforFlashFadeTimer = null;
             }, 500);

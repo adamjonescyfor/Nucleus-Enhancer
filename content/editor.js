@@ -153,16 +153,25 @@ Cyfor.editor = {
         // Fast path: most templates have no variables — skip all the work.
         if (text.indexOf('{{') === -1) return text;
 
-        const today = new Date();
-        const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        let result = text.replace(/\{\{date\}\}/gi, dateStr);
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        let result = text
+            .replace(/\{\{date\}\}/gi, dateStr)
+            .replace(/\{\{time\}\}/gi, timeStr)
+            .replace(/\{\{dateTime\}\}/gi, dateStr + ' ' + timeStr);
+
+        if (/\{\{teamName\}\}/i.test(result)) {
+            const team = (Cyfor.config && Cyfor.config.sfUser && Cyfor.config.sfUser.teamName) || '[teamName]';
+            result = result.replace(/\{\{teamName\}\}/gi, team);
+        }
 
         // Only resolve the examiner / case ref if the template references them —
         // the case-ref lookup does a (relatively costly) shadow-piercing DOM scan,
         // and running it on every insert was a big part of the insert delay.
         if (/\{\{examiner\}\}/i.test(result)) {
             const examiner = (Cyfor.main && Cyfor.main._lastCachedProfileName)
-                || ((Cyfor.config && Cyfor.config._cachedIdentity && Cyfor.config._cachedIdentity.fullName))
+                || ((Cyfor.config && Cyfor.config.sfUser && Cyfor.config.sfUser.fullName))
                 || '[examiner]';
             result = result.replace(/\{\{examiner\}\}/gi, examiner);
         }

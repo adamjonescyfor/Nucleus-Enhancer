@@ -29,8 +29,13 @@ Cyfor.usage = {
         } catch (e) { /* ignore */ }
     },
 
+    // Record id from the URL. Only available when the insert happens on a
+    // record's own page (/lightning/r/<Object>/<Id>/…). Inserts made in a
+    // modal opened over a LIST view have no record id in the URL — that's why
+    // many usage entries show '—' for Record; the URL column still captures
+    // where it happened.
     _recordId: function () {
-        var m = location.href.match(/\/lightning\/r\/[^/]+\/([^/]+)\/view/);
+        var m = location.href.match(/\/lightning\/r\/[^/]+\/([a-zA-Z0-9]{15,18})(?:\/|$)/);
         return m ? m[1] : null;
     },
 
@@ -54,6 +59,15 @@ Cyfor.usage = {
                 var payload = {};
                 payload[self.KEY] = log;
                 chrome.storage.local.set(payload);
+            });
+        } catch (e) { /* ignore */ }
+
+        // Org-wide mirror (fire-and-forget): the background writes a
+        // NucleusTemplateUsage__c record IF the admin has created that object;
+        // otherwise it's a silent no-op. Must never affect the insert itself.
+        try {
+            chrome.runtime.sendMessage({ action: 'usage.push', entry: entry }, function () {
+                void chrome.runtime.lastError; // swallow "no receiver" etc.
             });
         } catch (e) { /* ignore */ }
     }

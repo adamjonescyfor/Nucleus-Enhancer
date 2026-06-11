@@ -25,7 +25,7 @@ function bindTemplateEvents() {
     els.insertBtn.addEventListener('click', function () {
         var select = els.templateSelect;
         var text = select.value;
-        var name = (select.options[select.selectedIndex] || {}).textContent || 'Template';
+        var name = getSelectedTemplateName() || 'Template';
 
         if (!text) {
             setStatus('Select a template first', 'error');
@@ -52,13 +52,34 @@ function bindTemplateEvents() {
         });
     });
 
-    // Template select → enable/disable Edit + Preview
+    // Template select → enable/disable Edit + Preview + Pin
     els.templateSelect.addEventListener('change', function () {
         var hasValue = !!els.templateSelect.value;
         els.previewBtn.disabled = !hasValue;
         els.previewSection.style.display = 'none';
         var editBtn = document.getElementById('btn-edit-template');
         if (editBtn) editBtn.disabled = !hasValue;
+        updatePinButton();
+    });
+
+    // Pin / unpin the selected template (pinned ones float to the top of every
+    // insert menu, across devices via chrome.storage.sync).
+    var pinBtn = document.getElementById('btn-pin-template');
+    if (pinBtn) {
+        pinBtn.addEventListener('click', function () {
+            var name = getSelectedTemplateName();
+            if (!name) return;
+            var idx = pinnedTemplatesList.indexOf(name);
+            if (idx === -1) pinnedTemplatesList.unshift(name);
+            else pinnedTemplatesList.splice(idx, 1);
+            try { chrome.storage.sync.set({ pinnedTemplates: pinnedTemplatesList }); } catch (e) { /* ignore */ }
+            populateDropdown(currentMergedTemplates); // re-orders + keeps selection
+        });
+    }
+    loadPinnedTemplates(function () {
+        // Pins may resolve after the first dropdown render — re-apply ordering.
+        if (Object.keys(currentMergedTemplates || {}).length) populateDropdown(currentMergedTemplates);
+        updatePinButton();
     });
 
     // Template editor (L-9)
@@ -99,10 +120,8 @@ function bindTemplateEvents() {
 
     if (editBtn) {
         editBtn.addEventListener('click', function () {
-            var select = els.templateSelect;
-            var key = (select.options[select.selectedIndex] || {}).textContent || '';
-            key = key.replace(/\s*·\s*(Official|built-in)\s*$/i, '').trim();
-            var content = select.value;
+            var key = getSelectedTemplateName();
+            var content = els.templateSelect.value;
             if (!key || !content) return;
             openEditor(key, content);
         });
@@ -324,29 +343,69 @@ function renderMappings(types, templates, savedMap) {
     els.mappingList.appendChild(fragment);
 }
 
+// Pinned template names (chrome.storage.sync — shared across the user's devices).
+var pinnedTemplatesList = [];
+
+function loadPinnedTemplates(done) {
+    try {
+        chrome.storage.sync.get(['pinnedTemplates'], function (res) {
+            pinnedTemplatesList = (res && res.pinnedTemplates) || [];
+            if (done) done();
+        });
+    } catch (e) { if (done) done(); }
+}
+
+// The selected option's template NAME (option value holds the CONTENT).
+function getSelectedTemplateName() {
+    var opt = els.templateSelect.options[els.templateSelect.selectedIndex];
+    return (opt && opt.getAttribute('data-name')) || '';
+}
+
 function populateDropdown(templates) {
+    var keepName = getSelectedTemplateName(); // preserve selection across rebuilds
     els.templateSelect.innerHTML = '<option value="">Select template…</option>';
     els.previewBtn.disabled = true;
 
     if (!templates) return;
 
     var keys = Object.keys(templates).sort();
-    var fragment = document.createDocumentFragment();
+    // Pinned templates first (★) — set via the Pin button.
+    var pinned = pinnedTemplatesList.filter(function (k) { return templates[k] !== undefined; });
+    if (pinned.length) {
+        keys = pinned.concat(keys.filter(function (k) { return pinned.indexOf(k) === -1; }));
+    }
 
+    var fragment = document.createDocumentFragment();
     for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
         var opt = document.createElement('option');
-        opt.value = templates[keys[i]];
-        opt.textContent = keys[i] + (isOfficialTemplate(keys[i]) ? '  ·  Official' : '');
+        opt.value = templates[k];
+        opt.setAttribute('data-name', k);
+        opt.textContent = (pinned.indexOf(k) !== -1 ? '★ ' : '') + k
+            + (isOfficialTemplate(k) ? '  ·  Official' : '');
+        if (k === keepName) opt.selected = true;
         fragment.appendChild(opt);
     }
 
     els.templateSelect.appendChild(fragment);
+    updatePinButton();
 
     // Themed custom dropdown (native option lists are unstyleable on Linux).
     if (window.CyforSelect) {
         CyforSelect.enhance(els.templateSelect);
         CyforSelect.sync(els.templateSelect);
     }
+}
+
+// Reflect the selected template's pin state on the ★/☆ button.
+function updatePinButton() {
+    var pinBtn = document.getElementById('btn-pin-template');
+    if (!pinBtn) return;
+    var name = getSelectedTemplateName();
+    pinBtn.disabled = !name;
+    var isPinned = name && pinnedTemplatesList.indexOf(name) !== -1;
+    pinBtn.textContent = isPinned ? '★ Unpin' : '☆ Pin';
+    pinBtn.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
 }
 
 function updateBadge(count) {

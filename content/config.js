@@ -133,7 +133,7 @@ Cyfor.config.load = function (onReady) {
         'enableAutoInsert', 'enableContextMenu',
         'tableColumnPrefs',
         'nucleusTemplates', 'processMap', 'recentTemplates',
-        'sfRemoteTemplates'
+        'sfRemoteTemplates', 'sfOAuthUser'
     ];
 
     chrome.storage.local.get(keys, function (result) {
@@ -154,12 +154,22 @@ Cyfor.config.load = function (onReady) {
         Cyfor.config.templates         = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
         Cyfor.config.processMap        = r.processMap || {};
         Cyfor.config.recentTemplates   = r.recentTemplates || [];
+        Cyfor.config.sfUser            = r.sfOAuthUser || null; // {{examiner}}/{{teamName}} variables
 
         // Write merged templates to storage so popup can read them without duplicating built-ins
         chrome.storage.local.set({ mergedTemplates: Cyfor.config.templates });
 
         if (typeof onReady === 'function') onReady(Cyfor.config);
     });
+
+    // Pinned templates live in SYNC storage (shared across the user's devices).
+    Cyfor.config.pinnedTemplates = Cyfor.config.pinnedTemplates || [];
+    try {
+        chrome.storage.sync.get(['pinnedTemplates'], function (res) {
+            if (chrome.runtime.lastError) return;
+            Cyfor.config.pinnedTemplates = (res && res.pinnedTemplates) || [];
+        });
+    } catch (e) { /* ignore */ }
 };
 
 /**
@@ -195,7 +205,15 @@ Cyfor.config.startListening = function () {
     };
 
     var handler = function (changes, namespace) {
+        // Pins live in sync storage; everything else below is local.
+        if (namespace === 'sync') {
+            if (changes.pinnedTemplates) {
+                Cyfor.config.pinnedTemplates = changes.pinnedTemplates.newValue || [];
+            }
+            return;
+        }
         if (namespace !== 'local') return;
+        if (changes.sfOAuthUser) Cyfor.config.sfUser = changes.sfOAuthUser.newValue || null;
 
         var entries = Object.entries(storageToConfig);
         for (var i = 0; i < entries.length; i++) {

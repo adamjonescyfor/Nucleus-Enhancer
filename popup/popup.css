@@ -193,6 +193,17 @@ body {
     border-radius: 3px;
 }
 
+/* Help & tips list */
+.help-list {
+    margin: 0;
+    padding: 10px 14px 12px 28px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+.help-list li { margin: 4px 0; }
+.help-list strong { color: var(--text-primary); }
+
 /* ==================================================
    Sections
    ================================================== */
@@ -639,7 +650,14 @@ select.map-select:focus-visible {
 
 .quick-insert-actions {
     display: flex;
+    flex-wrap: wrap;   /* four buttons — never clip, wrap instead */
     gap: 6px;
+}
+
+/* Shortcut hint sits under the buttons (the header is title + count badge only) */
+.quick-insert-hint {
+    margin-top: 8px;
+    justify-content: flex-end;
 }
 
 /* ==================================================

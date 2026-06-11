@@ -29,10 +29,19 @@
         <button type="button" class="onboarding-close" id="onboarding-close" aria-label="Dismiss welcome">×</button>
         <div class="onboarding-title">Welcome to Nucleus Enhancer 👋</div>
         <ol class="onboarding-steps">
-            <li>Connect <strong>Salesforce</strong> below to sync your team's official templates.</li>
-            <li>Or load your own under <strong>Template Files</strong>.</li>
-            <li>In a Notes / Forensic Strategy field, press <kbd>Alt</kbd>+<kbd>T</kbd> or right-click to insert.</li>
+            <li><strong>Connect Salesforce</strong> below — your team's official templates sync automatically.</li>
+            <li><strong>Insert templates</strong> — click the 📄 button or right-click in a Notes / Forensic Strategy box (<kbd>Alt</kbd>+<kbd>T</kbd> opens, <kbd>Alt</kbd>+<kbd>Z</kbd> undoes).</li>
+            <li><strong>Right-click to quick-fill</strong> — date/time fields get <em>now</em>; Completed By &amp; Sealed By get <em>you</em>.</li>
+            <li><strong>View Templates</strong> shows your team's library with versions and history.</li>
+            <li>Notes in list views are auto-formatted, columns are drag-reorderable, and there's more under <strong>Help &amp; tips</strong> below.</li>
         </ol>
+    </div>
+
+    <!-- What's new after an update (dismissible, shown once) -->
+    <div id="whatsnew-banner" class="onboarding-banner" style="display:none">
+        <button type="button" class="onboarding-close" id="whatsnew-close" aria-label="Dismiss what's new">×</button>
+        <div class="onboarding-title">What's new <span id="whatsnew-version"></span></div>
+        <ul class="onboarding-steps" id="whatsnew-list"></ul>
     </div>
 
     <!-- Salesforce (OAuth identity + official template sync) -->
@@ -65,126 +74,11 @@
         </div>
     </section>
 
-    <!-- Case Disclosure Report -->
-    <section class="section">
-        <div class="section-header">
-            <span>Case Disclosure Report</span>
-        </div>
-        <div class="sf-templates-panel">
-            <div class="sf-status-text" id="case-report-hint">Open a Forensic Case record in Salesforce to enable.</div>
-            <div class="auth-actions" style="margin-top:8px">
-                <button id="btn-export-case" class="btn btn-primary" disabled>Export Current Case</button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Salesforce Configuration (collapsible) -->
-    <details class="section collapsible-section" id="sf-config-section">
-        <summary class="section-header">
-            <span>Salesforce Configuration</span>
-            <span class="collapse-indicator" aria-hidden="true">▾</span>
-        </summary>
-        <div class="sf-config-panel">
-            <label class="sf-config-label" for="sf-proxy-url">OAuth Proxy URL</label>
-            <input type="text" id="sf-proxy-url" class="sf-config-input" placeholder="https://cyfor-oauth-proxy.your-name.workers.dev" autocomplete="off">
-            <button id="btn-sf-config-save" class="btn btn-primary" style="margin-top:10px">Save</button>
-            <div id="sf-config-status" class="status-msg"></div>
-        </div>
-    </details>
-
-    <!-- Core Features -->
-    <section class="section">
-        <div class="section-header">
-            <span>Core Features</span>
-        </div>
-        <div class="option-row">
-            <div class="option-info">
-                <div class="option-label">Sync Settings Across Devices</div>
-                <div class="option-desc">Save toggles to Chrome Sync (templates stay local)</div>
-            </div>
-            <label class="switch"><input type="checkbox" id="opt-sync-settings"><span class="slider"></span></label>
-        </div>
-        <div class="option-row">
-            <div class="option-info">
-                <div class="option-label">Right-Click Date/Time</div>
-                <div class="option-desc">Quick-fill with current date or time</div>
-            </div>
-            <label class="switch"><input type="checkbox" id="opt-date"><span class="slider"></span></label>
-        </div>
-        <div class="option-row">
-            <div class="option-info">
-                <div class="option-label">Right-Click Template Menu</div>
-                <div class="option-desc">Right-click in Notes / Forensic Strategy to insert</div>
-            </div>
-            <label class="switch"><input type="checkbox" id="opt-context-menu"><span class="slider"></span></label>
-        </div>
-        <div class="option-row">
-            <div class="option-info">
-                <div class="option-label">Nav Arrows</div>
-                <div class="option-desc">Navigate records · <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div>
-            </div>
-            <label class="switch"><input type="checkbox" id="opt-nav"><span class="slider"></span></label>
-        </div>
-        <div class="option-row">
-            <div class="option-info">
-                <div class="option-label">Format List Notes</div>
-                <div class="option-desc">Expand and format notes in list views</div>
-            </div>
-            <label class="switch"><input type="checkbox" id="opt-format-notes"><span class="slider"></span></label>
-        </div>
-    </section>
-
-    <!-- Table Columns -->
-    <section class="section">
-        <div class="section-header">
-            <span>Table Columns (Drag to Reorder)</span>
-            <button class="header-btn" id="btn-reset-cols" style="font-size:10px; padding:2px 6px; display:none;">Reset</button>
-        </div>
-        <div class="table-context-header" id="table-context-label">Scanning page for tables...</div>
-        <ul id="column-list" class="sortable-list">
-            <!-- Injected via JS dynamically based on page context -->
-        </ul>
-        <!-- Column Presets (L-7) -->
-        <div id="column-presets-bar" class="column-presets-bar" style="display:none">
-            <select id="preset-select" class="preset-select" aria-label="Load column preset">
-                <option value="">Load preset…</option>
-            </select>
-            <button id="btn-save-preset" class="btn btn-secondary" style="font-size:11px; padding:4px 8px">Save Preset</button>
-            <button id="btn-delete-preset" class="btn btn-danger" style="font-size:11px; padding:4px 8px; display:none">Delete</button>
-        </div>
-    </section>
-
-    <!-- Templates -->
-    <section class="section">
-        <div class="section-header">
-            <span>Templates</span>
-            <span class="badge" id="template-badge">0 loaded</span>
-        </div>
-        <div class="option-row">
-            <div class="option-info">
-                <div class="option-label">Smart Auto-Insert</div>
-                <div class="option-desc">Auto-fill notes based on process type</div>
-            </div>
-            <label class="switch"><input type="checkbox" id="opt-auto-insert"><span class="slider"></span></label>
-        </div>
-    </section>
-
-    <!-- Mappings (collapsible — L-10) -->
-    <details class="section collapsible-section">
-        <summary class="section-header">
-            <span>Process → Template Mappings</span>
-            <span class="collapse-indicator" aria-hidden="true">▾</span>
-        </summary>
-        <div class="mapping-container" id="mapping-list">
-            <div class="empty-state">Upload templates to configure mappings</div>
-        </div>
-    </details>
-
     <!-- Quick Insert -->
     <section class="section">
         <div class="section-header">
             <span>Quick Insert</span>
-            <span class="shortcut-hint"><kbd>Alt</kbd>+<kbd>Z</kbd> undo · <kbd>Alt</kbd>+<kbd>T</kbd> open · <button type="button" id="btn-customise-shortcuts" class="link-btn" title="Open Chrome's keyboard-shortcut settings to rebind these keys">Customise…</button></span>
+            <span class="badge" id="template-badge">0 loaded</span>
         </div>
         <div class="quick-insert">
             <select id="template-select" aria-label="Select template">
@@ -194,6 +88,9 @@
                 <button id="btn-insert" class="btn btn-primary" aria-label="Insert template into active tab">
                     Insert into Active Tab
                 </button>
+                <button id="btn-pin-template" class="btn btn-secondary" aria-label="Pin or unpin selected template" title="Pinned templates appear first in every menu" disabled>
+                    ☆ Pin
+                </button>
                 <button id="btn-preview" class="btn btn-secondary" aria-label="Preview template" disabled>
                     Preview
                 </button>
@@ -201,6 +98,7 @@
                     Edit
                 </button>
             </div>
+            <div class="shortcut-hint quick-insert-hint"><kbd>Alt</kbd>+<kbd>Z</kbd> undo · <kbd>Alt</kbd>+<kbd>T</kbd> open menu · <button type="button" id="btn-customise-shortcuts" class="link-btn" title="Open Chrome's keyboard-shortcut settings to rebind these keys">Customise…</button></div>
         </div>
     </section>
 
@@ -227,6 +125,86 @@
         <pre class="preview-content" id="preview-content"></pre>
     </section>
 
+    <!-- Core Features -->
+    <section class="section">
+        <div class="section-header">
+            <span>Core Features</span>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
+                <div class="option-label">Sync Settings Across Devices</div>
+                <div class="option-desc">Save toggles to Chrome Sync (templates stay local)</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-sync-settings"><span class="slider"></span></label>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
+                <div class="option-label">Right-Click Quick-Fill</div>
+                <div class="option-desc">Date/time fields get now; Completed By &amp; Sealed By get you</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-date"><span class="slider"></span></label>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
+                <div class="option-label">Right-Click Template Menu</div>
+                <div class="option-desc">Right-click in Notes / Forensic Strategy to insert</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-context-menu"><span class="slider"></span></label>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
+                <div class="option-label">Nav Arrows</div>
+                <div class="option-desc">Navigate records · <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-nav"><span class="slider"></span></label>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
+                <div class="option-label">Format List Notes</div>
+                <div class="option-desc">Expand and format notes in list views</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-format-notes"><span class="slider"></span></label>
+        </div>
+        <div class="option-row">
+            <div class="option-info">
+                <div class="option-label">Smart Auto-Insert</div>
+                <div class="option-desc">Auto-fill notes based on process type</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="opt-auto-insert"><span class="slider"></span></label>
+        </div>
+    </section>
+
+    <!-- Table Columns -->
+    <section class="section">
+        <div class="section-header">
+            <span>Table Columns (Drag to Reorder)</span>
+            <button class="header-btn" id="btn-reset-cols" style="font-size:10px; padding:2px 6px; display:none;">Reset</button>
+        </div>
+        <div class="table-context-header" id="table-context-label">Scanning page for tables...</div>
+        <ul id="column-list" class="sortable-list">
+            <!-- Injected via JS dynamically based on page context -->
+        </ul>
+        <!-- Column Presets (L-7) -->
+        <div id="column-presets-bar" class="column-presets-bar" style="display:none">
+            <select id="preset-select" class="preset-select" aria-label="Load column preset">
+                <option value="">Load preset…</option>
+            </select>
+            <button id="btn-save-preset" class="btn btn-secondary" style="font-size:11px; padding:4px 8px">Save Preset</button>
+            <button id="btn-delete-preset" class="btn btn-danger" style="font-size:11px; padding:4px 8px; display:none">Delete</button>
+        </div>
+    </section>
+
+    <!-- Mappings (collapsible — L-10) -->
+    <details class="section collapsible-section">
+        <summary class="section-header">
+            <span>Process → Template Mappings</span>
+            <span class="collapse-indicator" aria-hidden="true">▾</span>
+        </summary>
+        <div class="mapping-container" id="mapping-list">
+            <div class="empty-state">Upload templates to configure mappings</div>
+        </div>
+    </details>
+
     <!-- Upload -->
     <section class="section">
         <div class="section-header">
@@ -244,6 +222,51 @@
             </button>
         </div>
     </section>
+
+    <!-- Case Disclosure Report -->
+    <section class="section">
+        <div class="section-header">
+            <span>Case Disclosure Report</span>
+        </div>
+        <div class="sf-templates-panel">
+            <div class="sf-status-text" id="case-report-hint">Open a Forensic Case record in Salesforce to enable.</div>
+            <div class="auth-actions" style="margin-top:8px">
+                <button id="btn-export-case" class="btn btn-primary" disabled>Export Current Case</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Salesforce Configuration (developer-only — shown when no compiled config.js URL exists) -->
+    <details class="section collapsible-section" id="sf-config-section" style="display:none">
+        <summary class="section-header">
+            <span>Salesforce Configuration</span>
+            <span class="collapse-indicator" aria-hidden="true">▾</span>
+        </summary>
+        <div class="sf-config-panel">
+            <label class="sf-config-label" for="sf-proxy-url">OAuth Proxy URL</label>
+            <input type="text" id="sf-proxy-url" class="sf-config-input" placeholder="https://cyfor-oauth-proxy.your-name.workers.dev" autocomplete="off">
+            <button id="btn-sf-config-save" class="btn btn-primary" style="margin-top:10px">Save</button>
+            <div id="sf-config-status" class="status-msg"></div>
+        </div>
+    </details>
+
+    <!-- Help & tips -->
+    <details class="section collapsible-section" id="help-section">
+        <summary class="section-header">
+            <span>Help &amp; tips</span>
+            <span class="collapse-indicator" aria-hidden="true">▾</span>
+        </summary>
+        <ul class="help-list">
+            <li><strong>Insert a template</strong> — click the 📄 button or right-click inside a Notes / Forensic Strategy box. <kbd>Alt</kbd>+<kbd>T</kbd> opens the menu, <kbd>Alt</kbd>+<kbd>Z</kbd> undoes an insert.</li>
+            <li><strong>Quick-fill</strong> — right-click any date or time field to fill it with now; right-click <strong>Completed By</strong> or <strong>Sealed By</strong> to fill it with you.</li>
+            <li><strong>Record navigation</strong> — <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> moves between process records in list order.</li>
+            <li><strong>Columns</strong> — drag the column names above to reorder list-view tables; save layouts as presets.</li>
+            <li><strong>Photographs</strong> — a "Download All Photographs" button appears on Uploaded Documents sections.</li>
+            <li><strong>Notes</strong> — notes columns in list views are expanded and formatted automatically (toggle above).</li>
+            <li><strong>Templates</strong> — your team's official templates sync automatically (about every 20 minutes); "Sync Now" forces it. "View Templates" shows versions and history.</li>
+            <li><strong>Case report</strong> — export a sanitised disclosure report from any Forensic Case page.</li>
+        </ul>
+    </details>
 
     <!-- Footer -->
     <footer class="footer">

@@ -31,6 +31,12 @@ function loadSfTemplatesSection() {
         var proxyUrlEl = document.getElementById('sf-proxy-url');
         if (proxyUrlEl && config.oauthProxyUrl) proxyUrlEl.value = config.oauthProxyUrl;
 
+        // Developer-only section: official builds ship the proxy URL compiled into
+        // config.js, so end users never need (or see) this. Dev builds without a
+        // config.js keep it visible so the URL can be set/changed by hand.
+        var cfgSection = document.getElementById('sf-config-section');
+        if (cfgSection) cfgSection.style.display = compiled.oauthProxyUrl ? 'none' : '';
+
         var isConnected = !!(tokens.accessToken);
         renderSfTemplatesStatus({ connected: isConnected, user: user });
 
@@ -244,7 +250,12 @@ function renderSfTemplatesStatus(state) {
         show(disconnectBtn, true);
         show(syncBtn, true);
         show(syncRow, true);
-        show(manageBtn, !!(user && user.isTemplateAdmin));
+        // Everyone gets the manager page: admins manage, members get the
+        // read-only viewer (content, versions, review dates, history).
+        show(manageBtn, true);
+        if (manageBtn) {
+            manageBtn.textContent = (user && user.isTemplateAdmin) ? 'Manage Templates' : 'View Templates';
+        }
     } else {
         badge.textContent = 'Not connected';
         badge.className   = 'badge badge-empty';

@@ -96,7 +96,13 @@ Cyfor.contextMenu = {
         );
 
         // Pin Forensic Strategy template to the top if this is a Forensic Strategy field
-        const sortedKeys = this._sortKeysForField(allKeys, container);
+        const fieldKeys = this._sortKeysForField(allKeys, container);
+
+        // User-pinned templates (★, set in the popup) float to the very top.
+        const pinnedSet = new Set((Cyfor.config.pinnedTemplates || []).filter(k => templates[k]));
+        const sortedKeys = pinnedSet.size
+            ? [...fieldKeys.filter(k => pinnedSet.has(k)), ...fieldKeys.filter(k => !pinnedSet.has(k))]
+            : fieldKeys;
 
         if (sortedKeys.length === 0) {
             const empty = document.createElement('div');
@@ -247,6 +253,7 @@ Cyfor.contextMenu = {
             for (const key of sortedKeys) {
                 const item = document.createElement('div');
                 item.className = 'cyfor-ctx-menu-item';
+                if (pinnedSet.has(key)) item.classList.add('cyfor-ctx-menu-item--pinned');
                 item.setAttribute('role', 'menuitem');
                 item.setAttribute('tabindex', '0');
                 item.setAttribute('data-template', key);

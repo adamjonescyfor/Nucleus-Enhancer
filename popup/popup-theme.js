@@ -59,6 +59,51 @@
                 try { chrome.storage.sync.set({ onboardingDismissed: true }); } catch (e) { /* ignore */ }
             });
         }
+
+        initWhatsNew();
+    }
+
+    // Highlights for the current release — edit on each version bump.
+    var WHATS_NEW_ITEMS = [
+        'View Templates — everyone can now browse their team’s templates, versions and history (admins still manage).',
+        'Pin favourite templates (☆ in Quick Insert) — pinned and recent ones appear first in every insert menu.',
+        'New template variables: {{time}}, {{dateTime}} and {{teamName}}.',
+        'New Help & tips section below with every feature and shortcut.'
+    ];
+
+    // "What's new" banner — shown after an update until dismissed. Fresh installs
+    // record the version silently (the welcome banner covers onboarding), and it
+    // stays hidden while the welcome banner is still up to avoid stacking two.
+    function initWhatsNew() {
+        var vBanner = document.getElementById('whatsnew-banner');
+        var vClose  = document.getElementById('whatsnew-close');
+        if (!vBanner || !vClose) return;
+        try {
+            var current = chrome.runtime.getManifest().version;
+            chrome.storage.sync.get(['lastSeenVersion', 'onboardingDismissed'], function (res) {
+                var last = res && res.lastSeenVersion;
+                if (!last) {
+                    chrome.storage.sync.set({ lastSeenVersion: current });
+                    return;
+                }
+                if (last === current) return;
+                if (!(res && res.onboardingDismissed)) return; // welcome banner first
+
+                document.getElementById('whatsnew-version').textContent = 'in v' + current;
+                var list = document.getElementById('whatsnew-list');
+                list.innerHTML = '';
+                WHATS_NEW_ITEMS.forEach(function (text) {
+                    var li = document.createElement('li');
+                    li.textContent = text;
+                    list.appendChild(li);
+                });
+                vBanner.style.display = '';
+                vClose.addEventListener('click', function () {
+                    vBanner.style.display = 'none';
+                    try { chrome.storage.sync.set({ lastSeenVersion: current }); } catch (e) { /* ignore */ }
+                });
+            });
+        } catch (e) { /* ignore */ }
     }
 
     if (document.readyState === 'loading') {

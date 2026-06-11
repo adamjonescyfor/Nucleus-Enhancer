@@ -37,6 +37,11 @@
             </button>
         </nav>
 
+        <!-- At-a-glance counts (filled by updateSideStats) -->
+        <div class="mgr-side-stats" id="mgr-side-stats" style="display:none">
+            <div class="mgr-side-stats-title">At a glance</div>
+        </div>
+
         <div class="mgr-sidebar-foot">
             <button id="btn-back" type="button" class="mgr-sidebar-link">← Back to Extension</button>
         </div>
@@ -70,11 +75,6 @@
             <div id="mgr-not-connected" class="mgr-state-msg" style="display:none">
                 <strong>Not connected to Salesforce.</strong>
                 Connect via the extension popup first, then re-open this page.
-            </div>
-
-            <div id="mgr-not-admin" class="mgr-state-msg" style="display:none">
-                <strong>Access denied.</strong>
-                You are not a template admin. Contact your Salesforce administrator to request access.
             </div>
 
             <!-- ── Templates view ──────────────────────────────────────────── -->
@@ -124,7 +124,7 @@
             <!-- ── Usage view ──────────────────────────────────────────────── -->
             <div id="mgr-usage-panel" style="display:none">
                 <div class="mgr-panel-head">
-                    <p class="mgr-list-desc">
+                    <p class="mgr-list-desc" id="mgr-usage-desc">
                         Local template-insertion log for this device (most recent first) —
                         stored on this machine only, not synced across devices.
                     </p>
@@ -157,24 +157,19 @@
                 </div>
 
                 <div class="mgr-settings-card mgr-settings-note">
-                    <h3 class="mgr-settings-title">How this works</h3>
-                    <p>Every template, version and team lives in <strong>Salesforce</strong>
-                       (<code>NucleusTemplate__c</code> / <code>NucleusTemplateVersion__c</code>).
-                       This manager is a convenience layer over the same records — everything you do here
-                       is standard Salesforce data.</p>
+                    <h3 class="mgr-settings-title">Good to know</h3>
                     <ul>
-                        <li><strong>Uninstall-safe:</strong> removing the extension never deletes templates or
-                            history — they stay in Salesforce.</li>
-                        <li><strong>Always current:</strong> the list is read live from Salesforce, so edits made
-                            directly in Salesforce appear here too.</li>
-                        <li><strong>Version history</strong> is captured automatically for <em>every</em> content
-                            change — whether made through this manager or directly in Salesforce — by a Salesforce
-                            Flow. Editing only metadata (status, team, dates) does not create a new version.</li>
-                        <li><strong>Teams &amp; membership</strong> are managed in Salesforce
-                            (<code>NucleusTeam__c</code> / <code>NucleusTeamMember__c</code>). This manager uses a
-                            template’s team only to scope who sees it; add or move people in Salesforce.</li>
-                        <li><strong>Team members</strong> see their team’s active templates plus Global in the
-                            extension popup, refreshed on Sync.</li>
+                        <li><strong>Everything lives in Salesforce.</strong> This page is a faster window onto the
+                            same records — nothing is stored in the extension, and uninstalling it never touches
+                            templates or history.</li>
+                        <li><strong>Version history is automatic.</strong> Every content change is snapshotted,
+                            whether made here or directly in Salesforce. Status, team and date changes don’t
+                            create a new version.</li>
+                        <li><strong>Only Active templates reach analysts.</strong> Drafts, superseded and retired
+                            templates stay out of the insert menus. Everyone sees their own team’s templates plus
+                            Global, refreshed automatically (about every 20 minutes, or via Sync Now).</li>
+                        <li><strong>Teams and admin roles are managed in Salesforce</strong> — ask a Salesforce
+                            admin to add or move people.</li>
                     </ul>
                 </div>
             </div>

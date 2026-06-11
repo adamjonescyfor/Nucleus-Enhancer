@@ -14,6 +14,7 @@ var allTeams           = [];     // [{ id, name, teamCode }] — for the "assign
 var statusOptions      = [];     // status picklist values (from describe) or default lifecycle
 var currentVersions    = [];     // archived versions for the template open in History
 var currentHistoryTemplate = null; // the live template whose History is open
+var readOnly           = false;  // non-admin "View Templates" mode (no create/edit/delete)
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ var VIEW_META = {
 // History are separate overlay states reached from within Templates.
 function setView(view) {
     if (!VIEW_META[view]) view = 'templates';
+    if (readOnly && view === 'reviews') view = 'templates'; // admin-only dataset
     document.querySelectorAll('.mgr-nav-item').forEach(function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-view') === view);
     });
@@ -110,8 +112,9 @@ function loadTemplates() {
         }
         if (!response.ok) {
             if (response.error === 'PERMISSION_DENIED') {
-                currentUser = response.user || {};
-                showState('not-admin');
+                // Not a template admin — fall back to the read-only viewer so
+                // analysts can still see versions, review dates and history.
+                loadReadOnly();
             } else {
                 showState('not-connected');
             }
@@ -125,7 +128,7 @@ function loadTemplates() {
             : ['Draft', 'Active', 'Under Review', 'Superseded', 'Retired'];
 
         if (!currentUser.isTemplateAdmin) {
-            showState('not-admin');
+            loadReadOnly();
             return;
         }
 
@@ -148,14 +151,51 @@ function loadTemplates() {
     });
 }
 
+// Read-only viewer for non-admins: their team's + global ACTIVE templates via the
+// same non-gated, team-scoped sync the popup uses. View content + version history;
+// no create/edit/delete and no direct Salesforce record links.
+function loadReadOnly() {
+    readOnly = true;
+    VIEW_META.templates.sub = 'Read-only — templates are managed by your team’s template admins.';
+
+    // Reviews is built from the all-teams admin dataset — hide it for members.
+    var reviewsNav = document.querySelector('.mgr-nav-item[data-view="reviews"]');
+    if (reviewsNav) reviewsNav.style.display = 'none';
+    var newBtn = document.getElementById('btn-new-template');
+    if (newBtn) newBtn.style.display = 'none';
+
+    chrome.storage.local.get(['sfOAuthUser'], function (res) {
+        currentUser = (res && res.sfOAuthUser) || {};
+        chrome.runtime.sendMessage({ action: 'sfTemplates.sync', forceRefresh: false }, function (r) {
+            if (chrome.runtime.lastError || !r || !r.ok) {
+                showState('not-connected');
+                return;
+            }
+            allTemplates = r.templates || {};
+            renderIdentity();
+
+            var descEl = document.getElementById('mgr-list-desc');
+            if (descEl) {
+                descEl.textContent = 'Your team’s active templates plus Global — view content, '
+                    + 'versions and history. Contact a template admin to request changes.';
+            }
+
+            renderStats();
+            renderTemplateList();
+            setView('templates');
+        });
+    });
+}
+
 // Topbar identity chip (name + team + avatar initial).
 function renderIdentity() {
     var box = document.getElementById('mgr-identity');
     if (!box) return;
-    var name = currentUser.fullName || currentUser.username || currentUser.email || 'Admin';
+    var name = currentUser.fullName || currentUser.username || currentUser.email || (readOnly ? 'Member' : 'Admin');
     document.getElementById('mgr-identity-name').textContent = name;
     document.getElementById('mgr-identity-team').textContent =
-        (currentUser.teamName ? currentUser.teamName : 'All teams') + ' · admin';
+        (currentUser.teamName ? currentUser.teamName : (readOnly ? '—' : 'All teams'))
+        + (readOnly ? ' · member' : ' · admin');
     var av = document.getElementById('mgr-identity-avatar');
     if (av) av.textContent = name.trim().charAt(0).toUpperCase();
     box.style.display = '';
@@ -258,7 +298,9 @@ function renderTemplateList() {
             emptyEl.style.display = '';
             emptyEl.innerHTML = q
                 ? 'No templates match “' + escHtml(q) + '”.'
-                : 'No templates yet. Click <strong>+ New Template</strong> to create one.';
+                : (readOnly
+                    ? 'No templates are published for your team yet.'
+                    : 'No templates yet. Click <strong>+ New Template</strong> to create one.');
         }
         if (tableEl)  tableEl.style.display  = 'none';
         return;
@@ -283,7 +325,8 @@ function renderTemplateList() {
         var docVal = t.documentId || t.id || '';
         var docTd = document.createElement('td');
         docTd.className = 'mgr-cell-docid';
-        var sfUrl = sfRecordUrl(t.id);
+        // Read-only mode shows the ID as plain text (no direct Salesforce links).
+        var sfUrl = readOnly ? null : sfRecordUrl(t.id);
         if (docVal && sfUrl) {
             var a = document.createElement('a');
             a.className = 'mgr-doclink';
@@ -326,12 +369,15 @@ function renderTemplateList() {
         catTd.textContent = t.category || '—';
         tr.appendChild(catTd);
 
-        // Scope — show the actual team name (or Global); highlight the admin's own.
+        // Scope — show the actual team name (or Global); highlight the user's own.
+        // Read-only entries come from the team-scoped sync, which carries teamCode
+        // (not teamName/teamId) — fall back accordingly.
         var scopeTd = document.createElement('td');
         var badge   = document.createElement('span');
-        badge.className   = t.teamId ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
+        var teamVal = t.teamName || t.teamCode || null;
+        badge.className   = (t.teamId || t.teamCode) ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
         if (isMyTeam) badge.className += ' mgr-scope-badge--own';
-        badge.textContent = t.teamName || 'Global';
+        badge.textContent = teamVal || 'Global';
         scopeTd.appendChild(badge);
         tr.appendChild(scopeTd);
 
@@ -362,34 +408,56 @@ function renderTemplateList() {
         var actionsWrap = document.createElement('div');
         actionsWrap.className = 'mgr-col-actions-cell';
 
-        // Admins can edit/delete ANY team's + global templates (the whole manager
-        // is already admin-gated).
-        var editBtn = document.createElement('button');
-        editBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
-        editBtn.textContent = 'Edit';
-        editBtn.setAttribute('aria-label', 'Edit ' + name);
-
         var histBtn = document.createElement('button');
         histBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
         histBtn.textContent = 'History';
         histBtn.setAttribute('aria-label', 'Version history for ' + name);
 
-        var delBtn = document.createElement('button');
-        delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
-        delBtn.textContent = 'Delete';
-        delBtn.setAttribute('aria-label', 'Delete ' + name);
+        if (readOnly) {
+            // Members: view content + history, nothing destructive.
+            var viewBtn = document.createElement('button');
+            viewBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
+            viewBtn.textContent = 'View';
+            viewBtn.setAttribute('aria-label', 'View ' + name);
+            actionsWrap.appendChild(viewBtn);
+            actionsWrap.appendChild(histBtn);
+            (function (n) {
+                viewBtn.addEventListener('click', function () { openViewModal(n); });
+                histBtn.addEventListener('click', function () { openHistory(n); });
+            }(name));
+        } else {
+            // Admins can edit/clone/delete ANY team's + global templates (the
+            // write paths are admin-gated in the background).
+            var editBtn = document.createElement('button');
+            editBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
+            editBtn.textContent = 'Edit';
+            editBtn.setAttribute('aria-label', 'Edit ' + name);
 
-        actionsWrap.appendChild(editBtn);
-        actionsWrap.appendChild(histBtn);
-        actionsWrap.appendChild(delBtn);
+            var cloneBtn = document.createElement('button');
+            cloneBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
+            cloneBtn.textContent = 'Clone';
+            cloneBtn.setAttribute('aria-label', 'Clone ' + name + ' as a draft');
+            cloneBtn.title = 'Create a new draft template from a copy of this one';
+
+            var delBtn = document.createElement('button');
+            delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
+            delBtn.textContent = 'Delete';
+            delBtn.setAttribute('aria-label', 'Delete ' + name);
+
+            actionsWrap.appendChild(editBtn);
+            actionsWrap.appendChild(cloneBtn);
+            actionsWrap.appendChild(histBtn);
+            actionsWrap.appendChild(delBtn);
+            (function (n) {
+                editBtn.addEventListener('click',  function () { openEditEditor(n); });
+                cloneBtn.addEventListener('click', function () { openCloneEditor(n); });
+                delBtn.addEventListener('click',   function () { confirmDelete(n); });
+                histBtn.addEventListener('click',  function () { openHistory(n); });
+            }(name));
+        }
+
         actionsTd.appendChild(actionsWrap);
         tr.appendChild(actionsTd);
-
-        (function (n) {
-            editBtn.addEventListener('click', function () { openEditEditor(n); });
-            delBtn.addEventListener('click',  function () { confirmDelete(n); });
-            histBtn.addEventListener('click', function () { openHistory(n); });
-        }(name));
 
         tbody.appendChild(tr);
     });
@@ -451,6 +519,33 @@ function renderStats() {
         }
         el.appendChild(card);
     });
+
+    updateSideStats();
+}
+
+// Compact at-a-glance counts in the sidebar (fills the space under the nav and
+// keeps the headline numbers visible from every view, not just Templates).
+function updateSideStats() {
+    var box = document.getElementById('mgr-side-stats');
+    if (!box) return;
+    var s = reviewSnapshot();
+    var rows = [
+        ['Active templates', s.active, ''],
+        ['Due ≤30 days',     s.due30.length,   s.due30.length ? 'warn' : ''],
+        ['Overdue',          s.overdue.length, s.overdue.length ? 'bad' : '']
+    ];
+    if (!readOnly) rows.push(['Teams', s.teamCount, '']);
+
+    box.querySelectorAll('.mgr-side-stat').forEach(function (n) { n.remove(); });
+    rows.forEach(function (r) {
+        var row = document.createElement('div');
+        row.className = 'mgr-side-stat' + (r[2] ? ' mgr-side-stat--' + r[2] : '');
+        var l = document.createElement('span'); l.className = 'mgr-side-stat-label'; l.textContent = r[0];
+        var v = document.createElement('span'); v.className = 'mgr-side-stat-value'; v.textContent = r[1];
+        row.appendChild(l); row.appendChild(v);
+        box.appendChild(row);
+    });
+    box.style.display = '';
 }
 
 function updateReviewBadge() {
@@ -650,6 +745,52 @@ function closeEditor() {
     setView('templates');
 }
 
+// Read-only template viewer (non-admin mode) — content + meta in a modal.
+function openViewModal(name) {
+    var t = allTemplates[name];
+    if (!t) return;
+    var meta = [];
+    if (t.versionLabel)  meta.push('v' + t.versionLabel);
+    if (t.category)      meta.push(t.category);
+    meta.push(t.teamName || t.teamCode || 'Global');
+    if (t.reviewDueDate) meta.push('Review due ' + formatDate(t.reviewDueDate));
+    mgrModal({
+        title:        name,
+        body:         meta.join('  ·  '),
+        preBody:      t.content || '(empty)',
+        confirmLabel: 'Close',
+        alert:        true
+    });
+}
+
+// Clone an existing template into the new-template editor as a Draft (admins).
+function openCloneEditor(name) {
+    var t = allTemplates[name];
+    if (!t) return;
+
+    openNewEditor(); // resets all fields + create-mode state, then we prefill
+
+    // De-dupe the copy's name against existing templates.
+    var newName = name + ' (Copy)';
+    var n = 2;
+    while (allTemplates[newName]) { newName = name + ' (Copy ' + n + ')'; n++; }
+
+    document.getElementById('mgr-editor-heading').textContent = 'New Template — cloned from “' + name + '”';
+    document.getElementById('mgr-name').value          = newName;
+    document.getElementById('mgr-category').value      = t.category || '';
+    document.getElementById('mgr-content').value       = t.content  || '';
+    document.getElementById('mgr-change-reason').value =
+        'Cloned from "' + name + '"' + (t.versionLabel ? ' v' + t.versionLabel : '');
+    // Drafts stay out of analysts' sync until an admin activates them.
+    ensureStatusOption('Draft');
+    document.getElementById('mgr-status').value = 'Draft';
+    ensureTeamOption(t.teamId, t.teamName);
+    document.getElementById('mgr-scope').value  = t.teamId || '';
+    syncCustomSelect('mgr-status');
+    syncCustomSelect('mgr-scope');
+    document.getElementById('mgr-name').focus();
+}
+
 function saveTemplate() {
     var name         = (document.getElementById('mgr-name').value          || '').trim();
     var category     = (document.getElementById('mgr-category').value      || '').trim();
@@ -756,6 +897,15 @@ function mgrModal(opts) {
         p.textContent = opts.body || '';
         dialog.appendChild(p);
 
+        // Optional monospace, scrollable content block (template viewing).
+        if (opts.preBody) {
+            var pre = document.createElement('pre');
+            pre.className = 'mgr-modal-pre';
+            pre.textContent = opts.preBody;
+            dialog.appendChild(pre);
+            dialog.classList.add('mgr-modal--wide');
+        }
+
         var actions = document.createElement('div');
         actions.className = 'mgr-modal-actions';
 
@@ -819,9 +969,11 @@ function confirmDelete(name) {
 
     mgrModal({
         title: 'Delete template?',
-        body: 'Delete "' + name + '"? This permanently removes the template from Salesforce. '
-            + 'Team members will no longer see it after their next sync, and its version history '
-            + 'records will also be deleted.',
+        body: 'Delete "' + name + '" and its version history from Salesforce? '
+            + 'Team members lose it on their next sync. Deleted records sit in the Salesforce '
+            + 'Recycle Bin for ~15 days, then they’re gone for good.\n\n'
+            + 'Tip: if this template was ever genuinely in use, set its Status to Retired instead '
+            + '(Edit → Status) — that removes it from analysts while keeping the full audit trail.',
         confirmLabel: 'Delete',
         cancelLabel: 'Cancel',
         danger: true
@@ -1214,6 +1366,36 @@ var USAGE_KEY = 'templateUsageLog';
 
 function openUsage() {
     showState('usage');
+    var descEl   = document.getElementById('mgr-usage-desc');
+    var clearBtn = document.getElementById('btn-usage-clear');
+
+    // Admins get the ORG-WIDE log automatically once the Salesforce
+    // NucleusTemplateUsage__c object exists (docs/salesforce-usage-object.md);
+    // until then — and always for members — fall back to the local device log.
+    if (!readOnly) {
+        chrome.runtime.sendMessage({ action: 'usage.listOrg' }, function (r) {
+            if (!chrome.runtime.lastError && r && r.ok && r.available) {
+                if (descEl) {
+                    descEl.textContent = 'Org-wide template insertions (newest first, up to 200) — '
+                        + 'recorded in Salesforce from every connected device.';
+                }
+                if (clearBtn) clearBtn.style.display = 'none'; // org records aren't clearable here
+                renderUsage(r.entries || []);
+                return;
+            }
+            loadLocalUsage(descEl, clearBtn);
+        });
+    } else {
+        loadLocalUsage(descEl, clearBtn);
+    }
+}
+
+function loadLocalUsage(descEl, clearBtn) {
+    if (descEl) {
+        descEl.textContent = 'Local template-insertion log for this device (most recent first) — '
+            + 'stored on this machine only, not synced across devices.';
+    }
+    if (clearBtn) clearBtn.style.display = '';
     chrome.storage.local.get([USAGE_KEY], function (res) {
         var log = (res && Array.isArray(res[USAGE_KEY])) ? res[USAGE_KEY] : [];
         renderUsage(log);
@@ -1238,11 +1420,16 @@ function renderUsage(log) {
     rows.innerHTML = sorted.map(function (e) {
         var when = e.ts ? new Date(e.ts).toLocaleString() : '';
         var safeUrl = (typeof e.url === 'string' && /^https:\/\//i.test(e.url)) ? e.url : '';
+        // Only link to genuine RECORD pages. Inserts made in a "New …" modal carry
+        // the creation-page URL — opening that later just spawns a blank form.
+        var linkable = safeUrl && /\/lightning\/r\//.test(safeUrl);
         var rec = e.recordId
-            ? (safeUrl
+            ? (linkable
                 ? '<a href="' + escHtml(safeUrl) + '" target="_blank" rel="noopener">' + escHtml(e.recordId) + '</a>'
                 : escHtml(e.recordId))
-            : '—';
+            : (linkable
+                ? '<a href="' + escHtml(safeUrl) + '" target="_blank" rel="noopener">Open</a>'
+                : '—');
         return '<tr><td>' + escHtml(when) + '</td><td>' + escHtml(e.template || '') +
             '</td><td>' + rec + '</td><td>' + escHtml(e.user || '—') + '</td></tr>';
     }).join('');
@@ -1267,7 +1454,6 @@ function showState(state) {
     var panels = {
         'loading':       'mgr-loading',
         'not-connected': 'mgr-not-connected',
-        'not-admin':     'mgr-not-admin',
         'list':          'mgr-list-panel',
         'reviews':       'mgr-reviews-panel',
         'settings':      'mgr-settings-panel',
@@ -1296,9 +1482,9 @@ function showState(state) {
         if (subEl) subEl.textContent = '';
     }
 
-    // "+ New Template" only belongs on the Templates view.
+    // "+ New Template" only belongs on the Templates view (and never in read-only mode).
     var newBtn = document.getElementById('btn-new-template');
-    if (newBtn) newBtn.style.display = (state === 'list') ? '' : 'none';
+    if (newBtn) newBtn.style.display = (state === 'list' && !readOnly) ? '' : 'none';
 }
 
 function setEditorStatus(msg, type) {
