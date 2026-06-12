@@ -68,7 +68,7 @@
 
 /* Disabled state — nearly invisible */
 .cyfor-nav-btn:disabled {
-    background: #888;
+    background: var(--cyfor-text-muted);
     cursor: not-allowed;
     opacity: 0.06;
     box-shadow: none;

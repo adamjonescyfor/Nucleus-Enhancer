@@ -120,29 +120,18 @@
 }
 
 /* ==================================================
-   Variants
+   Variants (GRAPHITE) — one ink pill; the icon carries the status colour.
    ================================================== */
 
-/* Success — deep green */
-.cyfor-toast-success {
-    background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
-    color: #fff;
-}
-
-/* Error — deep red */
-.cyfor-toast-error {
-    background: linear-gradient(135deg, #b71c1c 0%, #c62828 100%);
-    color: #fff;
-}
-
-/* Info — CYFOR teal/navy */
-.cyfor-toast-info {
-    background: linear-gradient(135deg, #0b2a3a 0%, #0e9aa7 100%);
-    color: #fff;
-}
-
-/* Warning — deep orange */
+.cyfor-toast-success,
+.cyfor-toast-error,
+.cyfor-toast-info,
 .cyfor-toast-warning {
-    background: linear-gradient(135deg, #e65100 0%, #ef6c00 100%);
-    color: #fff;
+    background: var(--cyfor-navy, #18181b);
+    color: #fafafa;
 }
+
+.cyfor-toast-success .cyfor-toast-icon { background: rgba(74, 222, 128, .2);  color: #4ade80; }
+.cyfor-toast-error   .cyfor-toast-icon { background: rgba(248, 113, 113, .2); color: #f87171; }
+.cyfor-toast-info    .cyfor-toast-icon { background: rgba(129, 140, 248, .22); color: #a5b4fc; }
+.cyfor-toast-warning .cyfor-toast-icon { background: rgba(251, 191, 36, .2);  color: #fbbf24; }

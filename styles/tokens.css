@@ -1,184 +1,175 @@
 /* ==================================================
-   CYFOR Nucleus Enhancer — Design Tokens
-   Single source of truth for the extension-page palette
-   (popup + manager). The injected Salesforce UI keeps its
-   own tokens in base.css (kept in sync with these values).
+   CYFOR Nucleus Enhancer — GRAPHITE design system
+   Single source of truth for the extension pages (popup + manager).
+   The injected in-page UI consumes the same values via styles/base.css.
 
-   Identity: CYFOR teal (#0E9AA7) + deep navy (#0B2A3A).
-   Refined/premium but compact — depth comes from type,
-   hairlines and soft navy-tinted shadows, not whitespace.
-
-   Theme model:
-     - styles/theme.js sets html[data-theme="light|dark"].
-     - "Auto" resolves to light/dark from the OS at runtime.
-     - The @media block below is a no-JS first-paint fallback.
+   Principles: zinc neutrals carry the structure; ONE indigo accent;
+   colour is reserved for meaning (actions, states, status). Hairlines
+   over boxes, restraint over decoration. Light and dark are both
+   first-class (html[data-theme], set by styles/theme.js).
    ================================================== */
 
-:root {
-    /* Surfaces (cool, near-white) */
-    --surface:        #ffffff;
-    --surface-soft:   #f3f6f8;
-    --surface-muted:  #e8eef1;
-    --border:         #d5dee3;
-    --border-strong:  #c2ced5;
-
-    /* Text (navy-based for a premium feel) */
-    --text-primary:   #0d2a38;
-    --text-secondary: #3c5663;
-    --text-muted:     #5e7585; /* darkened to clear WCAG AA (4.5:1) on white */
-    --cyfor-text-muted: #5e7585; /* legacy alias used in popup.css */
-
-    /* Brand — CYFOR teal + navy */
-    --brand:          #0e9aa7;
-    --brand-strong:   #0b7e8a;
-    --brand-dark:     #0b2a3a;
-    --brand-tint:     #e3f6f7;   /* teal-50 — hover/active/badge fills */
-    --brand-tint-2:   #cfeef0;   /* slightly deeper tint */
-    --brand-ring:     rgba(14, 154, 167, .38);  /* focus ring */
-    --on-brand:       #ffffff;   /* text on a teal fill */
-
-    /* Navy (headers, sidebar, table head) */
-    --navy:           #0b2a3a;
-    --navy-soft:      #12384a;
-    --navy-line:      #1d4d60;
-    --on-navy:        #eaf3f5;
-    --on-navy-muted:  #9fc0cb;
-    --brand-grad:     linear-gradient(135deg, #0b2a3a 0%, #0e6d78 75%, #0e9aa7 130%);
-
-    /* Semantic */
-    --success-bg:     #dff5e7;
-    --success-text:   #0b7a3a;
-    --success-border: #9ce0b8;
-    --danger-bg:      #fff1f1;
-    --danger-text:    #b4232f;
-    --danger-border:  #fca5a5;
-    --warn-bg:        #fff8e8;
-    --warn-text:      #92510e;
-    --warn-border:    #f3cf86;
-    --info-bg:        #e3f6f7;   /* teal-tinted to match brand */
-    --info-text:      #0b7e8a;
-    --info-border:    #aee2e7;
-
-    /* Shape */
-    --radius-sm:      6px;
-    --radius:         9px;
-    --radius-lg:      14px;
-    --radius-pill:    999px;
-
-    /* Elevation — soft, navy-tinted, layered */
-    --shadow-sm:      0 1px 2px rgba(11, 42, 58, .07), 0 1px 1px rgba(11, 42, 58, .04);
-    --shadow-md:      0 6px 16px rgba(11, 42, 58, .10), 0 2px 5px rgba(11, 42, 58, .06);
-    --shadow-lg:      0 18px 40px rgba(11, 42, 58, .16), 0 6px 14px rgba(11, 42, 58, .08);
-    --shadow:         var(--shadow-sm); /* legacy alias */
+/* Inter Variable — bundled; system stack as fallback. */
+@font-face {
+    font-family: 'Inter var';
+    src: url('fonts/InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
 }
 
-/* Dark palette — charcoal surfaces, brighter teal accent */
-:root[data-theme="dark"] {
-    --surface:        #16191c;
-    --surface-soft:   #1c2024;
-    --surface-muted:  #242a2f;
-    --border:         #333b41;
-    --border-strong:  #434d54;
+:root {
+    /* ── Type ─────────────────────────────────────── */
+    --font-sans: 'Inter var', Inter, -apple-system, 'Segoe UI Variable',
+        'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas,
+        'Liberation Mono', monospace;
+    --fs-11: 11px;  --fs-12: 12px;  --fs-13: 13px;  --fs-14: 14px;
+    --fs-16: 16px;  --fs-18: 18px;  --fs-22: 22px;
 
-    --text-primary:   #e9eef0;
-    --text-secondary: #aeb9bf;
-    --text-muted:     #808d94;
-    --cyfor-text-muted: #808d94;
+    /* ── Space (4px grid) · radius · motion ───────── */
+    --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+    --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+    --r-1: 6px;  --r-2: 8px;  --r-3: 10px;  --r-4: 14px;  --r-pill: 999px;
+    --t-fast: 120ms cubic-bezier(.2, .6, .3, 1);
+    --t-base: 180ms cubic-bezier(.2, .6, .3, 1);
 
-    --brand:          #22c7d2;
-    --brand-strong:   #16a8b3;
-    --brand-dark:     #0a1f29;
-    --brand-tint:     rgba(34, 199, 210, .13);
-    --brand-tint-2:   rgba(34, 199, 210, .20);
-    --brand-ring:     rgba(34, 199, 210, .42);
-    --on-brand:       #06181c;
+    /* ── Surfaces & text (light) ──────────────────── */
+    --bg:        #fafafa;
+    --surface:   #ffffff;
+    --surface-2: #f4f4f5;
+    --text:      #18181b;
+    --text-2:    #52525b;
+    --text-3:    #71717a;
+    --line:      #e4e4e7;
+    --line-2:    #d4d4d8;
 
-    --navy:           #0c1519;
-    --navy-soft:      #122029;
-    --navy-line:      #1d3540;
-    --on-navy:        #e6eff1;
-    --on-navy-muted:  #8aa7b0;
-    --brand-grad:     linear-gradient(135deg, #0a1f29 0%, #0e5b64 80%, #16a8b3 140%);
+    /* ── Accent (indigo — actions, active, focus) ─── */
+    --accent:        #4f46e5;
+    --accent-strong: #4338ca;
+    --accent-soft:   #eef2ff;
+    --on-accent:     #ffffff;
+    --ring:          rgba(79, 70, 229, .38);
 
-    --success-bg:     #0a2e1a;
-    --success-text:   #4ade80;
-    --success-border: #1d5235;
-    --danger-bg:      #2e0a0a;
-    --danger-text:    #ff6b70;
-    --danger-border:  #7f1d1d;
-    --warn-bg:        #211a05;
-    --warn-text:      #fcd34d;
-    --warn-border:    #6e4f17;
-    --info-bg:        rgba(34, 199, 210, .12);
-    --info-text:      #7fe3ea;
-    --info-border:    #1d4d54;
+    /* ── Status (text ≥ AA on --surface; soft fills) ─ */
+    --ok:        #15803d;  --ok-soft:   #f0fdf4;  --ok-line:   #bbf7d0;
+    --warn:      #b45309;  --warn-soft: #fffbeb;  --warn-line: #fde68a;
+    --warn-bar:  #d97706;
+    --bad:       #b91c1c;  --bad-soft:  #fef2f2;  --bad-line:  #fecaca;
+    --info:      #4338ca;  --info-soft: #eef2ff;  --info-line: #c7d2fe;
 
-    --shadow-sm:      0 1px 2px rgba(0, 0, 0, .45);
-    --shadow-md:      0 6px 16px rgba(0, 0, 0, .5);
-    --shadow-lg:      0 18px 40px rgba(0, 0, 0, .6);
+    /* ── Elevation (barely there) ─────────────────── */
+    --shadow-sm: 0 1px 2px rgba(24, 24, 27, .05);
+    --shadow-md: 0 2px 8px rgba(24, 24, 27, .07), 0 1px 2px rgba(24, 24, 27, .05);
+    --shadow-lg: 0 12px 32px rgba(24, 24, 27, .12), 0 2px 8px rgba(24, 24, 27, .06);
+
+    /* ── Legacy aliases (older names still used across pages) ─ */
+    --surface-soft:   var(--bg);
+    --surface-muted:  var(--surface-2);
+    --border:         var(--line);
+    --border-strong:  var(--line-2);
+    --text-primary:   var(--text);
+    --text-secondary: var(--text-2);
+    --text-muted:     var(--text-3);
+    --cyfor-text-muted: var(--text-3);
+    --brand:          var(--accent);
+    --brand-strong:   var(--accent-strong);
+    --brand-dark:     var(--text);
+    --brand-tint:     var(--accent-soft);
+    --brand-tint-2:   #e0e7ff;
+    --brand-ring:     var(--ring);
+    --on-brand:       var(--on-accent);
+    --brand-grad:     var(--accent);     /* gradients retired — resolves flat */
+    --navy:           var(--surface);    /* sidebar is a light surface now */
+    --navy-soft:      var(--surface-2);
+    --navy-line:      var(--line);
+    --on-navy:        var(--text);
+    --on-navy-muted:  var(--text-3);
+    --success-bg:     var(--ok-soft);    --success-text:  var(--ok);
+    --success-border: var(--ok-line);
+    --danger-bg:      var(--bad-soft);   --danger-text:   var(--bad);
+    --danger-border:  var(--bad-line);
+    --warn-bg:        var(--warn-soft);  --warn-text:     var(--warn);
+    --warn-border:    var(--warn-line);
+    --info-bg:        var(--info-soft);  --info-text:     var(--info);
+    --info-border:    var(--info-line);
+    --radius-sm:      var(--r-1);
+    --radius:         var(--r-2);
+    --radius-lg:      var(--r-4);
+    --radius-pill:    var(--r-pill);
     --shadow:         var(--shadow-sm);
 }
 
-/* Shared spinner utility (popup + manager). */
+/* ── Dark ─────────────────────────────────────────── */
+:root[data-theme="dark"] {
+    --bg:        #09090b;
+    --surface:   #131316;
+    --surface-2: #1c1c21;
+    --text:      #f4f4f5;
+    --text-2:    #a1a1aa;
+    --text-3:    #7c7c87;
+    --line:      #26262b;
+    --line-2:    #3f3f46;
+
+    --accent:        #818cf8;
+    --accent-strong: #a5b4fc;
+    --accent-soft:   rgba(129, 140, 248, .14);
+    --on-accent:     #14143a;
+    --ring:          rgba(129, 140, 248, .45);
+
+    --ok:   #4ade80;  --ok-soft:   rgba(74, 222, 128, .12);  --ok-line:   rgba(74, 222, 128, .35);
+    --warn: #fbbf24;  --warn-soft: rgba(251, 191, 36, .12);  --warn-line: rgba(251, 191, 36, .35);
+    --warn-bar: #fbbf24;
+    --bad:  #f87171;  --bad-soft:  rgba(248, 113, 113, .12); --bad-line:  rgba(248, 113, 113, .35);
+    --info: #a5b4fc;  --info-soft: rgba(129, 140, 248, .14); --info-line: rgba(129, 140, 248, .35);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+    --shadow-md: 0 2px 10px rgba(0, 0, 0, .55);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, .65);
+
+    --brand-tint-2: rgba(129, 140, 248, .22);
+}
+
+/* No-JS / pre-script first paint: follow the OS until theme.js sets data-theme. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --bg:        #09090b;
+        --surface:   #131316;
+        --surface-2: #1c1c21;
+        --text:      #f4f4f5;
+        --text-2:    #a1a1aa;
+        --text-3:    #7c7c87;
+        --line:      #26262b;
+        --line-2:    #3f3f46;
+        --accent:        #818cf8;
+        --accent-strong: #a5b4fc;
+        --accent-soft:   rgba(129, 140, 248, .14);
+        --on-accent:     #14143a;
+        --ring:          rgba(129, 140, 248, .45);
+        --ok:   #4ade80;  --ok-soft:   rgba(74, 222, 128, .12);  --ok-line:   rgba(74, 222, 128, .35);
+        --warn: #fbbf24;  --warn-soft: rgba(251, 191, 36, .12);  --warn-line: rgba(251, 191, 36, .35);
+        --warn-bar: #fbbf24;
+        --bad:  #f87171;  --bad-soft:  rgba(248, 113, 113, .12); --bad-line:  rgba(248, 113, 113, .35);
+        --info: #a5b4fc;  --info-soft: rgba(129, 140, 248, .14); --info-line: rgba(129, 140, 248, .35);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+        --shadow-md: 0 2px 10px rgba(0, 0, 0, .55);
+        --shadow-lg: 0 16px 40px rgba(0, 0, 0, .65);
+        --brand-tint-2: rgba(129, 140, 248, .22);
+    }
+}
+
+/* ── Shared utilities ─────────────────────────────── */
 @keyframes cyfor-spin { to { transform: rotate(360deg); } }
 .cyfor-spinner {
     display: inline-block;
     width: 13px;
     height: 13px;
-    border: 2px solid var(--border);
-    border-top-color: var(--brand);
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
     border-radius: 50%;
-    animation: cyfor-spin 0.7s linear infinite;
+    animation: cyfor-spin .7s linear infinite;
     vertical-align: -2px;
     margin-right: 6px;
 }
 
-/* No-JS / pre-script first-paint fallback: follow the OS until theme.js
-   sets an explicit data-theme. Mirrors the dark block above. */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme]) {
-        --surface:        #16191c;
-        --surface-soft:   #1c2024;
-        --surface-muted:  #242a2f;
-        --border:         #333b41;
-        --border-strong:  #434d54;
-
-        --text-primary:   #e9eef0;
-        --text-secondary: #aeb9bf;
-        --text-muted:     #808d94;
-        --cyfor-text-muted: #808d94;
-
-        --brand:          #22c7d2;
-        --brand-strong:   #16a8b3;
-        --brand-dark:     #0a1f29;
-        --brand-tint:     rgba(34, 199, 210, .13);
-        --brand-tint-2:   rgba(34, 199, 210, .20);
-        --brand-ring:     rgba(34, 199, 210, .42);
-        --on-brand:       #06181c;
-
-        --navy:           #0c1519;
-        --navy-soft:      #122029;
-        --navy-line:      #1d3540;
-        --on-navy:        #e6eff1;
-        --on-navy-muted:  #8aa7b0;
-        --brand-grad:     linear-gradient(135deg, #0a1f29 0%, #0e5b64 80%, #16a8b3 140%);
-
-        --success-bg:     #0a2e1a;
-        --success-text:   #4ade80;
-        --success-border: #1d5235;
-        --danger-bg:      #2e0a0a;
-        --danger-text:    #ff6b70;
-        --danger-border:  #7f1d1d;
-        --warn-bg:        #211a05;
-        --warn-text:      #fcd34d;
-        --warn-border:    #6e4f17;
-        --info-bg:        rgba(34, 199, 210, .12);
-        --info-text:      #7fe3ea;
-        --info-border:    #1d4d54;
-
-        --shadow-sm:      0 1px 2px rgba(0, 0, 0, .45);
-        --shadow-md:      0 6px 16px rgba(0, 0, 0, .5);
-        --shadow-lg:      0 18px 40px rgba(0, 0, 0, .6);
-        --shadow:         var(--shadow-sm);
-    }
-}
+::selection { background: var(--accent-soft); }

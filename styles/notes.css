@@ -60,7 +60,7 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
     font-family: var(--cyfor-font);
     font-size: 12.5px;
     line-height: 1.55;
-    color: #0d2a38;
+    color: #18181b;
     padding: 4px 0;
     word-break: break-word;
     overflow-wrap: anywhere;
@@ -86,11 +86,11 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
    ================================================== */
 .cyfor-note .cyfor-n-header {
     font-weight: 700;
-    color: #0b7e8a;
+    color: #4338ca;
     font-size: 11.5px;
     padding: 0 0 3px;
     margin: 8px 0 4px;
-    border-bottom: 1px solid #eef2f4;
+    border-bottom: 1px solid #f4f4f5;
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
@@ -110,12 +110,12 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
 
 .cyfor-note .cyfor-n-key {
     font-weight: 600;
-    color: #3c5663;
+    color: #52525b;
 }
 
 .cyfor-note .cyfor-n-val {
     font-weight: 400;
-    color: #0d2a38;
+    color: #18181b;
 }
 
 /* Standalone label (empty-value "Circumstances:", "Exhibit Reference:") — reads as
@@ -124,7 +124,7 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
     margin-top: 3px;
 }
 .cyfor-note .cyfor-n-row-label .cyfor-n-key {
-    color: #0d2a38;
+    color: #18181b;
     font-weight: 700;
 }
 
@@ -134,7 +134,7 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
 .cyfor-note .cyfor-n-text {
     padding: 2px 0;
     line-height: 1.5;
-    color: #0d2a38;
+    color: #18181b;
 }
 
 .cyfor-note .cyfor-n-bullet {
@@ -145,14 +145,14 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
     content: "•";
     position: absolute;
     left: 3px;
-    color: #0e9aa7;
+    color: #4f46e5;
     font-weight: 700;
 }
 
 .cyfor-note .cyfor-n-divider {
     border: 0;
     height: 1px;
-    background: #dddbda;
+    background: #e4e4e7;
     margin: 14px 0;
 }
 
@@ -162,22 +162,22 @@ body.cyfor-format-notes-enabled td[data-label*="Notes"] .slds-hyphenate {
    ================================================== */
 .cyfor-note .cyfor-val-yes {
     font-weight: 700;
-    color: #0b7a3a;
+    color: #15803d;
 }
 
 .cyfor-note .cyfor-val-no {
     font-weight: 700;
-    color: #b4232f;
+    color: #b91c1c;
 }
 
 .cyfor-note .cyfor-val-na {
-    color: #5e7585;
+    color: #71717a;
     font-style: italic;
 }
 
 .cyfor-note .cyfor-val-pending {
     font-weight: 600;
-    color: #92510e;
+    color: #b45309;
 }
 
 /* ==================================================

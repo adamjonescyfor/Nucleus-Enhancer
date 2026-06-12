@@ -349,10 +349,8 @@ function renderTemplateList() {
 
         // Version
         var verTd = document.createElement('td');
-        verTd.textContent  = t.versionLabel ? 'v' + t.versionLabel : '—';
-        verTd.style.fontFamily = "'Menlo','Consolas',monospace";
-        verTd.style.fontSize   = '12px';
-        verTd.style.color      = t.versionLabel ? '' : 'var(--text-muted)';
+        verTd.className   = 'mgr-cell-version';
+        verTd.textContent = t.versionLabel ? 'v' + t.versionLabel : '—';
         tr.appendChild(verTd);
 
         // Status
@@ -1075,8 +1073,7 @@ function renderHistoryTable(versions) {
         var tr = document.createElement('tr');
 
         var verTd = document.createElement('td');
-        verTd.style.fontFamily = "'Menlo','Consolas',monospace";
-        verTd.style.fontSize   = '12px';
+        verTd.className   = 'mgr-cell-version';
         verTd.textContent = v.VersionLabel__c ? 'v' + v.VersionLabel__c : '—';
         // Supersede chain (4d): each archived version was superseded by the next
         // newer version in currentVersions, or by the live template at the top.

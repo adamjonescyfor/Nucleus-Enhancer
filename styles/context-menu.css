@@ -79,7 +79,7 @@
 }
 
 .cyfor-ctx-menu-search::placeholder {
-    color: #aaa;
+    color: var(--cyfor-text-muted);
     font-weight: 400;
 }
 
@@ -120,11 +120,11 @@
     background: transparent;
 }
 .cyfor-ctx-menu-list::-webkit-scrollbar-thumb {
-    background: #ccc;
+    background: var(--cyfor-border);
     border-radius: 3px;
 }
 .cyfor-ctx-menu-list::-webkit-scrollbar-thumb:hover {
-    background: #aaa;
+    background: var(--cyfor-text-muted);
 }
 
 /* ==================================================
@@ -162,7 +162,7 @@
 }
 
 .cyfor-ctx-menu-item:active {
-    background: #dceefb;
+    background: var(--cyfor-primary-light);
 }
 
 .cyfor-ctx-menu-item-label {
@@ -207,7 +207,7 @@
 
 .cyfor-ctx-menu-undo:hover,
 .cyfor-ctx-menu-undo:focus-visible {
-    background: #c8e1f8;
+    background: var(--cyfor-primary-light);
     color: var(--cyfor-primary-dark);
 }
 
@@ -257,7 +257,7 @@
 
 /* Search highlight (L-4) */
 .cyfor-ctx-menu-item-label mark {
-    background: rgba(14, 154, 167, 0.18);
+    background: var(--cyfor-primary-light);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;

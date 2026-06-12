@@ -50,7 +50,7 @@
 .cyfor-template-btn:hover {
     opacity: 1;
     transform: scale(1.08);
-    box-shadow: 0 2px 10px rgba(14, 154, 167, 0.34);
+    box-shadow: var(--cyfor-shadow);
     border-color: var(--cyfor-primary);
 }
 
@@ -136,7 +136,7 @@
 }
 
 .cyfor-template-search::placeholder {
-    color: #aaa;
+    color: var(--cyfor-text-muted);
     font-weight: 400;
 }
 
@@ -175,7 +175,7 @@
 }
 
 .cyfor-template-item:active {
-    background: #dceefb;
+    background: var(--cyfor-primary-light);
 }
 
 /* Focus for keyboard navigation */
@@ -214,7 +214,7 @@
 }
 
 .cyfor-template-undo:hover {
-    background: #c8e1f8;
+    background: var(--cyfor-primary-light);
     color: var(--cyfor-primary-dark);
 }
 
@@ -237,11 +237,11 @@
     background: transparent;
 }
 .cyfor-template-menu::-webkit-scrollbar-thumb {
-    background: #ccc;
+    background: var(--cyfor-border);
     border-radius: 3px;
 }
 .cyfor-template-menu::-webkit-scrollbar-thumb:hover {
-    background: #aaa;
+    background: var(--cyfor-text-muted);
 }
 
 /* ==================================================
@@ -274,7 +274,7 @@
 
 /* Search highlight (L-4) */
 .cyfor-template-item mark {
-    background: rgba(14, 154, 167, 0.18);
+    background: var(--cyfor-primary-light);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
