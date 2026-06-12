@@ -15,6 +15,7 @@ var statusOptions      = [];     // status picklist values (from describe) or de
 var currentVersions    = [];     // archived versions for the template open in History
 var currentHistoryTemplate = null; // the live template whose History is open
 var readOnly           = false;  // non-admin "View Templates" mode (no create/edit/delete)
+var bulkSelected       = new Set(); // template names ticked for bulk actions (admins)
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,25 @@ document.addEventListener('DOMContentLoaded', function () {
     // Live template filter
     var filterEl = document.getElementById('mgr-filter');
     if (filterEl) filterEl.addEventListener('input', renderTemplateList);
+
+    // Bulk actions (admins)
+    var checkAll = document.getElementById('mgr-check-all');
+    if (checkAll) checkAll.addEventListener('change', function () {
+        visibleTemplateNames().forEach(function (n) {
+            if (checkAll.checked) bulkSelected.add(n); else bulkSelected.delete(n);
+        });
+        renderTemplateList();
+    });
+    document.getElementById('btn-bulk-clear').addEventListener('click', function () {
+        bulkSelected.clear();
+        renderTemplateList();
+    });
+    document.getElementById('btn-bulk-status').addEventListener('click', function () { bulkApply('status'); });
+    document.getElementById('btn-bulk-team').addEventListener('click', function () { bulkApply('team'); });
+    document.getElementById('btn-bulk-delete').addEventListener('click', bulkDelete);
+    ['mgr-bulk-status', 'mgr-bulk-team'].forEach(function (id) {
+        CyforSelect.enhance(document.getElementById(id));
+    });
 
     // History search / date filter (4b)
     ['mgr-history-search', 'mgr-history-start', 'mgr-history-end'].forEach(function (id) {
@@ -123,6 +143,7 @@ function loadTemplates() {
 
         currentUser   = response.user      || {};
         allTemplates  = response.templates || {};
+        bulkSelected.clear(); // stale names mustn't survive a reload
         statusOptions = (response.statusOptions && response.statusOptions.length)
             ? response.statusOptions
             : ['Draft', 'Active', 'Under Review', 'Superseded', 'Retired'];
@@ -223,6 +244,7 @@ function populateStatusOptions() {
     if (statusOptions.indexOf(current) >= 0) sel.value = current;
     else if (statusOptions.indexOf('Active') >= 0) sel.value = 'Active';
     syncCustomSelect('mgr-status');
+    populateBulkSelectors();
 }
 
 // Make sure a template's existing status is selectable even if it's not in the
@@ -257,6 +279,7 @@ function populateScopeOptions() {
     });
     if (current) sel.value = current; // restore selection if still valid
     syncCustomSelect('mgr-scope');
+    populateBulkSelectors();
 }
 
 // Guarantee a team is selectable even if the teams list hasn't loaded yet (race)
@@ -276,14 +299,10 @@ function ensureTeamOption(teamId, teamName) {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-function renderTemplateList() {
-    var tbody   = document.getElementById('mgr-template-rows');
-    var emptyEl = document.getElementById('mgr-empty');
-    var tableEl = document.getElementById('mgr-template-table');
-    tbody.innerHTML = '';
-
+// Names currently visible in the table (filter applied) — shared with bulk ops.
+function visibleTemplateNames() {
     var q = ((document.getElementById('mgr-filter') || {}).value || '').trim().toLowerCase();
-    var names = Object.keys(allTemplates).filter(function (name) {
+    return Object.keys(allTemplates).filter(function (name) {
         if (!q) return true;
         var t = allTemplates[name];
         var hay = (name + ' ' + (t.category || '') + ' ' + (t.teamName || 'global') + ' ' + (t.status || '')).toLowerCase();
@@ -291,7 +310,21 @@ function renderTemplateList() {
     }).sort(function (a, b) {
         return a.toLowerCase().localeCompare(b.toLowerCase());
     });
+}
+
+function renderTemplateList() {
+    var tbody   = document.getElementById('mgr-template-rows');
+    var emptyEl = document.getElementById('mgr-empty');
+    var tableEl = document.getElementById('mgr-template-table');
+    tbody.innerHTML = '';
+
+    var q = ((document.getElementById('mgr-filter') || {}).value || '').trim().toLowerCase();
+    var names = visibleTemplateNames();
     var teamCode = currentUser.teamCode || null;
+
+    // Bulk-select column only exists for admins.
+    var thCheck = document.getElementById('mgr-th-check');
+    if (thCheck) thCheck.style.display = readOnly ? 'none' : '';
 
     if (!names.length) {
         if (emptyEl) {
@@ -318,6 +351,24 @@ function renderTemplateList() {
         var isMyTeam = teamCode && t.teamCode === teamCode;
 
         var tr = document.createElement('tr');
+
+        // Bulk-select checkbox (admins only)
+        if (!readOnly) {
+            var checkTd = document.createElement('td');
+            checkTd.className = 'mgr-col-check';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = bulkSelected.has(name);
+            cb.setAttribute('aria-label', 'Select ' + name);
+            (function (n) {
+                cb.addEventListener('change', function () {
+                    if (cb.checked) bulkSelected.add(n); else bulkSelected.delete(n);
+                    updateBulkBar();
+                });
+            }(name));
+            checkTd.appendChild(cb);
+            tr.appendChild(checkTd);
+        }
 
         // Doc ID — the custom DocumentId__c if present (e.g. a Salesforce Auto
         // Number), otherwise the system record Id. Rendered as a link to the live
@@ -459,6 +510,142 @@ function renderTemplateList() {
 
         tbody.appendChild(tr);
     });
+
+    // Keep header checkbox + bulk bar in sync with the (possibly filtered) view.
+    var checkAllEl = document.getElementById('mgr-check-all');
+    if (checkAllEl) {
+        checkAllEl.checked = names.length > 0 && names.every(function (n) { return bulkSelected.has(n); });
+    }
+    updateBulkBar();
+}
+
+// ── Bulk actions (admins) ─────────────────────────────────────────────────────
+
+function updateBulkBar() {
+    var bar = document.getElementById('mgr-bulk-bar');
+    if (!bar) return;
+    if (readOnly || bulkSelected.size === 0) { bar.style.display = 'none'; return; }
+    bar.style.display = '';
+    document.getElementById('mgr-bulk-count').textContent = bulkSelected.size + ' selected';
+}
+
+// Rebuild the bulk Status/Team pickers from the live option sets.
+function populateBulkSelectors() {
+    var st = document.getElementById('mgr-bulk-status');
+    if (st) {
+        st.innerHTML = '';
+        (statusOptions.length ? statusOptions : ['Draft', 'Active', 'Under Review', 'Superseded', 'Retired'])
+            .forEach(function (s) {
+                var o = document.createElement('option');
+                o.value = s; o.textContent = s;
+                st.appendChild(o);
+            });
+        syncCustomSelect('mgr-bulk-status');
+    }
+    var tm = document.getElementById('mgr-bulk-team');
+    if (tm) {
+        tm.innerHTML = '';
+        var g = document.createElement('option');
+        g.value = ''; g.textContent = 'Global (all teams)';
+        tm.appendChild(g);
+        allTeams.forEach(function (t) {
+            var o = document.createElement('option');
+            o.value = t.id;
+            o.textContent = t.name + (t.teamCode ? ' (' + t.teamCode + ')' : '');
+            tm.appendChild(o);
+        });
+        syncCustomSelect('mgr-bulk-team');
+    }
+}
+
+function sendMsg(action, payload) {
+    return new Promise(function (resolve) {
+        chrome.runtime.sendMessage({ action: action, payload: payload }, function (r) {
+            if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
+            else resolve(r || { ok: false, error: 'No response' });
+        });
+    });
+}
+
+// Apply a status or team change to every selected template, sequentially.
+// METADATA-ONLY updates: same versionLabel, no change reason — so no version
+// snapshots are created (matches the single-edit behaviour and the Flow).
+function bulkApply(kind) {
+    var names = Array.from(bulkSelected).filter(function (n) { return allTemplates[n]; });
+    if (!names.length) return;
+
+    var sel   = document.getElementById(kind === 'status' ? 'mgr-bulk-status' : 'mgr-bulk-team');
+    var value = sel ? sel.value : '';
+    var label = kind === 'status'
+        ? 'Set status to "' + (value || '—') + '"'
+        : 'Move to ' + ((sel.options[sel.selectedIndex] || {}).textContent || 'Global');
+
+    mgrModal({
+        title: 'Apply to ' + names.length + ' template' + (names.length === 1 ? '' : 's') + '?',
+        body: label + ' for:\n' + names.slice(0, 10).join(', ')
+            + (names.length > 10 ? ' … and ' + (names.length - 10) + ' more' : ''),
+        confirmLabel: 'Apply',
+        cancelLabel: 'Cancel'
+    }).then(function (ok) {
+        if (!ok) return;
+        runBulk(names, function (t, name) {
+            return sendMsg('sfTemplates.update', {
+                id:            t.id,
+                name:          name,
+                content:       t.content,
+                category:      t.category || '',
+                versionLabel:  t.versionLabel,
+                status:        kind === 'status' ? value : (t.status || 'Active'),
+                changeReason:  '',
+                effectiveDate: t.effectiveDate || null,
+                reviewDueDate: t.reviewDueDate || null,
+                teamId:        kind === 'team' ? value : (t.teamId || '')
+            });
+        });
+    });
+}
+
+function bulkDelete() {
+    var names = Array.from(bulkSelected).filter(function (n) { return allTemplates[n]; });
+    if (!names.length) return;
+
+    mgrModal({
+        title: 'Delete ' + names.length + ' template' + (names.length === 1 ? '' : 's') + '?',
+        body: 'This permanently deletes (with version history):\n'
+            + names.slice(0, 10).join(', ')
+            + (names.length > 10 ? ' … and ' + (names.length - 10) + ' more' : '')
+            + '\n\nDeleted records sit in the Salesforce Recycle Bin for ~15 days. '
+            + 'For templates that were genuinely in use, Retire them instead.',
+        confirmLabel: 'Delete all',
+        cancelLabel: 'Cancel',
+        danger: true
+    }).then(function (ok) {
+        if (!ok) return;
+        runBulk(names, function (t) {
+            return sendMsg('sfTemplates.delete', { id: t.id });
+        });
+    });
+}
+
+// Sequential runner with live progress + a failure report at the end.
+async function runBulk(names, opFn) {
+    var countEl  = document.getElementById('mgr-bulk-count');
+    var failures = [];
+    for (var i = 0; i < names.length; i++) {
+        if (countEl) countEl.textContent = 'Working… ' + (i + 1) + '/' + names.length;
+        var t = allTemplates[names[i]];
+        if (!t) continue;
+        var r = await opFn(t, names[i]);
+        if (!r || !r.ok) failures.push(names[i] + ' — ' + ((r && r.error) || 'failed'));
+    }
+    bulkSelected.clear();
+    if (failures.length) {
+        mgrAlert(failures.length + ' of ' + names.length + ' failed:\n'
+            + failures.slice(0, 8).join('\n')
+            + (failures.length > 8 ? '\n… and ' + (failures.length - 8) + ' more' : ''),
+            'Bulk action finished with errors');
+    }
+    loadTemplates();
 }
 
 // ── Stat hero (Templates view) ────────────────────────────────────────────────

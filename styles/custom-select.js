@@ -47,6 +47,8 @@
         wrap.appendChild(menu);
 
         var activeIdx = -1;
+        var typeBuffer = '';
+        var typeTimer = null;
 
         function syncLabel() {
             var opt = selectEl.options[selectEl.selectedIndex];
@@ -90,11 +92,16 @@
         }
         function isOpen() { return menu.style.display !== 'none'; }
         // Place the fixed menu under (or above) the trigger, sized to fit the
-        // viewport so it always scrolls within its own bounds.
+        // viewport so it always scrolls within its own bounds. The menu is at
+        // least 200px wide regardless of the trigger (a collapsed "—" trigger
+        // previously produced an unreadable sliver), clamped to the viewport.
         function positionMenu() {
             var r = trigger.getBoundingClientRect();
-            menu.style.left   = r.left + 'px';
-            menu.style.width  = r.width + 'px';
+            var w = Math.max(r.width, 200);
+            var left = r.left;
+            if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
+            menu.style.left   = left + 'px';
+            menu.style.width  = w + 'px';
             menu.style.maxHeight = 'none';
             var desired     = Math.min(menu.scrollHeight, 300);
             var spaceBelow  = window.innerHeight - r.bottom - 8;
@@ -153,6 +160,21 @@
             else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
             else if (e.key === 'End') { e.preventDefault(); setActive(items().length - 1); }
             else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(activeIdx); }
+            else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                // Typeahead: jump to the first option starting with what's typed
+                // (buffer resets after a short pause, like a native <select>).
+                e.preventDefault();
+                clearTimeout(typeTimer);
+                typeBuffer += e.key.toLowerCase();
+                typeTimer = setTimeout(function () { typeBuffer = ''; }, 700);
+                var list = items();
+                for (var ti = 0; ti < list.length; ti++) {
+                    if ((list[ti].textContent || '').toLowerCase().indexOf(typeBuffer) === 0) {
+                        setActive(ti);
+                        break;
+                    }
+                }
+            }
         });
 
         selectEl.__cyforSync = syncLabel;

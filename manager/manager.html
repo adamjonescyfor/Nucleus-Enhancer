@@ -94,10 +94,22 @@
                     No templates yet. Click <strong>+ New Template</strong> to create one.
                 </div>
 
+                <!-- Bulk actions (admins; appears when rows are selected) -->
+                <div class="mgr-bulk-bar" id="mgr-bulk-bar" style="display:none">
+                    <span class="mgr-bulk-count" id="mgr-bulk-count">0 selected</span>
+                    <select id="mgr-bulk-status" aria-label="Status to apply"></select>
+                    <button id="btn-bulk-status" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Set status</button>
+                    <select id="mgr-bulk-team" aria-label="Team to move to"></select>
+                    <button id="btn-bulk-team" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Move to team</button>
+                    <button id="btn-bulk-delete" class="mgr-btn mgr-btn-danger mgr-btn-sm">Delete</button>
+                    <button id="btn-bulk-clear" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Clear</button>
+                </div>
+
                 <div class="mgr-table-card">
                     <table class="mgr-table" id="mgr-template-table" style="display:none">
                         <thead id="mgr-table-head">
                             <tr>
+                                <th class="mgr-col-check" id="mgr-th-check" style="display:none"><input type="checkbox" id="mgr-check-all" aria-label="Select all visible templates"></th>
                                 <th>Doc ID</th>
                                 <th>Name</th>
                                 <th>Version</th>

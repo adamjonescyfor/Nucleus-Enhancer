@@ -159,8 +159,57 @@ async function runBackgroundSync() {
     var stored = await chrome.storage.local.get(['sfOAuthTokens']);
     if (!stored.sfOAuthTokens || !stored.sfOAuthTokens.accessToken) return; // not connected
     if (!(await hasSalesforceTabOpen())) return;                            // not actively using SF
-    try { await self.SfTemplates.fetchRemoteTemplates(true); } catch (e) { /* retry next cycle */ }
+    try {
+        var r = await self.SfTemplates.fetchRemoteTemplates(true);
+        if (r && r.ok) maybeNotifyReviews(r.templates);
+    } catch (e) { /* retry next cycle */ }
 }
+
+// After a successful sync, nudge TEMPLATE ADMINS (once per day) when their
+// team's templates are overdue / due for review within 30 days. Non-fatal:
+// any failure here must never affect the sync itself.
+async function maybeNotifyReviews(templates) {
+    try {
+        var stored = await chrome.storage.local.get(['sfOAuthUser', 'reviewNotifyDay']);
+        var user = stored.sfOAuthUser;
+        if (!user || !user.isTemplateAdmin) return;
+
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var in30  = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+        var overdue = 0, due30 = 0;
+        Object.keys(templates || {}).forEach(function (name) {
+            var t = templates[name];
+            var status = (t.status || '').toLowerCase();
+            if (!t.reviewDueDate || status === 'superseded' || status === 'retired') return;
+            var due = new Date(t.reviewDueDate + 'T00:00:00');
+            if (isNaN(due.getTime())) return;
+            if (due < today) overdue++;
+            else if (due <= in30) due30++;
+        });
+        if (!overdue && !due30) return;
+
+        var day = today.toISOString().slice(0, 10);
+        if (stored.reviewNotifyDay === day) return; // at most one nudge per day
+        await chrome.storage.local.set({ reviewNotifyDay: day });
+
+        var parts = [];
+        if (overdue) parts.push(overdue + ' overdue');
+        if (due30)   parts.push(due30 + ' due within 30 days');
+        chrome.notifications.create('cyfor-review-due', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('report/cyfor-logo.png'),
+            title: 'Template reviews due',
+            message: parts.join(' · ') + ' — open the Template Manager to review.'
+        });
+    } catch (e) { /* non-fatal by design */ }
+}
+
+// Clicking the nudge opens the Template Manager.
+try {
+    chrome.notifications.onClicked.addListener(function (id) {
+        if (id === 'cyfor-review-due') chrome.runtime.openOptionsPage();
+    });
+} catch (e) { /* notifications unavailable */ }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm && alarm.name === BG_SYNC_ALARM) runBackgroundSync();

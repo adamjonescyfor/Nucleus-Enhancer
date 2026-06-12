@@ -449,6 +449,40 @@ body {
 
 .mgr-panel-head .mgr-list-desc { text-align: left; }
 
+/* ── Bulk actions bar ────────────────────────────────────────────────────── */
+
+.mgr-bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 9px 12px;
+    margin-bottom: 10px;
+    background: var(--accent-soft);
+    border: 1px solid var(--info-line);
+    border-radius: var(--r-2);
+}
+
+.mgr-bulk-count {
+    font-size: var(--fs-12);
+    font-weight: 650;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin-right: 4px;
+    min-width: 86px;
+}
+
+.mgr-bulk-bar .cyf-cs { flex: 0 1 170px; }
+.mgr-bulk-bar #btn-bulk-clear { margin-left: auto; }
+
+.mgr-col-check { width: 34px; text-align: center; }
+.mgr-col-check input {
+    accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
 /* ── Table ───────────────────────────────────────────────────────────────── */
 
 .mgr-table-card {

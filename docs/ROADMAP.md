@@ -4,23 +4,14 @@ Implementable backlog beyond v3.0. Each item is specced so a developer (or futur
 
 ## Wave 2 (next)
 
-### Bulk operations in the Template Manager — M
-Multi-select rows (leading checkbox column in `renderTemplateList`, manager.js) + a selection toolbar that appears above the table: **Set status…**, **Move to team…**, **Delete selected**. Each runs the existing `sfTemplates.update`/`sfTemplates.delete` messages sequentially with a progress count in the toolbar, then one `loadTemplates()`. Confirm via `mgrModal` listing the affected names. Keep per-row failures non-fatal (collect + report at the end). Respect `readOnly` (no checkboxes for members).
+### ✅ DONE 2026-06-12: bulk operations · dropdown typeahead · review-due notifications · packaging script
+Bulk ops live in the manager (checkbox column + bulk bar: set status / move team / delete, sequential with progress + failure report; metadata-only updates so no version snapshots). Typeahead in `styles/custom-select.js` upgrades every themed dropdown (incl. popup Quick Insert). Review nudges: after a successful background sync, admins get at most one `chrome.notifications` per day when templates are overdue/due ≤30d (click opens the manager). `scripts/pack.sh` produces the runtime-only release zip (refuses without config.js).
 
 ### Multi-team membership — M
-`background/sf-team.js` `fetchUserTeamInfo` uses `LIMIT 1` — a user in two teams only sees one. Change the query to fetch ALL active memberships → `sfOAuthUser.teams = [{teamId, teamName, teamCode, isAdmin}]` (keep the existing single-team fields as the primary for compatibility). `background/sf-templates.js` `buildQuery` team filter becomes `(Team__c = null OR Team__r.TeamCode__c IN (…escaped codes…))`. Popup identity line shows "Team A · Team B". Admin flag = admin in ANY team (or per-team gating if Callum wants finer control — ask).
+`background/sf-team.js` `fetchUserTeamInfo` uses `LIMIT 1` — a user in two teams only sees one. Change the query to fetch ALL active memberships → `sfOAuthUser.teams = [{teamId, teamName, teamCode, isAdmin}]` (keep the existing single-team fields as the primary for compatibility). `background/sf-templates.js` `buildQuery` team filter becomes `(Team__c = null OR Team__r.TeamCode__c IN (…escaped codes…))`. Popup identity line shows "Team A · Team B". Admin flag = admin in ANY team (or per-team gating if Callum wants finer control — ask). Deferred pre-rollout: touches access scoping.
 
 ### manager.js modularisation — M (mechanical)
-manager.js is ~1,400 lines. Extension pages share globals across `<script>` tags, so split without a module system: extract `manager-history.js` (openHistory → diff/CSV/compare, ~350 lines) and `manager-editor.js` (openNewEditor/openEditEditor/openCloneEditor/saveTemplate/updateEditorVersionUI). Load order in manager.html: helpers first, manager.js (init) last. Pure cut-and-paste; verify with node --check + a full manual pass.
-
-### Popup template search + custom-select typeahead — S
-The popup Quick Insert list is a plain dropdown; with 50+ templates it needs search. Add type-to-filter inside `styles/custom-select.js` (buffer keystrokes in the open menu, filter `.cyf-cs-item` visibility; Esc clears) — this upgrades EVERY themed dropdown (manager compare pickers too) for free.
-
-### Review-due notifications — S/M
-The background already computes nothing on a schedule besides sync. On the existing `cyforTemplateSync` alarm, after a successful admin sync, compute overdue/due-30 counts (same logic as manager `reviewSnapshot`) and, if non-zero and changed since last notify (storage flag), fire a `chrome.notifications.create` ("3 templates overdue for review — open Template Manager"). Needs `notifications` permission. Admins only (check `sfOAuthUser.isTemplateAdmin`).
-
-### Release packaging script — S
-`scripts/pack.sh` (or node): zip ONLY runtime files (manifest.json, background.js, background/, content/, popup/, manager/, report/, styles/, lib/, config.js) into `cyfor-nucleus-enhancer-<version>.zip`. Excludes `oauth-proxy/`, `docs/`, `*.md`, `.git*`, `config.example.js`. Refuse to run if `config.js` is missing (end-user builds need the compiled proxy URL).
+manager.js is ~1,700 lines (bulk ops added). Extension pages share globals across `<script>` tags, so split without a module system: extract `manager-history.js` (openHistory → diff/CSV/compare) , `manager-editor.js` (openNewEditor/openEditEditor/openCloneEditor/saveTemplate/updateEditorVersionUI) and `manager-views.js` (render*). Load order in manager.html: helpers first, manager.js (init) last. Pure cut-and-paste; verify with node --check + a full manual pass. Do post-rollout — zero user-visible value, real regression surface.
 
 ### Worker housekeeping (bundle with the next `wrangler deploy`) — S
 1. Add CORS headers to the 405 method-check response in `oauth-proxy/worker.js` (cosmetic consistency). 2. AFTER the whole company is confirmed on ≥3.1: raise `MIN_CLIENT_VERSION` in `wrangler.toml` to retire old builds (recovery: set to `""` and redeploy).

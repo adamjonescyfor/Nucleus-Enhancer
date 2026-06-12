@@ -58,6 +58,11 @@
     --bad:       #b91c1c;  --bad-soft:  #fef2f2;  --bad-line:  #fecaca;
     --info:      #4338ca;  --info-soft: #eef2ff;  --info-line: #c7d2fe;
 
+    /* ── Brand header band (popup) ────────────────── */
+    --header-bg: #4f46e5;
+    --header-fg: #ffffff;
+    --header-fg-dim: rgba(255, 255, 255, .68);
+
     /* ── Elevation (barely there) ─────────────────── */
     --shadow-sm: 0 1px 2px rgba(24, 24, 27, .05);
     --shadow-md: 0 2px 8px rgba(24, 24, 27, .07), 0 1px 2px rgba(24, 24, 27, .05);
@@ -117,6 +122,10 @@
     --on-accent:     #14143a;
     --ring:          rgba(129, 140, 248, .45);
 
+    --header-bg: #312e81;
+    --header-fg: #f4f4f5;
+    --header-fg-dim: rgba(244, 244, 245, .62);
+
     --ok:   #4ade80;  --ok-soft:   rgba(74, 222, 128, .12);  --ok-line:   rgba(74, 222, 128, .35);
     --warn: #fbbf24;  --warn-soft: rgba(251, 191, 36, .12);  --warn-line: rgba(251, 191, 36, .35);
     --warn-bar: #fbbf24;
@@ -146,6 +155,9 @@
         --accent-soft:   rgba(129, 140, 248, .14);
         --on-accent:     #14143a;
         --ring:          rgba(129, 140, 248, .45);
+        --header-bg: #312e81;
+        --header-fg: #f4f4f5;
+        --header-fg-dim: rgba(244, 244, 245, .62);
         --ok:   #4ade80;  --ok-soft:   rgba(74, 222, 128, .12);  --ok-line:   rgba(74, 222, 128, .35);
         --warn: #fbbf24;  --warn-soft: rgba(251, 191, 36, .12);  --warn-line: rgba(251, 191, 36, .35);
         --warn-bar: #fbbf24;

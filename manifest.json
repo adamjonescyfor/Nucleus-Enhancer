@@ -11,7 +11,8 @@
         "downloads",
         "scripting",
         "identity",
-        "alarms"
+        "alarms",
+        "notifications"
     ],
 
     "host_permissions": [
