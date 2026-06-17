@@ -1556,6 +1556,7 @@ function openUsage() {
     // Admins get the ORG-WIDE log automatically once the Salesforce
     // NucleusTemplateUsage__c object exists (docs/salesforce-usage-object.md);
     // until then — and always for members — fall back to the local device log.
+    var warnEl = document.getElementById('mgr-usage-warn');
     if (!readOnly) {
         chrome.runtime.sendMessage({ action: 'usage.listOrg' }, function (r) {
             if (!chrome.runtime.lastError && r && r.ok && r.available) {
@@ -1565,13 +1566,34 @@ function openUsage() {
                 }
                 if (clearBtn) clearBtn.style.display = 'none'; // org records aren't clearable here
                 renderUsage(r.entries || []);
+                showUsageHealth(warnEl);
                 return;
             }
+            if (warnEl) warnEl.style.display = 'none';
             loadLocalUsage(descEl, clearBtn);
         });
     } else {
+        if (warnEl) warnEl.style.display = 'none';
         loadLocalUsage(descEl, clearBtn);
     }
+}
+
+// Quietly warn admins when Salesforce is currently REJECTING org-wide usage
+// writes (object read-only / "In Development" / a validation rule) — without
+// this the dropped insertions are invisible. Self-clears once a write succeeds.
+function showUsageHealth(warnEl) {
+    if (!warnEl) return;
+    chrome.storage.local.get(['usageLogError'], function (res) {
+        var err = (!chrome.runtime.lastError && res) ? res.usageLogError : null;
+        if (!err) { warnEl.style.display = 'none'; return; }
+        var when = err.ts ? new Date(err.ts).toLocaleString() : 'recently';
+        warnEl.textContent = 'Heads up — Salesforce is currently rejecting new usage writes'
+            + (err.code ? ' (' + err.code + ')' : '')
+            + ', so insertions since ' + when + ' aren’t being recorded org-wide. This usually '
+            + 'means the NucleusTemplateUsage__c object is read-only or its Deployment Status is '
+            + '“In Development”. Logging resumes automatically once that’s fixed.';
+        warnEl.style.display = '';
+    });
 }
 
 function loadLocalUsage(descEl, clearBtn) {

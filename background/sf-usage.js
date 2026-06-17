@@ -59,15 +59,35 @@ async function pushUsage(entry) {
         if (map.recordId && entry.recordId) body[map.recordId] = String(entry.recordId).slice(0, 18);
         if (map.recordUrl && entry.url)     body[map.recordUrl] = String(entry.url).slice(0, 255);
 
-        await fetch(c.base + '/sobjects/' + USAGE_OBJ + '/', {
+        var res = await fetch(c.base + '/sobjects/' + USAGE_OBJ + '/', {
             method:  'POST',
             headers: { Authorization: 'Bearer ' + c.token, 'Content-Type': 'application/json' },
             body:    JSON.stringify(body)
         });
-        return { ok: true };
+        if (res.ok) { noteHealth(null); return { ok: true }; }
+        // Salesforce ACCEPTED the request but REJECTED the write (object read-only,
+        // "In Development", a validation rule, …). Capture a compact diagnostic so
+        // the manager can warn admins their org-wide log is silently dropping.
+        var code = '', message = '';
+        try {
+            var eb = await res.json();
+            if (Array.isArray(eb) && eb[0]) { code = eb[0].errorCode || ''; message = eb[0].message || ''; }
+        } catch (ignore) { /* non-JSON error body */ }
+        noteHealth({ status: res.status, code: code, message: message, ts: Date.now() });
+        return { ok: true, rejected: true };
     } catch (e) {
-        return { ok: true, skipped: true };
+        return { ok: true, skipped: true }; // offline / network error — retry on the next insert
     }
+}
+
+// Persist the most recent org-write outcome so the manager can show admins a
+// quiet, self-healing warning when writes are being rejected. Storage holds an
+// error ONLY while the last attempt failed; the next success clears it. Never throws.
+function noteHealth(err) {
+    try {
+        if (err) chrome.storage.local.set({ usageLogError: err });
+        else     chrome.storage.local.remove('usageLogError');
+    } catch (e) { /* best-effort */ }
 }
 
 // Org-wide usage for the manager (admin-gated by the caller).
@@ -80,6 +100,7 @@ async function listOrgUsage(limit) {
     if (!map || !map.templateName) return { ok: true, available: false, entries: [] };
 
     var sel = ['Id', 'CreatedDate', 'CreatedBy.Name', map.templateName];
+    if (map.recordId)  sel.push(map.recordId);
     if (map.recordUrl) sel.push(map.recordUrl);
     var soql = 'SELECT ' + sel.join(', ') + ' FROM ' + USAGE_OBJ
              + ' ORDER BY CreatedDate DESC LIMIT ' + Math.min(limit || 200, 500);
@@ -94,6 +115,7 @@ async function listOrgUsage(limit) {
                 template: r[map.templateName] || '',
                 user:     (r.CreatedBy && r.CreatedBy.Name) || '',
                 ts:       r.CreatedDate ? new Date(r.CreatedDate).getTime() : null,
+                recordId: (map.recordId && r[map.recordId]) || '',
                 url:      (map.recordUrl && r[map.recordUrl]) || ''
             };
         });

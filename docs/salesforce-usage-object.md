@@ -7,6 +7,8 @@
 
 Create custom object **`NucleusTemplateUsage__c`** (label *"Nucleus Template Usage"*), same pattern as the other Nucleus objects, added to the Nucleus Templates app.
 
+> **Deployment Status must be _Deployed_, not _In Development_.** An *In Development* object stays readable to admins but **rejects every record insert** with `CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY: entity type cannot be inserted`, so usage silently stops recording while the org-wide view still shows old rows. If you build in a sandbox, re-check the status is *Deployed* after pushing to production.
+
 | Field | Type | Notes |
 |---|---|---|
 | `Name` | Auto Number, e.g. `USE-{00000}` | |
