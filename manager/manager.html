@@ -33,7 +33,7 @@
                 <span class="mgr-nav-ico" aria-hidden="true">▤</span> Usage
             </button>
             <button type="button" class="mgr-nav-item" data-view="settings">
-                <span class="mgr-nav-ico" aria-hidden="true">⚙</span> Settings
+                <span class="mgr-nav-ico" aria-hidden="true">ⓘ</span> About
             </button>
         </nav>
 
@@ -145,6 +145,12 @@
                     <button id="btn-usage-clear" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Clear log</button>
                 </div>
                 <div id="mgr-usage-warn" class="mgr-notice mgr-notice--warn" style="display:none"></div>
+                <div class="mgr-usage-filters" id="mgr-usage-filters" style="display:none">
+                    <input type="search" id="mgr-usage-search" class="mgr-input mgr-usage-search" placeholder="Search template, user, record, date or time…" autocomplete="off">
+                    <select id="mgr-usage-template" class="mgr-input" aria-label="Filter by template"></select>
+                    <select id="mgr-usage-user" class="mgr-input" aria-label="Filter by user"></select>
+                    <button id="btn-usage-filter-clear" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Clear</button>
+                </div>
                 <div id="mgr-usage-empty" class="mgr-state-msg" style="display:none">
                     No template insertions recorded on this device yet.
                 </div>
@@ -152,10 +158,10 @@
                     <table class="mgr-table" id="mgr-usage-table" style="display:none">
                         <thead>
                             <tr>
-                                <th>When</th>
-                                <th>Template</th>
+                                <th class="mgr-usage-th" data-sort="ts">When <span class="mgr-sort-ind" aria-hidden="true"></span></th>
+                                <th class="mgr-usage-th" data-sort="template">Template <span class="mgr-sort-ind" aria-hidden="true"></span></th>
                                 <th>Record</th>
-                                <th>User</th>
+                                <th class="mgr-usage-th" data-sort="user">User <span class="mgr-sort-ind" aria-hidden="true"></span></th>
                             </tr>
                         </thead>
                         <tbody id="mgr-usage-rows"></tbody>
@@ -234,11 +240,11 @@
                         </div>
                         <div class="mgr-field mgr-field--third">
                             <label class="mgr-label" for="mgr-effective-date">Effective Date</label>
-                            <input type="date" id="mgr-effective-date" class="mgr-input">
+                            <input type="text" id="mgr-effective-date" class="mgr-input" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" autocomplete="off">
                         </div>
                         <div class="mgr-field mgr-field--third">
                             <label class="mgr-label" for="mgr-review-date">Review Due Date</label>
-                            <input type="date" id="mgr-review-date" class="mgr-input">
+                            <input type="text" id="mgr-review-date" class="mgr-input" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" autocomplete="off">
                         </div>
                     </div>
                     <div class="mgr-field-row">
@@ -312,8 +318,8 @@
                         <input type="search" id="mgr-history-search" class="mgr-search-input"
                             placeholder="Search version, reason or person…" autocomplete="off">
                     </div>
-                    <label class="mgr-history-daterange">From <input type="date" id="mgr-history-start" class="mgr-input"></label>
-                    <label class="mgr-history-daterange">To <input type="date" id="mgr-history-end" class="mgr-input"></label>
+                    <label class="mgr-history-daterange">From <input type="text" id="mgr-history-start" class="mgr-input" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" autocomplete="off"></label>
+                    <label class="mgr-history-daterange">To <input type="text" id="mgr-history-end" class="mgr-input" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" autocomplete="off"></label>
                     <button id="btn-history-export" class="mgr-btn mgr-btn-secondary mgr-btn-sm">Export CSV</button>
                 </div>
 

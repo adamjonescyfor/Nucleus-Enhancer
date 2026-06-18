@@ -373,6 +373,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // Resolve the id of a record the user just created in a modal (where the URL
+    // and toast can't be read) — their latest record of <object> since <sinceTs>.
+    if (message.action === 'usage.findLatest') {
+        if (!self.SfUsage || !self.SfUsage.findLatestRecord) { sendResponse({ ok: true, id: null }); return true; }
+        self.SfUsage.findLatestRecord(message.object, message.sinceTs)
+            .then((r) => sendResponse(r))
+            .catch(() => sendResponse({ ok: true, id: null }));
+        return true;
+    }
+
     // Org-wide usage listing for the manager (template admins only).
     if (message.action === 'usage.listOrg') {
         if (!self.SfUsage) { sendResponse({ ok: true, available: false, entries: [] }); return true; }

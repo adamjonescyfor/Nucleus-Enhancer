@@ -72,6 +72,25 @@ document.addEventListener('DOMContentLoaded', function () {
         CyforSelect.enhance(document.getElementById(id));
     });
 
+    // Usage filters + sortable columns
+    ['mgr-usage-template', 'mgr-usage-user'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { CyforSelect.enhance(el); el.addEventListener('change', renderUsage); }
+    });
+    var usageSearch = document.getElementById('mgr-usage-search');
+    if (usageSearch) usageSearch.addEventListener('input', renderUsage);
+    var usageClearF = document.getElementById('btn-usage-filter-clear');
+    if (usageClearF) usageClearF.addEventListener('click', function () {
+        var s = document.getElementById('mgr-usage-search'); if (s) s.value = '';
+        ['mgr-usage-template', 'mgr-usage-user'].forEach(function (id) {
+            var el = document.getElementById(id); if (el) { el.value = ''; syncCustomSelect(id); }
+        });
+        renderUsage();
+    });
+    document.querySelectorAll('.mgr-usage-th[data-sort]').forEach(function (th) {
+        th.addEventListener('click', function () { setUsageSort(th.getAttribute('data-sort')); });
+    });
+
     // History search / date filter (4b)
     ['mgr-history-search', 'mgr-history-start', 'mgr-history-end'].forEach(function (id) {
         var el = document.getElementById(id);
@@ -101,7 +120,7 @@ var VIEW_META = {
     templates: { panel: 'mgr-list-panel',     title: 'Templates', sub: '' },
     reviews:   { panel: 'mgr-reviews-panel',  title: 'Reviews',   sub: 'Documents overdue or due for review soon.' },
     usage:     { panel: 'mgr-usage-panel',    title: 'Usage',     sub: 'Where templates have been inserted on this device.' },
-    settings:  { panel: 'mgr-settings-panel', title: 'Settings',  sub: 'Connection and Salesforce details.' }
+    settings:  { panel: 'mgr-settings-panel', title: 'About',     sub: 'Who you’re signed in as, the Salesforce connection, and how this works.' }
 };
 
 // Switch the main nav view (Templates / Reviews / Usage / Settings). Editor and
@@ -818,8 +837,8 @@ function openNewEditor() {
     document.getElementById('mgr-content').value       = '';
     document.getElementById('mgr-change-reason').value = '';
     document.getElementById('mgr-status').value        = 'Active';
-    document.getElementById('mgr-effective-date').value = today();
-    document.getElementById('mgr-review-date').value   = addMonths(today(), REVIEW_PERIOD_MONTHS);
+    document.getElementById('mgr-effective-date').value = isoToBritish(today());
+    document.getElementById('mgr-review-date').value   = isoToBritish(addMonths(today(), REVIEW_PERIOD_MONTHS));
 
     var docIdEl = document.getElementById('mgr-doc-id');
     docIdEl.value       = '';
@@ -868,8 +887,8 @@ function openEditEditor(name) {
     // A new version becomes effective today; pre-fill so the controlled-document
     // dates are never left blank (matches the background defaulting on save).
     var effPrefill = t.effectiveDate || today();
-    document.getElementById('mgr-effective-date').value = effPrefill;
-    document.getElementById('mgr-review-date').value   = t.reviewDueDate || addMonths(effPrefill, REVIEW_PERIOD_MONTHS);
+    document.getElementById('mgr-effective-date').value = isoToBritish(effPrefill);
+    document.getElementById('mgr-review-date').value   = isoToBritish(t.reviewDueDate || addMonths(effPrefill, REVIEW_PERIOD_MONTHS));
 
     var docIdEl = document.getElementById('mgr-doc-id');
     docIdEl.value    = t.documentId || t.id || '';
@@ -982,12 +1001,17 @@ function saveTemplate() {
     var content      =  document.getElementById('mgr-content').value;
     var changeReason = (document.getElementById('mgr-change-reason').value || '').trim();
     var status       =  document.getElementById('mgr-status').value        || 'Active';
-    var effectiveDate = document.getElementById('mgr-effective-date').value || null;
-    var reviewDueDate = document.getElementById('mgr-review-date').value    || null;
+    var effRaw       = (document.getElementById('mgr-effective-date').value || '').trim();
+    var revRaw       = (document.getElementById('mgr-review-date').value    || '').trim();
     var teamId       = (document.getElementById('mgr-scope') || {}).value;   // '' = Global
 
     if (!name)           { setEditorStatus('Name is required.', 'error'); return; }
     if (!content.trim()) { setEditorStatus('Content is required.', 'error'); return; }
+
+    var effectiveDate = effRaw ? britishToIso(effRaw) : null;
+    var reviewDueDate = revRaw ? britishToIso(revRaw) : null;
+    if (effRaw && !effectiveDate) { setEditorStatus('Effective Date must be a real date in DD/MM/YYYY format.', 'error'); return; }
+    if (revRaw && !reviewDueDate) { setEditorStatus('Review Due Date must be a real date in DD/MM/YYYY format.', 'error'); return; }
 
     // A reason (and version bump) is only required when CONTENT changes — that's
     // what the Salesforce Flow snapshots. Metadata-only edits (status/team/dates)
@@ -1319,8 +1343,8 @@ function renderHistoryTable(versions) {
 
 function filteredVersions() {
     var q     = (document.getElementById('mgr-history-search').value || '').trim().toLowerCase();
-    var start = document.getElementById('mgr-history-start').value;
-    var end   = document.getElementById('mgr-history-end').value;
+    var start = britishToIso((document.getElementById('mgr-history-start').value || '').trim());
+    var end   = britishToIso((document.getElementById('mgr-history-end').value   || '').trim());
     var startTs = start ? new Date(start + 'T00:00:00').getTime() : null;
     var endTs   = end   ? new Date(end   + 'T23:59:59').getTime() : null;
 
@@ -1506,6 +1530,23 @@ function today() {
     return new Date().toISOString().slice(0, 10);
 }
 
+// Native <input type="date"> renders in the browser's locale (US for many of our
+// users), so the editor date fields are plain text in DD/MM/YYYY and we convert
+// to/from the ISO (yyyy-mm-dd) Salesforce expects.
+function isoToBritish(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '';
+}
+function britishToIso(str) {
+    var m = String(str || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return '';
+    var dd = +m[1], mm = +m[2], yyyy = +m[3];
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return '';
+    var d = new Date(yyyy, mm - 1, dd);                 // rejects 31/04, 29/02 non-leap, etc.
+    if (d.getFullYear() !== yyyy || d.getMonth() !== (mm - 1) || d.getDate() !== dd) return '';
+    return yyyy + '-' + ('0' + mm).slice(-2) + '-' + ('0' + dd).slice(-2);
+}
+
 // Add N months to an ISO date (YYYY-MM-DD); used to suggest the review-due date.
 function addMonths(isoDate, months) {
     var d = new Date((isoDate || today()) + 'T00:00:00Z');
@@ -1531,8 +1572,26 @@ function formatDate(isoDate) {
 function formatDateTime(iso) {
     if (!iso) return '';
     var d = new Date(iso);
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
-           d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' +
+           d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// British date + 24h time WITH seconds, from an epoch-ms timestamp (usage log,
+// health banner). Spelled-out month so it can never be misread as US format.
+function formatStamp(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' +
+           d.toLocaleTimeString('en-GB', { hour12: false });
+}
+
+// Numeric "DD/MM/YYYY HH:MM:SS" form for the Usage search, so "17/06/2026",
+// "14:47" and "17/06/2026 14:47" all match an entry's timestamp.
+function usageStamp(ts) {
+    if (!ts) return '';
+    var d = new Date(ts), p = function (n) { return ('0' + n).slice(-2); };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+           ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
 
 function escHtml(str) {
@@ -1565,7 +1624,7 @@ function openUsage() {
                         + 'recorded in Salesforce from every connected device.';
                 }
                 if (clearBtn) clearBtn.style.display = 'none'; // org records aren't clearable here
-                renderUsage(r.entries || []);
+                setUsageData(r.entries || []);
                 showUsageHealth(warnEl);
                 return;
             }
@@ -1586,7 +1645,7 @@ function showUsageHealth(warnEl) {
     chrome.storage.local.get(['usageLogError'], function (res) {
         var err = (!chrome.runtime.lastError && res) ? res.usageLogError : null;
         if (!err) { warnEl.style.display = 'none'; return; }
-        var when = err.ts ? new Date(err.ts).toLocaleString('en-GB', { hour12: false }) : 'recently';
+        var when = err.ts ? formatStamp(err.ts) : 'recently';
         warnEl.textContent = 'Heads up — Salesforce is currently rejecting new usage writes'
             + (err.code ? ' (' + err.code + ')' : '')
             + ', so insertions since ' + when + ' aren’t being recorded org-wide. This usually '
@@ -1606,27 +1665,110 @@ function loadLocalUsage(descEl, clearBtn) {
     if (clearBtn) clearBtn.style.display = '';
     chrome.storage.local.get([USAGE_KEY], function (res) {
         var log = (res && Array.isArray(res[USAGE_KEY])) ? res[USAGE_KEY] : [];
-        renderUsage(log);
+        setUsageData(log);
     });
 }
 
-function renderUsage(log) {
+var usageAll  = [];                          // full current dataset (org-wide or local)
+var usageSort = { key: 'ts', dir: 'desc' };  // default: newest first
+
+function setUsageData(entries) {
+    usageAll = Array.isArray(entries) ? entries : [];
+    populateUsageFilters();
+    renderUsage();
+}
+
+// Fill the Template / User filter dropdowns from the current data; show the
+// filter bar only when there's data, and the User filter only when more than one
+// person appears (i.e. the org-wide log, not a single-user device log).
+function populateUsageFilters() {
+    var templates = {}, users = {};
+    usageAll.forEach(function (e) {
+        if (e.template) templates[e.template] = true;
+        if (e.user)     users[e.user] = true;
+    });
+    var tNames = Object.keys(templates).sort();
+    var uNames = Object.keys(users).sort();
+
+    fillFilterSelect('mgr-usage-template', tNames, 'All templates');
+    fillFilterSelect('mgr-usage-user',     uNames, 'All users');
+
+    var userSel  = document.getElementById('mgr-usage-user');
+    var userWrap = userSel && userSel.closest('.cyf-cs');
+    if (userWrap) userWrap.style.display = uNames.length > 1 ? '' : 'none';
+
+    var bar = document.getElementById('mgr-usage-filters');
+    if (bar) bar.style.display = usageAll.length ? '' : 'none';
+}
+
+function fillFilterSelect(id, values, allLabel) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    var prev = sel.value;
+    sel.innerHTML = '';
+    var o0 = document.createElement('option'); o0.value = ''; o0.textContent = allLabel; sel.appendChild(o0);
+    values.forEach(function (v) {
+        var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
+    });
+    if (prev && values.indexOf(prev) >= 0) sel.value = prev; // keep selection across reloads
+    syncCustomSelect(id);
+}
+
+function setUsageSort(key) {
+    if (usageSort.key === key) usageSort.dir = (usageSort.dir === 'asc') ? 'desc' : 'asc';
+    else { usageSort.key = key; usageSort.dir = (key === 'ts') ? 'desc' : 'asc'; }  // dates newest-first, text A→Z
+    renderUsage();
+}
+
+function updateUsageSortIndicators() {
+    ['ts', 'template', 'user'].forEach(function (k) {
+        var ind = document.querySelector('.mgr-usage-th[data-sort="' + k + '"] .mgr-sort-ind');
+        if (ind) ind.textContent = (usageSort.key === k) ? (usageSort.dir === 'asc' ? '▲' : '▼') : '';
+    });
+}
+
+function renderUsage() {
     var table = document.getElementById('mgr-usage-table');
     var empty = document.getElementById('mgr-usage-empty');
     var rows  = document.getElementById('mgr-usage-rows');
+    if (!rows) return;
     rows.innerHTML = '';
 
-    if (!log.length) {
+    var q  = ((document.getElementById('mgr-usage-search')   || {}).value || '').trim().toLowerCase();
+    var tf =  (document.getElementById('mgr-usage-template') || {}).value || '';
+    var uf =  (document.getElementById('mgr-usage-user')     || {}).value || '';
+
+    var list = usageAll.filter(function (e) {
+        if (tf && e.template !== tf) return false;
+        if (uf && e.user !== uf) return false;
+        if (q) {
+            var hay = ((e.template || '') + ' ' + (e.user || '') + ' ' + (e.recordId || '') + ' ' +
+                       usageStamp(e.ts) + ' ' + formatStamp(e.ts)).toLowerCase();
+            if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+    });
+
+    var dir = usageSort.dir === 'asc' ? 1 : -1, key = usageSort.key;
+    list.sort(function (a, b) {
+        if (key === 'ts') return ((a.ts || 0) - (b.ts || 0)) * dir;
+        var av = String(a[key] || '').toLowerCase(), bv = String(b[key] || '').toLowerCase();
+        return av < bv ? -dir : (av > bv ? dir : 0);
+    });
+    updateUsageSortIndicators();
+
+    if (!list.length) {
         table.style.display = 'none';
         empty.style.display = '';
+        empty.textContent = usageAll.length ? 'No insertions match your filters.'
+                                            : 'No template insertions recorded yet.';
         return;
     }
     empty.style.display = 'none';
     table.style.display = '';
 
-    var sorted = log.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-    rows.innerHTML = sorted.map(function (e) {
-        var when = e.ts ? new Date(e.ts).toLocaleString('en-GB', { hour12: false }) : '';
+    rows.innerHTML = list.map(function (e) {
+        var when = formatStamp(e.ts);
         var safeUrl = (typeof e.url === 'string' && /^https:\/\//i.test(e.url)) ? e.url : '';
         // Only link to genuine RECORD pages. Inserts made in a "New …" modal carry
         // the creation-page URL — opening that later just spawns a blank form.
@@ -1654,7 +1796,7 @@ function clearUsage() {
         if (!ok) return;
         var payload = {};
         payload[USAGE_KEY] = [];
-        chrome.storage.local.set(payload, function () { renderUsage([]); });
+        chrome.storage.local.set(payload, function () { setUsageData([]); });
     });
 }
 

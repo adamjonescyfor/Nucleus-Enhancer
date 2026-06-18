@@ -332,6 +332,22 @@ body {
     color: var(--warn);
 }
 
+/* ── Usage filters + sortable columns ────────────────────────────────────── */
+.mgr-usage-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.mgr-usage-filters .mgr-usage-search { flex: 1 1 220px; min-width: 180px; }
+.mgr-usage-filters .cyf-cs { flex: 0 1 190px; }
+.mgr-usage-filters #btn-usage-filter-clear { margin-left: auto; }
+
+.mgr-usage-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.mgr-usage-th:hover { color: var(--text); }
+.mgr-sort-ind { font-size: 10px; color: var(--accent); margin-left: 2px; }
+
 /* ── Stat hero ───────────────────────────────────────────────────────────── */
 
 .mgr-stats {

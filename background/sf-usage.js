@@ -125,6 +125,38 @@ async function listOrgUsage(limit) {
     }
 }
 
-self.SfUsage = { pushUsage: pushUsage, listOrgUsage: listOrgUsage };
+// Resolve the id of a record the user JUST created in a modal, where neither the
+// URL nor the success-toast link can be read. Queries their most-recently-created
+// record of <object> at/after <sinceTs> (epoch ms) — deterministic and record-
+// type-agnostic. Read-only; { ok, id } with id null for none (e.g. a cancel).
+async function findLatestRecord(object, sinceTs) {
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(String(object || ''))) return { ok: true, id: null };
+    var c;
+    try { c = await ctx(); } catch (e) { return { ok: false, error: e.message }; }
+    var stored = await chrome.storage.local.get(['sfOAuthUser']);
+    var uid = (stored.sfOAuthUser || {}).id;
+    if (!uid) return { ok: true, id: null };
+
+    var esc = self.SfUtils.soqlEscape;
+    // 15s slack absorbs client/server clock skew. CreatedDate is a SOQL datetime
+    // literal — no quotes, no milliseconds.
+    var sinceIso = new Date(Math.max(0, (sinceTs || 0) - 15000)).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    var soql = 'SELECT Id FROM ' + object
+             + " WHERE CreatedById = '" + esc(uid) + "'"
+             + ' AND CreatedDate >= ' + sinceIso
+             + ' ORDER BY CreatedDate DESC LIMIT 1';
+    try {
+        var res = await fetch(c.base + '/query?q=' + encodeURIComponent(soql),
+            { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/json' } });
+        if (!res.ok) return { ok: true, id: null };   // not queryable / no access — stay silent
+        var data = await res.json();
+        var rec = (data.records || [])[0];
+        return { ok: true, id: rec ? rec.Id : null };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+self.SfUsage = { pushUsage: pushUsage, listOrgUsage: listOrgUsage, findLatestRecord: findLatestRecord };
 
 }());
