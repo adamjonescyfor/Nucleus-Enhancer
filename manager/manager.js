@@ -1586,7 +1586,7 @@ function showUsageHealth(warnEl) {
     chrome.storage.local.get(['usageLogError'], function (res) {
         var err = (!chrome.runtime.lastError && res) ? res.usageLogError : null;
         if (!err) { warnEl.style.display = 'none'; return; }
-        var when = err.ts ? new Date(err.ts).toLocaleString() : 'recently';
+        var when = err.ts ? new Date(err.ts).toLocaleString('en-GB', { hour12: false }) : 'recently';
         warnEl.textContent = 'Heads up — Salesforce is currently rejecting new usage writes'
             + (err.code ? ' (' + err.code + ')' : '')
             + ', so insertions since ' + when + ' aren’t being recorded org-wide. This usually '
@@ -1626,7 +1626,7 @@ function renderUsage(log) {
 
     var sorted = log.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
     rows.innerHTML = sorted.map(function (e) {
-        var when = e.ts ? new Date(e.ts).toLocaleString() : '';
+        var when = e.ts ? new Date(e.ts).toLocaleString('en-GB', { hour12: false }) : '';
         var safeUrl = (typeof e.url === 'string' && /^https:\/\//i.test(e.url)) ? e.url : '';
         // Only link to genuine RECORD pages. Inserts made in a "New …" modal carry
         // the creation-page URL — opening that later just spawns a blank form.
