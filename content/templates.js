@@ -121,6 +121,14 @@ Cyfor.templates = {
         // Prevent editor activation when clicking the button
         btn.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); });
 
+        const openMenu = (m) => {
+            this._populateMenu(m, container);
+            m.classList.add('visible');
+            btn.setAttribute('aria-expanded', 'true');
+            const search = m.querySelector('.cyfor-template-search');
+            if (search) Cyfor.cleanup.setTimeout(() => search.focus(), 50);
+        };
+
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -130,30 +138,26 @@ Cyfor.templates = {
 
             const wasOpen = menu.classList.contains('visible');
             this._closeAllMenus();
+            if (wasOpen) { btn.setAttribute('aria-expanded', 'false'); return; } // toggle closed
 
-            if (!wasOpen) {
-                this._populateMenu(menu, container);
-                menu.classList.add('visible');
-                btn.setAttribute('aria-expanded', 'true');
+            // If the editor is already live, open immediately.
+            if (Cyfor.editor.findEditor(container)) { openMenu(menu); return; }
 
-                // Focus search box if present
-                const search = menu.querySelector('.cyfor-template-search');
-                if (search) {
-                    Cyfor.cleanup.setTimeout(() => search.focus(), 50);
-                }
-
-                // Pre-warm: Salesforce lazy-loads the rich-text (Quill) editor only
-                // once the field is activated, which is what made inserting take a
-                // few seconds. If it isn't active yet, kick that off NOW so it's
-                // ready by the time a template is chosen — the insert then feels
-                // instant. Re-assert the search focus afterwards, since activating
-                // the field can steal it.
-                if (!Cyfor.editor.findEditor(container)) {
-                    Cyfor.editor.activate(container).then(() => {
-                        if (search && menu.classList.contains('visible')) search.focus();
-                    }).catch(() => {});
-                }
-            }
+            // Otherwise the field is showing Salesforce's non-editable "standin".
+            // Clicking it lazy-loads the Quill editor, which RE-RENDERS the field
+            // and strips the menu we'd show — that's why it used to need a second
+            // click. So activate FIRST, then open once the editor and our re-
+            // attached menu are ready (bounded ~1.6s; falls back to any menu).
+            Cyfor.editor.activate(container).catch(() => {});
+            let tries = 0;
+            const waitOpen = () => {
+                if (Cyfor.utils.isContextInvalid()) return;
+                const m2 = container.querySelector('.cyfor-template-menu');
+                if (m2 && Cyfor.editor.findEditor(container)) { openMenu(m2); return; }
+                if (tries++ < 26) Cyfor.cleanup.setTimeout(waitOpen, 60);
+                else if (m2) openMenu(m2); // gave up waiting — open anyway
+            };
+            Cyfor.cleanup.setTimeout(waitOpen, 60);
         });
 
         // Keyboard: Enter/Space to toggle
