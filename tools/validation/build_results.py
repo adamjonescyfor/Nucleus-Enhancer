@@ -39,7 +39,6 @@ CASES = [
  ("Core toggles","Nav Arrows",L,"On Exhibit Process","Toggle off/on","Arrows/shortcuts disabled/enabled accordingly"),
  ("Core toggles","Format List Notes",L,"List view with notes","Toggle off/on","Notes formatting applied only when on"),
  ("Core toggles","Smart Auto-Insert",L,"New record form","Toggle on; open empty Notes on a mapped process","Template auto-inserted (toast 'Auto-inserted …'); off = suggestion only"),
- ("Core toggles","Sync Settings Across Devices",L,"Two devices same login","Toggle on","Toggle states (not templates) sync via Chrome Sync"),
  # ── Columns / presets ──
  ("Columns","Detect columns",L,"List view open","Open popup Table Columns","Current table's columns listed; 'Scanning…' resolves"),
  ("Columns","Reorder + reset",M,"Columns listed","Drag to reorder; then 'Reset'","Table follows the drag live; Reset returns BOTH the live table AND the popup list to Salesforce's natural order"),

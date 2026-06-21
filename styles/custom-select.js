@@ -2,8 +2,8 @@
 // CYFOR Nucleus Enhancer — Custom dropdown
 // Renders a themed listbox over a hidden native <select> (which still holds the
 // value + options, so existing `.value` reads/writes and change listeners keep
-// working). Needed because Chrome on Linux/GTK renders native <option> lists
-// with the OS theme and ignores CSS option colours.
+// working). Needed because some browsers render native <option> lists
+// with the OS theme and ignore CSS option colours.
 //
 //   CyforSelect.enhance(selectEl)  — wrap a <select> once.
 //   CyforSelect.sync(selectOrId)   — refresh the visible label after the

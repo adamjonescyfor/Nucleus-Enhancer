@@ -82,8 +82,6 @@ document.addEventListener('DOMContentLoaded', function () {
         enableAutoInsert:  document.getElementById('opt-auto-insert')
     };
 
-    var syncToggle = document.getElementById('opt-sync-settings');
-
     els = {
         columnList:         document.getElementById('column-list'),
         btnResetCols:       document.getElementById('btn-reset-cols'),
@@ -119,24 +117,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     els.versionLabel.textContent = 'v' + chrome.runtime.getManifest().version;
 
-    // Load settings — check sync first, then local (L-11)
-    chrome.storage.local.get(['useSyncStorage'], function (syncPref) {
-        var useSyncStorage = syncPref.useSyncStorage === true;
-        if (syncToggle) syncToggle.checked = useSyncStorage;
-
-        syncToggle && syncToggle.addEventListener('change', function () {
-            var enabled = syncToggle.checked;
-            chrome.storage.local.set({ useSyncStorage: enabled });
-            if (enabled) {
-                var payload = {};
-                Object.keys(toggles).forEach(function (k) { payload[k] = toggles[k].checked; });
-                chrome.storage.sync.set(payload);
-            }
-        });
-
-        var settingsStore = useSyncStorage ? chrome.storage.sync : chrome.storage.local;
-        loadSettings(settingsStore);
-    });
+    // Feature toggles are per-device — stored in (and read by the content scripts
+    // from) chrome.storage.local. Theme and pinned templates sync on their own.
+    loadSettings(chrome.storage.local);
 });
 
 function loadSettings(settingsStore) {
@@ -184,16 +167,13 @@ function loadSettings(settingsStore) {
         }
     );
 
-    // Save toggles on change — write to sync too if enabled (L-11)
+    // Save toggles on change (per-device, local storage).
     Object.keys(toggles).forEach(function (key) {
         var el = toggles[key];
         el.addEventListener('change', function () {
             var obj = {};
             obj[key] = el.checked;
             chrome.storage.local.set(obj);
-            chrome.storage.local.get(['useSyncStorage'], function (sp) {
-                if (sp.useSyncStorage) chrome.storage.sync.set(obj);
-            });
 
             var row = el.closest('.option-row');
             if (row) {

@@ -1,8 +1,8 @@
 /* ==================================================
    CYFOR Nucleus Enhancer — Custom dropdown
    A themed listbox rendered over a hidden native <select>. Used in the popup
-   and the manager because Chrome on Linux/GTK renders native <option> lists
-   with the OS theme and ignores CSS colours. Fully var()-driven so it follows
+   and the manager because some browsers render native <option> lists
+   with the OS theme and ignore CSS colours. Fully var()-driven so it follows
    the teal/navy tokens (and proper white text in dark) on every OS.
    Enhanced by styles/custom-select.js (window.CyforSelect).
    ================================================== */

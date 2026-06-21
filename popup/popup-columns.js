@@ -71,7 +71,7 @@ function renderPresetBar() {
         }
     };
 
-    // Themed custom dropdown (native option lists are unstyleable on Linux).
+    // Themed custom dropdown (native option lists can't be reliably styled).
     if (window.CyforSelect) {
         CyforSelect.enhance(select);
         CyforSelect.sync(select);

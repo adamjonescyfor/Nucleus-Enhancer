@@ -31,6 +31,7 @@ Analysts propose template edits; admins review and Apply/Reject. `background/sf-
 Pipeline is built and flagged off: docx fill engine (`lib/docx-fill.js` incl. `{#devices}` loops), field mapping (`report/mg-extract.js`, verified against LP-26-00049), template storage spec (`NucleusReportTemplate__c`), MG21 parser (regex needs tuning against a real MG21). Remaining: the Salesforce admin creates the object + uploads the 5 tagged templates (in ~/Downloads as of 2026-06), flip `MG22_ENABLED = true`, tune MG21 regex, then photo-OCR/force-auto-select as stretch.
 
 ### Misc
+- **Removed 2026-06-21: "Sync Settings Across Devices" toggle.** It only governed the 6 core feature toggles (theme/pins/onboarding synced regardless, so the label was misleading), it's a no-op on locked-down forensic machines without Chrome/Edge account sync, and cross-device settings are marginal for a single-workstation, Salesforce-backed workflow. Feature toggles are now per-device (`chrome.storage.local`); theme + pinned templates still sync on their own. Re-add only if analysts genuinely move between machines and ask for it.
 - README screenshots + GitHub social banner (placeholders are HTML comments in README).
 - Insert preview-before-insert (hover preview exists in both menus; a "confirm large template" step only if users ask).
 - Protected-token list growth for the notes parser (`content/notes-data.js` `protectedTokens`) as new brand names appear in real notes.

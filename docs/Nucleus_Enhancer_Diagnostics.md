@@ -77,7 +77,8 @@ chrome.storage.local.get(['sfRemoteTemplates','sfTemplatesSyncedAt'],
 // Last org-usage write error (only set while the last write FAILED)
 chrome.storage.local.get('usageLogError', r => console.log(r.usageLogError || 'none'));
 
-// Synced settings (toggles, theme, pins)
+// Synced bits (theme, pinned templates, onboarding flags). Feature toggles are
+// per-device in chrome.storage.local, not synced.
 chrome.storage.sync.get(null, console.log);
 ```
 

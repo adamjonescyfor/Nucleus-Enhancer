@@ -336,7 +336,7 @@ function renderMappings(types, templates, savedMap) {
 
         row.appendChild(label);
         row.appendChild(select);
-        // Themed custom dropdown (native option lists are unstyleable on Linux).
+        // Themed custom dropdown (native option lists can't be reliably styled).
         if (window.CyforSelect) CyforSelect.enhance(select);
         fragment.appendChild(row);
     }
@@ -391,7 +391,7 @@ function populateDropdown(templates) {
     els.templateSelect.appendChild(fragment);
     updatePinButton();
 
-    // Themed custom dropdown (native option lists are unstyleable on Linux).
+    // Themed custom dropdown (native option lists can't be reliably styled).
     if (window.CyforSelect) {
         CyforSelect.enhance(els.templateSelect);
         CyforSelect.sync(els.templateSelect);

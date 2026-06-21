@@ -109,8 +109,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Compare any two versions (4c)
     document.getElementById('btn-compare-run').addEventListener('click', runCompare);
 
-    // Custom dropdowns (shared component) — native <select> option lists are
-    // unstyleable on Chrome/Linux, so every select is rendered as a themed listbox.
+    // Custom dropdowns (shared component) — native <select> option lists can't be
+    // reliably styled across browsers, so every select is rendered as a themed listbox.
     ['mgr-status', 'mgr-scope', 'mgr-compare-from', 'mgr-compare-to'].forEach(function (id) {
         CyforSelect.enhance(document.getElementById(id));
     });
