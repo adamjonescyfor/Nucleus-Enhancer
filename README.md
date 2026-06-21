@@ -137,7 +137,7 @@ The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 **Recently shipped:** bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix).
 
-**Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · an optional change‑request workflow · `manager.js` modularisation. Some shipped items wait on a small Salesforce change — see the [admin guide](docs/salesforce-admin-guide.md).
+**Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · an optional change‑request workflow (only if analysts ask to *suggest* edits) · `manager.js` modularisation (internal code tidy‑up, no user‑facing change).
 
 ---
 

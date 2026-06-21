@@ -125,7 +125,7 @@ function syncCustomSelect(id) { if (window.CyforSelect) CyforSelect.sync(id); }
 var VIEW_META = {
     templates: { panel: 'mgr-list-panel',     title: 'Templates', sub: '' },
     reviews:   { panel: 'mgr-reviews-panel',  title: 'Reviews',   sub: 'Documents overdue or due for review soon.' },
-    usage:     { panel: 'mgr-usage-panel',    title: 'Usage',     sub: 'Where templates have been inserted on this device.' },
+    usage:     { panel: 'mgr-usage-panel',    title: 'Usage',     sub: 'Which templates are being inserted, and where.' },
     acks:      { panel: 'mgr-acks-panel',     title: 'Acknowledgements', sub: 'Who has read & understood each controlled template — and who is outstanding.' },
     settings:  { panel: 'mgr-settings-panel', title: 'About',     sub: 'Who you’re signed in as, the Salesforce connection, and how this works.' }
 };
