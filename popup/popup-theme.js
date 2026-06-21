@@ -65,10 +65,11 @@
 
     // Highlights for the current release — edit on each version bump.
     var WHATS_NEW_ITEMS = [
-        'View Templates — everyone can now browse their team’s templates, versions and history (admins still manage).',
-        'Pin favourite templates (☆ in Quick Insert) — pinned and recent ones appear first in every insert menu.',
-        'New template variables: {{time}}, {{dateTime}} and {{teamName}}.',
-        'New Help & tips section below with every feature and shortcut.'
+        'Rich-text template editor (admins) — full formatting, fonts, colour, lists and images, and paste straight from Word.',
+        'Assign a template to several teams at once, not just one or Global.',
+        'Right-click also fills Exhibit Type and the Forensic Case lookup, and templates carry their formatting into Salesforce.',
+        'One theme for everything — popup, manager and the in-page tools, switching live.',
+        'Diagnostics — if something misbehaves, capture a log in the popup and send it to Adam so it can be fixed quickly.'
     ];
 
     // "What's new" banner — shown after an update until dismissed. Fresh installs

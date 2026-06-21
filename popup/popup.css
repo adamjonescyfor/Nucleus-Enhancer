@@ -41,13 +41,11 @@ body {
     letter-spacing: -0.01em;
 }
 
-.header-title::before {
-    content: "";
-    width: 11px;
-    height: 11px;
-    border-radius: 3.5px;
-    background: rgba(255, 255, 255, .92);
+.header-glyph {
+    width: 17px;
+    height: 17px;
     flex-shrink: 0;
+    color: rgba(255, 255, 255, .95);
 }
 
 .header-version {
@@ -278,11 +276,17 @@ body {
 }
 .btn-danger:hover:not(:disabled) { background: var(--bad-soft); }
 
+/* Two-step confirm — a SOLID red button with white text. Uses fixed reds (not the
+   --bad text token, which is light in dark mode and gave white-on-light) so the
+   text stays readable on hover and in both themes. */
 .btn-danger-confirm {
-    background: var(--bad);
-    border-color: var(--bad);
+    background: #b91c1c;
+    border-color: #b91c1c;
     color: #fff;
 }
+.btn-danger-confirm:hover:not(:disabled) { background: #991b1b; border-color: #991b1b; }
+:root[data-theme="dark"] .btn-danger-confirm { background: #dc2626; border-color: #dc2626; }
+:root[data-theme="dark"] .btn-danger-confirm:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; }
 
 .link-btn {
     background: none;

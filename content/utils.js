@@ -149,7 +149,10 @@ Cyfor.utils = {
             Cyfor.utils._escapeEl = document.createElement('div');
         }
         Cyfor.utils._escapeEl.textContent = text;
-        return Cyfor.utils._escapeEl.innerHTML;
+        // The textContent→innerHTML round-trip escapes & < >, but NOT quotes
+        // (quotes are legal in element text). Escape them too so this is safe in
+        // ANY context — element content OR an HTML attribute — not just text nodes.
+        return Cyfor.utils._escapeEl.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
     /**

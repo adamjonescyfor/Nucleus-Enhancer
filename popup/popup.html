@@ -14,7 +14,7 @@
 
     <!-- Header -->
     <header class="header">
-        <span class="header-title">Nucleus Enhancer</span>
+        <span class="header-title"><svg class="header-glyph" viewBox="0 0 128 128" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"><ellipse cx="64" cy="64" rx="40" ry="16.5" transform="rotate(-30 64 64)"/><ellipse cx="64" cy="64" rx="40" ry="16.5" transform="rotate(30 64 64)"/></g><circle cx="64" cy="64" r="12" fill="currentColor"/></svg>Nucleus Enhancer</span>
         <span class="header-version" id="version-label">v—</span>
     </header>
 
@@ -250,6 +250,28 @@
         </div>
     </details>
 
+    <!-- Diagnostics (troubleshooting / validation) -->
+    <details class="section collapsible-section" id="diagnostics-section">
+        <summary class="section-header">
+            <span>Diagnostics</span>
+            <span class="collapse-indicator" aria-hidden="true">▾</span>
+        </summary>
+        <div class="sf-templates-panel">
+            <div class="option-row">
+                <div class="option-info">
+                    <div class="option-label">Capture diagnostic log</div>
+                    <div class="option-desc">Records what the extension does. Turn on, reproduce the issue (or run your tests), then download the file and send it over.</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="opt-diagnostics"><span class="slider"></span></label>
+            </div>
+            <div class="auth-actions" style="margin-top:8px; display:flex; gap:6px;">
+                <button id="btn-download-diagnostics" class="btn btn-secondary" disabled>Download log</button>
+                <button id="btn-clear-diagnostics" class="btn btn-secondary" disabled>Clear</button>
+            </div>
+            <div id="diagnostics-status" class="sf-status-text" style="margin-top:6px"></div>
+        </div>
+    </details>
+
     <!-- Help & tips -->
     <details class="section collapsible-section" id="help-section">
         <summary class="section-header">
@@ -258,13 +280,14 @@
         </summary>
         <ul class="help-list">
             <li><strong>Insert a template</strong> — click the 📄 button or right-click inside a Notes / Forensic Strategy box. <kbd>Alt</kbd>+<kbd>T</kbd> opens the menu, <kbd>Alt</kbd>+<kbd>Z</kbd> undoes an insert.</li>
-            <li><strong>Quick-fill</strong> — right-click any date or time field to fill it with now; right-click <strong>Completed By</strong> or <strong>Sealed By</strong> to fill it with you.</li>
+            <li><strong>Quick-fill</strong> — right-click any date or time field for now; <strong>Completed By / Sealed By / Conducted By</strong> for you; <strong>Exhibit Type</strong> auto-picks from the exhibit name; and a <strong>Forensic Case</strong> lookup grabs the latest case.</li>
             <li><strong>Record navigation</strong> — <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> moves between process records in list order.</li>
             <li><strong>Columns</strong> — drag the column names above to reorder list-view tables; save layouts as presets.</li>
             <li><strong>Photographs</strong> — a "Download All Photographs" button appears on Uploaded Documents sections.</li>
             <li><strong>Notes</strong> — notes columns in list views are expanded and formatted automatically (toggle above).</li>
-            <li><strong>Templates</strong> — your team's official templates sync automatically (about every 20 minutes); "Sync Now" forces it. "View Templates" shows versions and history.</li>
+            <li><strong>Templates</strong> — your team's official templates sync automatically (about every 20 minutes); "Sync Now" forces it. "View Templates" shows versions and history. Admins get a full <strong>rich-text editor</strong> and can assign a template to several teams.</li>
             <li><strong>Case report</strong> — export a sanitised disclosure report from any Forensic Case page.</li>
+            <li><strong>Something not working?</strong> Open <strong>Diagnostics</strong> above, turn on <em>Capture diagnostic log</em>, reproduce the problem, then <em>Download log</em> and send the file to Adam — it helps pin down the cause fast.</li>
         </ul>
     </details>
 
@@ -284,6 +307,7 @@
     <script src="popup-templates.js"></script>
     <script src="popup-sf-templates.js"></script>
     <script src="popup-case-report.js"></script>
+    <script src="popup-diagnostics.js"></script>
     <script src="popup-theme.js"></script>
     <script src="popup.js"></script>
 </body>

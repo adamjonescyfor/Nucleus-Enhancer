@@ -16,6 +16,9 @@ var currentVersions    = [];     // archived versions for the template open in H
 var currentHistoryTemplate = null; // the live template whose History is open
 var readOnly           = false;  // non-admin "View Templates" mode (no create/edit/delete)
 var bulkSelected       = new Set(); // template names ticked for bulk actions (admins)
+var multiTeamEnabled   = false;  // true when the Salesforce multi-select team field exists
+var editorTeamCodes    = [];     // team codes ticked in the editor's multi-team picker
+var contentMaxLen      = 0;      // real max length of the Content field (from describe)
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -38,7 +41,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Only a CONTENT change creates a new version (matching the Salesforce Flow).
     // Re-evaluate the version/reason UI live as the body or bump option changes.
     var contentEl = document.getElementById('mgr-content');
-    if (contentEl) contentEl.addEventListener('input', updateEditorVersionUI);
+    if (contentEl) contentEl.addEventListener('input', function () { updateEditorVersionUI(); updateContentCount(); });
+    setupContentToolbar();
     document.querySelectorAll('input[name="version-bump"]').forEach(function (r) {
         r.addEventListener('change', updateEditorVersionUI);
     });
@@ -162,6 +166,9 @@ function loadTemplates() {
 
         currentUser   = response.user      || {};
         allTemplates  = response.templates || {};
+        multiTeamEnabled = !!(response.fields && response.fields.teamsMulti);
+        contentMaxLen    = (response.fields && response.fields.contentMaxLength) || 0;
+        applyTeamControlMode();
         bulkSelected.clear(); // stale names mustn't survive a reload
         statusOptions = (response.statusOptions && response.statusOptions.length)
             ? response.statusOptions
@@ -298,6 +305,7 @@ function populateScopeOptions() {
     });
     if (current) sel.value = current; // restore selection if still valid
     syncCustomSelect('mgr-scope');
+    buildTeamCheckboxes();
     populateBulkSelectors();
 }
 
@@ -316,6 +324,61 @@ function ensureTeamOption(teamId, teamName) {
     }
 }
 
+// ── Multi-team picker (active only when the Salesforce multi-team field exists) ──
+
+// Show the single-team dropdown or the multi-team checkbox list to match the org.
+function applyTeamControlMode() {
+    var single = document.getElementById('mgr-scope-single-field');
+    var multi  = document.getElementById('mgr-scope-multi-field');
+    if (single) single.hidden = multiTeamEnabled;
+    if (multi)  multi.hidden  = !multiTeamEnabled;
+}
+
+// (Re)build the team checkboxes from the active teams, restoring the editor's
+// current selection (kept in editorTeamCodes so it survives an async team load).
+function buildTeamCheckboxes() {
+    var box = document.getElementById('mgr-scope-multi');
+    if (!box) return;
+    var checked = {};
+    editorTeamCodes.forEach(function (c) { checked[c] = true; });
+    // Keep any codes the template targets that aren't in the active teams list.
+    var codes = allTeams.map(function (t) { return t.teamCode; }).filter(Boolean);
+    editorTeamCodes.forEach(function (c) { if (codes.indexOf(c) === -1) codes.push(c); });
+    box.innerHTML = '';
+    codes.forEach(function (code) {
+        var team = allTeams.filter(function (t) { return t.teamCode === code; })[0];
+        var lbl = document.createElement('label');
+        lbl.className = 'mgr-team-multi-opt';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = code;
+        cb.checked = !!checked[code];
+        cb.addEventListener('change', function () { editorTeamCodes = collectMultiTeamCodes(); });
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(' ' + (team ? team.name : code) + ' (' + code + ')'));
+        box.appendChild(lbl);
+    });
+}
+
+function collectMultiTeamCodes() {
+    var box = document.getElementById('mgr-scope-multi');
+    if (!box) return [];
+    return Array.prototype.slice
+        .call(box.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(function (c) { return c.value; });
+}
+
+// Seed the editor's team selection (single dropdown + multi checkboxes both, so
+// whichever control is visible is correct) from a template's stored teams.
+function setEditorTeams(teamId, teamName, teamCodes) {
+    ensureTeamOption(teamId, teamName);
+    var sel = document.getElementById('mgr-scope');
+    if (sel) sel.value = teamId || '';
+    syncCustomSelect('mgr-scope');
+    editorTeamCodes = Array.isArray(teamCodes) ? teamCodes.slice() : [];
+    buildTeamCheckboxes();
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 // Names currently visible in the table (filter applied) — shared with bulk ops.
@@ -324,7 +387,7 @@ function visibleTemplateNames() {
     return Object.keys(allTemplates).filter(function (name) {
         if (!q) return true;
         var t = allTemplates[name];
-        var hay = (name + ' ' + (t.category || '') + ' ' + (t.teamName || 'global') + ' ' + (t.status || '')).toLowerCase();
+        var hay = (name + ' ' + (t.category || '') + ' ' + (t.teamName || 'global') + ' ' + (t.teamCodes || []).join(' ') + ' ' + (t.status || '')).toLowerCase();
         return hay.indexOf(q) !== -1;
     }).sort(function (a, b) {
         return a.toLowerCase().localeCompare(b.toLowerCase());
@@ -367,7 +430,7 @@ function renderTemplateList() {
 
     names.forEach(function (name) {
         var t        = allTemplates[name];
-        var isMyTeam = teamCode && t.teamCode === teamCode;
+        var isMyTeam = teamCode && (t.teamCode === teamCode || (t.teamCodes || []).indexOf(teamCode) !== -1);
 
         var tr = document.createElement('tr');
 
@@ -442,10 +505,13 @@ function renderTemplateList() {
         // (not teamName/teamId) — fall back accordingly.
         var scopeTd = document.createElement('td');
         var badge   = document.createElement('span');
-        var teamVal = t.teamName || t.teamCode || null;
-        badge.className   = (t.teamId || t.teamCode) ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
+        var hasMulti = t.teamCodes && t.teamCodes.length;
+        var teamVal = hasMulti ? t.teamCodes.join(', ') : (t.teamName || t.teamCode || null);
+        var scoped  = hasMulti || t.teamId || t.teamCode;
+        badge.className   = scoped ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
         if (isMyTeam) badge.className += ' mgr-scope-badge--own';
         badge.textContent = teamVal || 'Global';
+        if (hasMulti) badge.title = t.teamCodes.join(', ');
         scopeTd.appendChild(badge);
         tr.appendChild(scopeTd);
 
@@ -568,8 +634,9 @@ function populateBulkSelectors() {
         g.value = ''; g.textContent = 'Global (all teams)';
         tm.appendChild(g);
         allTeams.forEach(function (t) {
+            if (multiTeamEnabled && !t.teamCode) return; // multi mode keys on team code
             var o = document.createElement('option');
-            o.value = t.id;
+            o.value = multiTeamEnabled ? t.teamCode : t.id;
             o.textContent = t.name + (t.teamCode ? ' (' + t.teamCode + ')' : '');
             tm.appendChild(o);
         });
@@ -608,7 +675,7 @@ function bulkApply(kind) {
     }).then(function (ok) {
         if (!ok) return;
         runBulk(names, function (t, name) {
-            return sendMsg('sfTemplates.update', {
+            var p = {
                 id:            t.id,
                 name:          name,
                 content:       t.content,
@@ -619,7 +686,14 @@ function bulkApply(kind) {
                 effectiveDate: t.effectiveDate || null,
                 reviewDueDate: t.reviewDueDate || null,
                 teamId:        kind === 'team' ? value : (t.teamId || '')
-            });
+            };
+            if (multiTeamEnabled) {
+                // Multi-team org: a team move sets that one code; other bulk actions
+                // (e.g. status) keep the template's existing teams.
+                p.teamCodes = (kind === 'team') ? (value ? [value] : []) : (t.teamCodes || []);
+                delete p.teamId;
+            }
+            return sendMsg('sfTemplates.update', p);
         });
     });
 }
@@ -834,8 +908,8 @@ function openNewEditor() {
     document.getElementById('mgr-editor-heading').textContent = 'New Template';
     document.getElementById('mgr-name').value          = '';
     document.getElementById('mgr-category').value      = '';
-    document.getElementById('mgr-content').value       = '';
     document.getElementById('mgr-change-reason').value = '';
+    setContentHtml('');
     document.getElementById('mgr-status').value        = 'Active';
     document.getElementById('mgr-effective-date').value = isoToBritish(today());
     document.getElementById('mgr-review-date').value   = isoToBritish(addMonths(today(), REVIEW_PERIOD_MONTHS));
@@ -849,8 +923,8 @@ function openNewEditor() {
     if (newSfLink) newSfLink.style.display = 'none';
 
     // Default new templates to the admin's own team (or Global if none).
-    ensureTeamOption(currentUser.teamId, currentUser.teamName);
-    document.getElementById('mgr-scope').value = currentUser.teamId || '';
+    setEditorTeams(currentUser.teamId, currentUser.teamName,
+                   currentUser.teamCode ? [currentUser.teamCode] : []);
 
     document.getElementById('mgr-version-display').textContent = 'v1.0';
     document.getElementById('mgr-version-bump').style.display  = 'none';
@@ -875,12 +949,12 @@ function openEditEditor(name) {
 
     currentEditId      = t.id;
     currentEditVersion = t.versionLabel || '1.0';
-    editorOriginalContent = t.content || '';
 
     document.getElementById('mgr-editor-heading').textContent = 'Edit: ' + name;
     document.getElementById('mgr-name').value          = name;
     document.getElementById('mgr-category').value      = t.category      || '';
-    document.getElementById('mgr-content').value       = t.content       || '';
+    setContentHtml(t.content || '');
+    editorOriginalContent = getContentHtml();   // normalised baseline for change detection
     document.getElementById('mgr-change-reason').value = '';
     ensureStatusOption(t.status);
     document.getElementById('mgr-status').value        = t.status        || 'Active';
@@ -901,9 +975,8 @@ function openEditEditor(name) {
         else editSfLink.style.display = 'none';
     }
 
-    // Pre-select the template's current team (empty value = Global).
-    ensureTeamOption(t.teamId, t.teamName);
-    document.getElementById('mgr-scope').value = t.teamId || '';
+    // Pre-select the template's current team(s) (none = Global).
+    setEditorTeams(t.teamId, t.teamName, t.teamCodes);
 
     // The reason hint is CONSTANT (it states the rule once); only the asterisk and
     // the version preview change as you edit — updateEditorVersionUI() keeps those live.
@@ -922,9 +995,251 @@ function openEditEditor(name) {
 // Reflect whether the open edit changes CONTENT (→ new version + reason required)
 // or only metadata (status/team/category/dates → no version bump, reason optional).
 // No-op in create mode (a new template always starts a v1.0 with a reason).
+// ── Rich-text content editor (contenteditable #mgr-content) ──────────────────
+// Templates may be plain text (legacy) or sanitised HTML (formatting). These
+// read/write the contenteditable and keep stored content Salesforce-safe.
+function setContentHtml(content) {
+    var el = document.getElementById('mgr-content');
+    if (!el) return;
+    var raw = String(content || '');
+    if (!raw.trim()) { el.innerHTML = ''; updateContentCount(); return; }   // empty → placeholder
+    if (window.CyforSanitize && CyforSanitize.looksLikeHtml(raw)) {
+        el.innerHTML = CyforSanitize.html(raw);
+    } else {
+        el.innerHTML = raw.split('\n')                   // plain text → paragraphs
+            .map(function (line) { return '<p>' + (escHtml(line) || '<br>') + '</p>'; })
+            .join('');
+    }
+    updateContentCount();
+}
+
+// Live character count of the SAVED form (sanitised HTML) against the field max,
+// so the tight ~32 KB Content limit is visible before Salesforce rejects a save.
+function updateContentCount() {
+    var el = document.getElementById('mgr-rte-count');
+    if (!el) return;
+    var used = getContentHtml().length;
+    el.textContent = contentMaxLen
+        ? (used.toLocaleString() + ' / ' + contentMaxLen.toLocaleString() + ' characters')
+        : (used.toLocaleString() + ' characters');
+    el.classList.toggle('is-over', !!contentMaxLen && used > contentMaxLen);
+}
+function getContentText() {
+    var el = document.getElementById('mgr-content');
+    return el ? (el.textContent || '') : '';
+}
+function getContentHtml() {
+    var el = document.getElementById('mgr-content');
+    if (!el) return '';
+    if (!(el.textContent || '').trim()) return '';       // empty editor → empty content
+    return window.CyforSanitize ? CyforSanitize.html(el.innerHTML) : el.innerHTML;
+}
+
+// Wire the formatting toolbar to the contenteditable. Selects/colour lose the
+// editor selection, so we save/restore it around them.
+function setupContentToolbar() {
+    var editor  = document.getElementById('mgr-content');
+    var toolbar = document.getElementById('mgr-rte-toolbar');
+    if (!editor || !toolbar) return;
+
+    // Use <p> (not <div>) for new lines — cleaner HTML that Salesforce's Quill
+    // editor accepts faithfully on insertion.
+    try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { /* ignore */ }
+
+    var savedRange = null;
+    var saveSel = function () {
+        var sel = window.getSelection();
+        if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) savedRange = sel.getRangeAt(0).cloneRange();
+    };
+    var exec = function (cmd, val) {
+        editor.focus();
+        if (savedRange) { var s = window.getSelection(); s.removeAllRanges(); s.addRange(savedRange); }
+        try { document.execCommand(cmd, false, val); } catch (e) { /* ignore */ }
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        saveSel();
+    };
+
+    editor.addEventListener('keyup', saveSel);
+    editor.addEventListener('mouseup', saveSel);
+    toolbar.addEventListener('mousedown', saveSel, true); // capture the selection before focus leaves
+
+    toolbar.querySelectorAll('.mgr-rte-btn[data-cmd]').forEach(function (btn) {
+        btn.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep selection
+        btn.addEventListener('click', function () { exec(btn.getAttribute('data-cmd')); });
+    });
+    var font = document.getElementById('mgr-rte-font');
+    if (font) font.addEventListener('change', function () { if (font.value) exec('fontName', font.value); });
+
+    // execCommand's fontSize only supports 1–7; to apply an exact px size (matching
+    // Salesforce's 8–36 scale) we tag the selection with the size-7 sentinel, then
+    // rewrite those <font> nodes to an inline px style.
+    var applyFontSize = function (px) {
+        exec('fontSize', '7');
+        editor.querySelectorAll('font[size="7"]').forEach(function (f) {
+            f.removeAttribute('size');
+            f.style.fontSize = px;
+        });
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    var size = document.getElementById('mgr-rte-size');
+    if (size) size.addEventListener('change', function () { if (size.value) applyFontSize(size.value); });
+
+    var color    = document.getElementById('mgr-rte-color');
+    var colorBar = document.getElementById('mgr-rte-color-bar');
+    var setColorSwatch = function (hex) { if (colorBar && hex) colorBar.style.background = hex; };
+    if (color) color.addEventListener('input', function () { exec('foreColor', color.value); setColorSwatch(color.value); });
+
+    // Insert link — wraps the selection, or drops the URL in if nothing is selected.
+    var linkBtn = document.getElementById('mgr-rte-link');
+    if (linkBtn) {
+        linkBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        linkBtn.addEventListener('click', function () {
+            var url = window.prompt('Link URL:', 'https://');
+            if (!url) return;
+            url = url.trim();
+            if (!/^(https?:|mailto:|tel:)/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+            if (!savedRange || savedRange.collapsed) {
+                exec('insertHTML', '<a href="' + url.replace(/"/g, '%22') + '">' + url.replace(/[<>]/g, '') + '</a>');
+            } else {
+                exec('createLink', url);
+            }
+        });
+    }
+
+    // Insert image from the file picker. The Content field is small (~32 KB), so
+    // the picture is auto-shrunk (dimensions, then JPEG quality) until it fits the
+    // room left in the template before being embedded.
+    var embedImageFile = function (file) {
+        var budget = (contentMaxLen || 32768) - getContentHtml().length - 1500;
+        if (budget < 2500) {
+            setEditorStatus('Not enough room left in this template to add an image — trim the text first.', 'error');
+            return;
+        }
+        var objUrl = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+            URL.revokeObjectURL(objUrl);
+            var best = null;
+            var scales = [1, 0.85, 0.7, 0.55, 0.4, 0.3, 0.22, 0.15, 0.1];
+            for (var s = 0; s < scales.length && !best; s++) {
+                var cw = Math.max(1, Math.round(img.width  * scales[s]));
+                var ch = Math.max(1, Math.round(img.height * scales[s]));
+                // PNG first (keeps transparency)…
+                var cv = document.createElement('canvas');
+                cv.width = cw; cv.height = ch;
+                cv.getContext('2d').drawImage(img, 0, 0, cw, ch);
+                var png = cv.toDataURL('image/png');
+                if (png.length <= budget) { best = png; break; }
+                // …else JPEG on a white background at decreasing quality.
+                var cj = document.createElement('canvas');
+                cj.width = cw; cj.height = ch;
+                var jx = cj.getContext('2d');
+                jx.fillStyle = '#ffffff'; jx.fillRect(0, 0, cw, ch);
+                jx.drawImage(img, 0, 0, cw, ch);
+                [0.85, 0.7, 0.55, 0.4].forEach(function (q) {
+                    if (best) return;
+                    var jpg = cj.toDataURL('image/jpeg', q);
+                    if (jpg.length <= budget) best = jpg;
+                });
+            }
+            if (!best) {
+                setEditorStatus('That image is too large to fit this template even after shrinking — use a smaller image, or trim the text.', 'error');
+                return;
+            }
+            exec('insertImage', best);
+        };
+        img.onerror = function () { URL.revokeObjectURL(objUrl); setEditorStatus('Could not read that image file.', 'error'); };
+        img.src = objUrl;
+    };
+    var imageBtn  = document.getElementById('mgr-rte-image');
+    var imageFile = document.getElementById('mgr-rte-image-file');
+    if (imageBtn && imageFile) {
+        imageBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        imageBtn.addEventListener('click', function () { imageFile.click(); });
+        imageFile.addEventListener('change', function () {
+            var file = imageFile.files && imageFile.files[0];
+            imageFile.value = '';
+            if (file) embedImageFile(file);
+        });
+    }
+
+    // ── Live selection readout (like Word): reflect the formatting of the text at
+    // the cursor / selection in the toolbar; blank a control when the selection
+    // spans more than one value. ────────────────────────────────────────────────
+    var rgbToHex = function (rgb) {
+        var m = String(rgb || '').match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (!m) return '';
+        return '#' + [m[1], m[2], m[3]].map(function (n) {
+            var h = (+n).toString(16); return h.length === 1 ? '0' + h : h;
+        }).join('');
+    };
+    var nodeOf = function (n) { return n && n.nodeType === 3 ? n.parentElement : n; };
+    // The colour the text will ACTUALLY be: the nearest explicit colour set on it,
+    // or black if none (the default). NOT the computed colour — in dark mode that's
+    // white for default text, which would mislead, since it's black in Salesforce.
+    var effectiveColor = function (node) {
+        var el = nodeOf(node);
+        while (el && el !== editor && editor.contains(el)) {
+            if (el.style && el.style.color) return rgbToHex(window.getComputedStyle(el).color) || '#000000';
+            el = el.parentElement;
+        }
+        return '#000000';
+    };
+    var markActive = function (cmd, on) {
+        var btn = toolbar.querySelector('.mgr-rte-btn[data-cmd="' + cmd + '"]');
+        if (btn) btn.classList.toggle('is-active', !!on);
+    };
+    var updateToolbarState = function () {
+        var sel = window.getSelection();
+        if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+        ['bold', 'italic', 'underline', 'strikeThrough',
+         'insertUnorderedList', 'insertOrderedList',
+         'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull'].forEach(function (cmd) {
+            var on = false; try { on = document.queryCommandState(cmd); } catch (e) {}
+            markActive(cmd, on);
+        });
+        var a = nodeOf(sel.anchorNode), fo = nodeOf(sel.focusNode);
+        if (!a) return;
+        var csA = window.getComputedStyle(a);
+        var csF = fo ? window.getComputedStyle(fo) : csA;
+        if (font) {
+            var sameFam = csA.fontFamily === csF.fontFamily;
+            var match = sameFam ? Array.prototype.filter.call(font.options, function (o) {
+                return o.value && csA.fontFamily.toLowerCase().indexOf(o.value.toLowerCase()) !== -1;
+            })[0] : null;
+            font.value = match ? match.value : '';
+        }
+        if (size) {
+            var pxA = Math.round(parseFloat(csA.fontSize)) + 'px';
+            var pxF = Math.round(parseFloat(csF.fontSize)) + 'px';
+            var known = Array.prototype.some.call(size.options, function (o) { return o.value === pxA; });
+            size.value = (pxA === pxF && known) ? pxA : '';
+        }
+        if (color) { var hex = effectiveColor(sel.anchorNode); color.value = hex; setColorSwatch(hex); }
+    };
+    document.addEventListener('selectionchange', function () {
+        var an = window.getSelection().anchorNode;
+        if (document.activeElement === editor || (an && editor.contains(an))) updateToolbarState();
+    });
+    editor.addEventListener('keyup', updateToolbarState);
+    editor.addEventListener('mouseup', updateToolbarState);
+    editor.addEventListener('focus', updateToolbarState);
+
+    // Paste keeps formatting but sanitised (Word junk / tables / scripts removed).
+    editor.addEventListener('paste', function (e) {
+        var cb = e.clipboardData;
+        if (!cb) return;
+        e.preventDefault();
+        var html = cb.getData('text/html');
+        if (html && window.CyforSanitize) document.execCommand('insertHTML', false, CyforSanitize.html(html));
+        else document.execCommand('insertText', false, cb.getData('text/plain') || '');
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+}
+
 function updateEditorVersionUI() {
     if (!currentEditId) return;
-    var changed     = document.getElementById('mgr-content').value !== editorOriginalContent;
+    var changed     = getContentHtml() !== editorOriginalContent;
     var bumpWrap    = document.getElementById('mgr-version-bump');
     var versionDisp = document.getElementById('mgr-version-display');
     var reasonReq   = document.getElementById('mgr-change-reason-req');
@@ -956,12 +1271,14 @@ function openViewModal(name) {
     var meta = [];
     if (t.versionLabel)  meta.push('v' + t.versionLabel);
     if (t.category)      meta.push(t.category);
-    meta.push(t.teamName || t.teamCode || 'Global');
+    meta.push((t.teamCodes && t.teamCodes.length) ? t.teamCodes.join(', ') : (t.teamName || t.teamCode || 'Global'));
     if (t.reviewDueDate) meta.push('Review due ' + formatDate(t.reviewDueDate));
+    var rich = window.CyforSanitize && CyforSanitize.looksLikeHtml(t.content);
     mgrModal({
         title:        name,
         body:         meta.join('  ·  '),
-        preBody:      t.content || '(empty)',
+        preBody:      rich ? null : (t.content || '(empty)'),
+        preHtml:      rich ? t.content : null,
         confirmLabel: 'Close',
         alert:        true
     });
@@ -982,31 +1299,36 @@ function openCloneEditor(name) {
     document.getElementById('mgr-editor-heading').textContent = 'New Template — cloned from “' + name + '”';
     document.getElementById('mgr-name').value          = newName;
     document.getElementById('mgr-category').value      = t.category || '';
-    document.getElementById('mgr-content').value       = t.content  || '';
+    setContentHtml(t.content || '');
     document.getElementById('mgr-change-reason').value =
         'Cloned from "' + name + '"' + (t.versionLabel ? ' v' + t.versionLabel : '');
     // Drafts stay out of analysts' sync until an admin activates them.
     ensureStatusOption('Draft');
     document.getElementById('mgr-status').value = 'Draft';
-    ensureTeamOption(t.teamId, t.teamName);
-    document.getElementById('mgr-scope').value  = t.teamId || '';
+    setEditorTeams(t.teamId, t.teamName, t.teamCodes);
     syncCustomSelect('mgr-status');
-    syncCustomSelect('mgr-scope');
     document.getElementById('mgr-name').focus();
 }
 
 function saveTemplate() {
     var name         = (document.getElementById('mgr-name').value          || '').trim();
     var category     = (document.getElementById('mgr-category').value      || '').trim();
-    var content      =  document.getElementById('mgr-content').value;
+    var content      =  getContentHtml();
     var changeReason = (document.getElementById('mgr-change-reason').value || '').trim();
     var status       =  document.getElementById('mgr-status').value        || 'Active';
     var effRaw       = (document.getElementById('mgr-effective-date').value || '').trim();
     var revRaw       = (document.getElementById('mgr-review-date').value    || '').trim();
     var teamId       = (document.getElementById('mgr-scope') || {}).value;   // '' = Global
+    var teamCodes    = multiTeamEnabled ? collectMultiTeamCodes() : null;    // [] = Global
 
-    if (!name)           { setEditorStatus('Name is required.', 'error'); return; }
-    if (!content.trim()) { setEditorStatus('Content is required.', 'error'); return; }
+    if (!name)                    { setEditorStatus('Name is required.', 'error'); return; }
+    if (!getContentText().trim()) { setEditorStatus('Content is required.', 'error'); return; }
+    if (contentMaxLen && content.length > contentMaxLen) {
+        setEditorStatus('Content is too long: ' + content.length.toLocaleString() + ' / '
+            + contentMaxLen.toLocaleString() + ' characters (formatting counts too). '
+            + 'Trim it, or link images by URL instead of large formatting.', 'error');
+        return;
+    }
 
     var effectiveDate = effRaw ? britishToIso(effRaw) : null;
     var reviewDueDate = revRaw ? britishToIso(revRaw) : null;
@@ -1069,6 +1391,9 @@ function saveTemplate() {
             reviewDueDate: reviewDueDate
         };
     }
+    // In multi-team mode the picklist codes are the source of truth (the background
+    // then clears the legacy single lookup). teamId is left for the single-team org.
+    if (multiTeamEnabled) payload.teamCodes = teamCodes;
 
     chrome.runtime.sendMessage({ action: action, payload: payload }, function (response) {
         saveBtn.disabled    = false;
@@ -1076,6 +1401,11 @@ function saveTemplate() {
 
         if (chrome.runtime.lastError || !response || !response.ok) {
             var err = (response && response.error) || 'Save failed — please try again.';
+            if (/too large|data value too large/i.test(err)) {
+                err = 'This template is too long for Salesforce to store'
+                    + (contentMaxLen ? ' (max ' + contentMaxLen.toLocaleString() + ' characters' : ' (limited')
+                    + ', and formatting/links count too). Trim the content, or link any image by URL.';
+            }
             setEditorStatus('Error: ' + err, 'error');
             return;
         }
@@ -1107,7 +1437,12 @@ function mgrModal(opts) {
         dialog.appendChild(p);
 
         // Optional monospace, scrollable content block (template viewing).
-        if (opts.preBody) {
+        if (opts.preHtml) {
+            var richBox = document.createElement('div');
+            richBox.className = 'mgr-modal-rich';
+            richBox.innerHTML = window.CyforSanitize ? CyforSanitize.html(opts.preHtml) : '';
+            dialog.appendChild(richBox);
+        } else if (opts.preBody) {
             var pre = document.createElement('pre');
             pre.className = 'mgr-modal-pre';
             pre.textContent = opts.preBody;
@@ -1442,6 +1777,11 @@ function runCompare() {
 }
 
 function showDiff(fromLabel, fromContent, toLabel, toContent) {
+    // Diff readable plain text, not HTML markup, for rich templates.
+    if (window.CyforSanitize) {
+        fromContent = CyforSanitize.toText(fromContent);
+        toContent   = CyforSanitize.toText(toContent);
+    }
     var oldLines = (fromContent || '').split('\n');
     var newLines = (toContent   || '').split('\n');
     var diff     = computeDiff(oldLines, newLines);
@@ -1599,7 +1939,8 @@ function escHtml(str) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');   // also escape ' so it's safe in single-quoted attrs too
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────

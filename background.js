@@ -25,11 +25,68 @@ try {
     console.error('[CYFOR] Failed to load OAuth modules:', e);
 }
 
-const DEFAULT_COLUMN_ORDER = [
-    'Process Ref', 'Record Type', 'Type', 'Exhibit',
-    'Exhibit Type', 'Status', 'Start Date/Time',
-    'End Date/Time', 'Completed By', 'Notes'
-];
+// ── Opt-in debug logging (service-worker console). Off by default; flip with
+// chrome.storage.local.set({ cyforDebug: true }). See docs/Nucleus_Enhancer_Diagnostics.md.
+// Capture buffer — fills only while debug is on; downloaded from the popup. Hard-
+// capped at DEBUG_MAX entries so it can never grow without bound.
+var debugBuffer = [];
+var DEBUG_MAX   = 2000;
+var _persistT   = null;
+
+// Safety net: a forgotten toggle auto-switches OFF and bins its buffer after a
+// day, so diagnostics can never keep logging — or hold storage — indefinitely.
+var CYFOR_DEBUG  = false;
+var _debugExpiry = 0;
+var DEBUG_TTL_MS = 24 * 60 * 60 * 1000;
+function _checkDebugExpiry() {
+    if (_debugExpiry && Date.now() > _debugExpiry) {
+        CYFOR_DEBUG = false;
+        _debugExpiry = 0;
+        debugBuffer = [];
+        try { chrome.storage.local.set({ cyforDebug: false, cyforDebugExpiry: null, cyforDebugLog: [] }); } catch (e) { /* ignore */ }
+        return true;
+    }
+    return false;
+}
+try {
+    chrome.storage.local.get(['cyforDebug', 'cyforDebugExpiry', 'cyforDebugLog'], function (r) {
+        CYFOR_DEBUG  = !!(r && r.cyforDebug);
+        _debugExpiry = (r && r.cyforDebugExpiry) || 0;
+        if (r && Array.isArray(r.cyforDebugLog)) debugBuffer = r.cyforDebugLog.slice(-DEBUG_MAX);
+        _checkDebugExpiry();   // clear a forgotten session on every worker startup
+    });
+    chrome.storage.onChanged.addListener(function (c, area) {
+        if (area !== 'local') return;
+        if (c.cyforDebug) CYFOR_DEBUG = !!c.cyforDebug.newValue;
+        if (c.cyforDebugExpiry) _debugExpiry = c.cyforDebugExpiry.newValue || 0;
+    });
+} catch (e) { /* storage unavailable — stay off */ }
+function _persistDebug() {
+    if (_persistT) return;
+    _persistT = setTimeout(function () {
+        _persistT = null;
+        try { chrome.storage.local.set({ cyforDebugLog: debugBuffer }); } catch (e) { /* ignore */ }
+    }, 1500);
+}
+function pushDebug(entry) {
+    if (!entry) return;
+    debugBuffer.push(entry);
+    if (debugBuffer.length > DEBUG_MAX) debugBuffer.splice(0, debugBuffer.length - DEBUG_MAX);
+    _persistDebug();
+}
+function _argsToText(args) {
+    return args.map(function (a) {
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a); } catch (e) { return String(a); }
+    }).join(' ');
+}
+function dlog(area) {
+    if (!CYFOR_DEBUG || _checkDebugExpiry()) return;
+    var args = Array.prototype.slice.call(arguments, 1);
+    try { console.log.apply(console, ['[Cyfor:' + area + ']'].concat(args)); } catch (e) { /* ignore */ }
+    pushDebug({ t: Date.now(), src: 'bg', area: area, text: _argsToText(args) });
+}
+self.dlog = dlog;
 
 // Relay registered keyboard commands to the active tab
 chrome.commands.onCommand.addListener((command) => {
@@ -255,6 +312,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // and enforces the boundary regardless).
     if (!sender || sender.id !== chrome.runtime.id) return;
     if (!message || !message.action) return;
+
+    // Diagnostics capture buffer (content-script forwarding + popup controls).
+    if (message.action === 'cyforDbg') { pushDebug(message.entry); return; }   // fire-and-forget
+    if (message.action === 'diag.count') { sendResponse({ ok: true, count: debugBuffer.length }); return true; }
+    if (message.action === 'diag.get')   { sendResponse({ ok: true, entries: debugBuffer }); return true; }
+    if (message.action === 'diag.clear') {
+        debugBuffer = [];
+        try { chrome.storage.local.set({ cyforDebugLog: [] }); } catch (e) { /* ignore */ }
+        sendResponse({ ok: true }); return true;
+    }
 
     // Health check
     if (message.action === 'ping') {
@@ -613,17 +680,24 @@ async function sfTemplateCrud(op, payload) {
         if (payload.teamScope === 'global') return null;
         return user.teamId || null;
     };
+    // Multi-team assignment (when the Salesforce multi-select team field exists):
+    // the manager sends teamCodes (array of codes; empty = Global). It becomes the
+    // source of truth, so the legacy single Team__c lookup is cleared in that mode.
+    var multiMode  = Array.isArray(payload.teamCodes);
+    var teamsValue = multiMode ? payload.teamCodes.filter(Boolean).join(';') : '';
     // Only "Active" status publishes to analysts (others stay hidden from sync).
     var isActiveForStatus = function () { return (payload.status || 'Active') === 'Active'; };
 
     var response, errBody;
+    dlog('crud', op, { name: payload.name, multiTeam: multiMode, teams: teamsValue, status: payload.status });
 
     if (op === 'create') {
         var createBody = { Name: payload.name };
         if (map.content)  createBody[map.content]  = payload.content;
         if (map.category) createBody[map.category] = payload.category || '';
         if (map.active)   createBody[map.active]   = isActiveForStatus();
-        if (map.team)     createBody[map.team]     = resolveTeamId();
+        if (map.team)     createBody[map.team]     = multiMode ? null : resolveTeamId();
+        if (map.teamsMulti && multiMode) createBody[map.teamsMulti] = teamsValue;
         if (map.versionLabel)  createBody[map.versionLabel]  = payload.versionLabel || '1.0';
         if (map.status)        createBody[map.status]        = payload.status || 'Active';
         if (map.changeReason)  createBody[map.changeReason]  = payload.changeReason || 'Initial version';
@@ -657,7 +731,8 @@ async function sfTemplateCrud(op, payload) {
         if (map.content)  updateBody[map.content]  = payload.content;
         if (map.category) updateBody[map.category] = payload.category || '';
         if (map.active)   updateBody[map.active]   = isActiveForStatus();
-        if (map.team)     updateBody[map.team]     = resolveTeamId();
+        if (map.team)     updateBody[map.team]     = multiMode ? null : resolveTeamId();
+        if (map.teamsMulti && multiMode) updateBody[map.teamsMulti] = teamsValue;
         if (map.versionLabel)  updateBody[map.versionLabel]  = payload.versionLabel || '1.1';
         if (map.status)        updateBody[map.status]        = payload.status || 'Active';
         // Only write a change reason when one was supplied (content edits). A

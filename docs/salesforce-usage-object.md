@@ -1,6 +1,6 @@
 # Salesforce spec — org-wide template usage log (`NucleusTemplateUsage__c`)
 
-**For:** Callum (Salesforce admin)
+**For:** the Salesforce administrator
 **Goal:** one record per template insertion, org-wide — so template admins can see which templates are actually used, by whom, and where (UKAS evidence of template adoption). The extension **already ships the client for this, dormant**: the moment this object exists, usage starts recording automatically — no extension update needed.
 
 ## Object

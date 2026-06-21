@@ -6,7 +6,8 @@
 var PROCESS_TYPES = [
     'Administration', 'Analysis', 'Archiving', 'Cell Site Analysis',
     'Device Repair', 'eDiscovery', 'Forensic Strategy', 'Grading',
-    'Imaging', 'Pre-imaging', 'Processing', 'QA', 'Reporting', 'Submission'
+    'Imaging', 'Pre-imaging', 'Processing', 'QA', 'Reporting',
+    'Sense Check', 'Submission'
 ];
 
 function initTemplates(savedMap) {

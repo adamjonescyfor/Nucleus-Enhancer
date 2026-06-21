@@ -81,6 +81,8 @@ Cyfor.usage = {
         // and enrich it with the record the user lands on after Save (e.g. New
         // Process modal → the new EP-xxxx page). Anywhere else with no record in
         // the URL, log immediately as before (there's no id to be had).
+        var route = entry.recordId ? 'flush(has-id)' : (this._inModal() ? 'defer(modal)' : 'flush(no-id)');
+        Cyfor.log('usage', 'record', { template: entry.template, recordId: entry.recordId, route });
         if (entry.recordId)       this._flush(entry);
         else if (this._inModal()) this._defer(entry);
         else                      this._flush(entry);

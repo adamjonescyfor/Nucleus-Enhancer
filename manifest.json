@@ -25,9 +25,22 @@
         "https://*.workers.dev/*"
     ],
 
+    "icons": {
+        "16": "icons/icon16.png",
+        "32": "icons/icon32.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+
     "action": {
         "default_popup": "popup/popup.html",
-        "default_title": "CYFOR Nucleus Enhancer"
+        "default_title": "CYFOR Nucleus Enhancer",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
     },
 
     "options_page": "manager/manager.html",
@@ -64,11 +77,13 @@
             "js": [
                 "content/theme-apply.js",
                 "content/utils.js",
+                "content/debug.js",
                 "content/config.js",
                 "content/toast.js",
                 "content/undo.js",
                 "content/usage.js",
                 "content/builtin-templates.js",
+                "lib/sanitize-html.js",
                 "content/editor.js",
                 "content/datetime.js",
                 "content/navigation.js",

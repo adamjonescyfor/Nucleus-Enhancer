@@ -5,6 +5,9 @@
 
 // Module-level cache to avoid read-modify-write race (M-6)
 var columnPrefsMap = {};
+// The table's NATURAL (pre-reorder) column order, from the content script — used
+// so "Reset" shows the true default instead of the currently-reordered order.
+var currentNaturalColumns = [];
 
 // Preset storage helpers (L-7)
 // Format: columnPrefsMap[contextId] may be string[] (legacy) or { default: string[], presets: [{name, order}] }
@@ -58,7 +61,13 @@ function renderPresetBar() {
         deleteBtn.style.display = select.value ? '' : 'none';
         if (select.value) {
             var p = prefs.presets.find(function (x) { return x.name === select.value; });
-            if (p) renderColumnList(p.order);
+            if (p) {
+                renderColumnList(p.order);
+                // Actually APPLY the preset: make it the active order so the live
+                // table reorders and it persists — not just a popup-only preview.
+                setContextDefault(currentTableContextId, p.order);
+                chrome.storage.local.set({ tableColumnPrefs: columnPrefsMap });
+            }
         }
     };
 
@@ -86,6 +95,7 @@ function requestActiveTableColumns(tabId) {
 
         currentTableContextId = response.contextId;
         currentTableColumns = response.columns;
+        currentNaturalColumns = response.naturalColumns || response.columns;
 
         var displayContext = currentTableContextId.replace('__c', '').replace('__r', '').replace(/_/g, ' ');
         if (displayContext.startsWith('Table')) displayContext = 'Custom Table';
@@ -193,6 +203,10 @@ function bindColumnEvents() {
             if (!name) return;
             name = name.trim();
             if (!name) return;
+            // If the name already exists, make the overwrite explicit rather than
+            // silently replacing it.
+            var clash = getContextPrefs(currentTableContextId).presets.some(function (p) { return p.name === name; });
+            if (clash && !confirm('A preset named “' + name + '” already exists. Overwrite it?')) return;
             var items = Array.from(els.columnList.querySelectorAll('.sortable-item'));
             var order = items.map(function (item) { return item.getAttribute('data-name'); });
             addPreset(currentTableContextId, name, order);
@@ -228,8 +242,10 @@ function bindColumnEvents() {
 
         setContextDefault(currentTableContextId, []);
         chrome.storage.local.set({ tableColumnPrefs: columnPrefsMap }, function () {
-            renderColumnList(currentTableColumns);
-            els.columnList.style.backgroundColor = '#f0f7ff';
+            // Show the NATURAL order (Salesforce's default), not the order the table
+            // was just reordered FROM — otherwise the list looks unchanged on Reset.
+            renderColumnList(currentNaturalColumns);
+            els.columnList.style.backgroundColor = 'var(--accent-soft)';
             setTimeout(function () { els.columnList.style.backgroundColor = ''; }, 300);
         });
     });

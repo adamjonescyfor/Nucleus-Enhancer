@@ -201,6 +201,7 @@ Cyfor.templates = {
         const allKeys = Object.keys(templates).sort((a, b) =>
             a.toLowerCase().localeCompare(b.toLowerCase())
         );
+        Cyfor.log('templates', 'menu populated', { count: allKeys.length, forensic: Cyfor.editor.isForensicStrategyField(container) });
 
         // Pin Forensic Strategy template to top if appropriate
         const baseKeys = (Cyfor.editor.isForensicStrategyField(container))
@@ -450,6 +451,7 @@ Cyfor.templates = {
 
         Cyfor.editor.insertIntoContainer(container, templateText, templateName)
             .then((success) => {
+                Cyfor.log('templates', 'auto-insert', { name: templateName, ok: !!success });
                 if (success) {
                     Cyfor.toast.info(`Auto-inserted "${templateName}"`, 3000, {
                         label: 'Undo',
@@ -489,6 +491,7 @@ Cyfor.templates = {
         const templateText = Cyfor.config.templates[templateName];
         if (!templateText) return;
 
+        Cyfor.log('templates', 'suggest', { processType, name: templateName });
         Cyfor.toast.info(`Suggested for "${processType}": ${templateName}`, 6000, {
             label: 'Insert',
             onClick: () => {

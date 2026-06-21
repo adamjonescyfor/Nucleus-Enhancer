@@ -17,7 +17,7 @@
     <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
     <aside class="mgr-sidebar">
         <div class="mgr-brand">
-            <span class="mgr-brand-mark">C</span>
+            <span class="mgr-brand-mark"><svg class="mgr-brand-glyph" viewBox="0 0 128 128" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"><ellipse cx="64" cy="64" rx="40" ry="16.5" transform="rotate(-30 64 64)"/><ellipse cx="64" cy="64" rx="40" ry="16.5" transform="rotate(30 64 64)"/></g><circle cx="64" cy="64" r="12" fill="currentColor"/></svg></span>
             <span class="mgr-brand-text">CYFOR<small>Template Manager</small></span>
         </div>
 
@@ -232,11 +232,16 @@
                 <section class="mgr-form-section">
                     <h4 class="mgr-form-section-title">Scope, version &amp; control dates</h4>
                     <div class="mgr-field-row">
-                        <div class="mgr-field mgr-field--third">
+                        <div class="mgr-field mgr-field--third" id="mgr-scope-single-field">
                             <label class="mgr-label" for="mgr-scope">Team <small>(who sees this)</small></label>
                             <select id="mgr-scope" class="mgr-input">
                                 <option value="">Global (all teams)</option>
                             </select>
+                        </div>
+                        <div class="mgr-field mgr-field--third" id="mgr-scope-multi-field" hidden>
+                            <label class="mgr-label">Teams <small>(who sees this)</small></label>
+                            <div id="mgr-scope-multi" class="mgr-team-multi" role="group" aria-label="Teams"></div>
+                            <small class="mgr-team-multi-hint">Tick the teams that should see this. Leave all unticked for Global (everyone).</small>
                         </div>
                         <div class="mgr-field mgr-field--third">
                             <label class="mgr-label" for="mgr-effective-date">Effective Date</label>
@@ -278,7 +283,58 @@
                     </div>
                     <div class="mgr-field">
                         <label class="mgr-label" for="mgr-content">Content <span class="mgr-required">*</span></label>
-                        <textarea id="mgr-content" class="mgr-textarea" rows="18" spellcheck="false" placeholder="Template body…"></textarea>
+                        <div class="mgr-rte">
+                            <div class="mgr-rte-toolbar" id="mgr-rte-toolbar" role="toolbar" aria-label="Formatting">
+                                <select class="mgr-rte-select" id="mgr-rte-font" title="Font" aria-label="Font">
+                                    <option value="">Font</option>
+                                    <option value="Salesforce Sans">Salesforce Sans</option>
+                                    <option value="Arial">Arial</option>
+                                    <option value="Calibri">Calibri</option>
+                                    <option value="Courier New">Courier New</option>
+                                    <option value="Georgia">Georgia</option>
+                                    <option value="Tahoma">Tahoma</option>
+                                    <option value="Times New Roman">Times New Roman</option>
+                                    <option value="Verdana">Verdana</option>
+                                </select>
+                                <select class="mgr-rte-select" id="mgr-rte-size" title="Font size" aria-label="Font size">
+                                    <option value="">Size</option>
+                                    <option value="8px">8</option>
+                                    <option value="10px">10</option>
+                                    <option value="11px">11</option>
+                                    <option value="12px">12</option>
+                                    <option value="13px">13</option>
+                                    <option value="14px">14</option>
+                                    <option value="16px">16</option>
+                                    <option value="18px">18</option>
+                                    <option value="24px">24</option>
+                                    <option value="36px">36</option>
+                                </select>
+                                <label class="mgr-rte-color" title="Text colour"><span class="mgr-rte-color-a">A</span><span class="mgr-rte-color-bar" id="mgr-rte-color-bar"></span><input type="color" id="mgr-rte-color" value="#000000"></label>
+                                <span class="mgr-rte-sep"></span>
+                                <button type="button" class="mgr-rte-btn" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+                                <span class="mgr-rte-sep"></span>
+                                <button type="button" class="mgr-rte-btn" data-cmd="insertUnorderedList" title="Bulleted list">&#8226;&#8801;</button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="insertOrderedList" title="Numbered list">1.&#8801;</button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="outdent" title="Decrease indent">&#8676;</button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="indent" title="Increase indent">&#8677;</button>
+                                <span class="mgr-rte-sep"></span>
+                                <button type="button" class="mgr-rte-btn" data-cmd="justifyLeft" title="Align left"><svg class="mgr-rte-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M2 4h12M2 8h8M2 12h11"/></svg></button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="justifyCenter" title="Align centre"><svg class="mgr-rte-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M2 4h12M4 8h8M3 12h10"/></svg></button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="justifyRight" title="Align right"><svg class="mgr-rte-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M2 4h12M6 8h8M3 12h11"/></svg></button>
+                                <button type="button" class="mgr-rte-btn" data-cmd="justifyFull" title="Justify"><svg class="mgr-rte-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg></button>
+                                <span class="mgr-rte-sep"></span>
+                                <button type="button" class="mgr-rte-btn" id="mgr-rte-link" title="Insert link"><svg class="mgr-rte-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.9 12a3.1 3.1 0 013.1-3.1h4V7H7a5 5 0 000 10h4v-1.9H7A3.1 3.1 0 013.9 12zM8 13h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 010 6.2h-4V17h4a5 5 0 000-10z"/></svg></button>
+                                <button type="button" class="mgr-rte-btn" id="mgr-rte-image" title="Insert image"><svg class="mgr-rte-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 16H5l3.5-4.5 2.5 3 3.5-4.5L19 19z"/></svg></button>
+                                <span class="mgr-rte-sep"></span>
+                                <button type="button" class="mgr-rte-btn" data-cmd="removeFormat" title="Clear formatting">&#10005;</button>
+                                <input type="file" id="mgr-rte-image-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                            </div>
+                            <div id="mgr-content" class="mgr-rte-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Template content" spellcheck="true" data-placeholder="Template body… (paste from Word keeps formatting; tables aren't supported by Salesforce notes)"></div>
+                            <div class="mgr-rte-count" id="mgr-rte-count" aria-live="polite"></div>
+                        </div>
                     </div>
                 </section>
 
@@ -368,6 +424,7 @@
 </div>
 
     <script src="../config.js"></script>
+    <script src="../lib/sanitize-html.js"></script>
     <script src="../styles/custom-select.js"></script>
     <script src="manager.js"></script>
 </body>

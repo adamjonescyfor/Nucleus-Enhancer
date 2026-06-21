@@ -197,7 +197,9 @@ function loadSettings(settingsStore) {
 
             var row = el.closest('.option-row');
             if (row) {
-                row.style.backgroundColor = '#f0f7ff';
+                // Theme-aware "saved" flash (was a hardcoded light blue that hid
+                // the light text in dark mode).
+                row.style.backgroundColor = 'var(--accent-soft)';
                 setTimeout(function () { row.style.backgroundColor = ''; }, 300);
             }
         });

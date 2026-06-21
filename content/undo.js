@@ -65,6 +65,7 @@ Cyfor.undo = {
             `Undid "${entry.templateName}" (${timeSince})`,
             3000
         );
+        Cyfor.log('undo', 'undid', { name: entry.templateName, remaining: this._stack.length });
 
         return true;
     },

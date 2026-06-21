@@ -1,10 +1,10 @@
 # Salesforce spec — automatic version history for Nucleus Templates
 
-**For:** Callum (Salesforce admin)
+**For:** the Salesforce administrator
 **Goal:** make **every** change to a template create a version-history snapshot — including edits made **directly in Salesforce**, not just edits made through the Nucleus Enhancer extension. This closes the only gap between "manage in the extension" and "manage in Salesforce".
 
 > ## ✅ Status: DEPLOYED & ACTIVE (2026‑06‑08)
-> The record‑triggered Flow below is **live** in Salesforce (Callum), and the
+> The record‑triggered Flow below is **live** in Salesforce, and the
 > extension's own archiving has been **removed** (the `archiveCurrentVersion` call
 > on update is gone) so each edit snapshots exactly **once**. The custom
 > "Changed By / Changed By Email" fields have been retired — who/when now comes

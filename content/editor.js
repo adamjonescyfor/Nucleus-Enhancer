@@ -206,8 +206,35 @@ Cyfor.editor = {
      * NOTE: Does NOT reposition cursor — lets it stay wherever the user/Quill
      * placed it. This matches the original behavior and avoids fighting Quill.
      */
+    /**
+     * Insert rich HTML by simulating a paste, which Quill converts through its own
+     * clipboard matchers — handling multi-block content that execCommand mangles
+     * (it tends to drop everything after the first block). Returns true only if a
+     * handler consumed the event; returns false where synthetic clipboard data
+     * isn't supported, so the caller falls back to execCommand.
+     */
+    _pasteRichHtml(editor, html) {
+        try {
+            const dt = new DataTransfer();
+            dt.setData('text/html', html);
+            dt.setData('text/plain', window.CyforSanitize ? CyforSanitize.toText(html) : '');
+            const evt = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+            // Bail if this platform doesn't carry clipboardData on synthetic events.
+            if (!evt.clipboardData || evt.clipboardData.getData('text/html') !== html) return false;
+            const notCancelled = editor.dispatchEvent(evt);
+            return notCancelled === false || evt.defaultPrevented;
+        } catch (e) {
+            return false;
+        }
+    },
+
     insertText(editor, text, templateName) {
         if (!editor || !text) return false;
+
+        // Rich templates are stored as HTML; detect on the raw content (before
+        // variable substitution, which never adds/removes tags).
+        const SAN = window.CyforSanitize;
+        const isHtml = !!(SAN && SAN.looksLikeHtml(text));
 
         // Apply variable substitution before inserting (L-1)
         text = this.substituteVariables(text);
@@ -224,28 +251,41 @@ Cyfor.editor = {
 
         let inserted = false;
 
-        // Method 1: execCommand (works with Quill's undo stack)
-        try {
-            inserted = document.execCommand('insertText', false, text);
-        } catch (e) { /* fall through to the next insert method */ }
-
-        // Method 2: insertHTML with proper paragraph structure
-        if (!inserted) {
-            try {
-                const html = text.split('\n')
-                    .map(line => `<p>${Cyfor.utils.escapeHtml(line) || '<br>'}</p>`)
-                    .join('');
-                inserted = document.execCommand('insertHTML', false, html);
-            } catch (e) { /* fall through to the next insert method */ }
-        }
-
-        // Method 3: Direct DOM manipulation (last resort)
-        if (!inserted) {
-            editor.innerText += text;
-            // Trigger Quill normalisation immediately so innerHTML is consistent
-            // before Cyfor.undo captured the pre-insertion state is relied upon
-            editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            inserted = true;
+        if (isHtml && SAN) {
+            // Insert SANITISED HTML so Salesforce keeps the formatting it supports
+            // (bold/italic/underline, lists, colour, font, size); tables, scripts
+            // and Word junk are stripped (Quill rejects them anyway).
+            const clean = SAN.html(text);
+            // Quill ingests multi-block rich HTML reliably through its OWN paste
+            // pipeline; execCommand('insertHTML') often drops everything after the
+            // first block. Try a synthetic paste first, then fall back.
+            let method = '';
+            inserted = this._pasteRichHtml(editor, clean);
+            if (inserted) method = 'paste';
+            if (!inserted) {
+                try { inserted = document.execCommand('insertHTML', false, clean); if (inserted) method = 'insertHTML'; }
+                catch (e) { /* fall through */ }
+            }
+            if (!inserted) {
+                try { inserted = document.execCommand('insertText', false, SAN.toText(text)); if (inserted) method = 'insertText(plain)'; }
+                catch (e) { /* fall through */ }
+            }
+            if (!inserted) { editor.innerHTML += clean; inserted = true; method = 'innerHTML'; }
+            Cyfor.log('insert', 'rich template', { name: templateName, method, chars: clean.length });
+        } else {
+            // Plain text — original behaviour.
+            try { inserted = document.execCommand('insertText', false, text); }
+            catch (e) { /* fall through to the next insert method */ }
+            if (!inserted) {
+                try {
+                    const html = text.split('\n')
+                        .map(line => `<p>${Cyfor.utils.escapeHtml(line) || '<br>'}</p>`)
+                        .join('');
+                    inserted = document.execCommand('insertHTML', false, html);
+                } catch (e) { /* fall through to the next insert method */ }
+            }
+            if (!inserted) { editor.innerText += text; inserted = true; }
+            Cyfor.log('insert', 'plain template', { name: templateName, ok: inserted });
         }
 
         // Notify framework of changes

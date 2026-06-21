@@ -36,6 +36,7 @@ Cyfor.datetime = {
                     || this._fieldByLabel(this._downField.label) || el;
             }
             if (!el || typeof el.closest !== 'function') return;
+            Cyfor.log('rightclick', 'field resolved', { tag: el.tagName, cls: el.className, usedDownField: !inField(e.target) });
 
             // Find the Lightning date/time picker around the click. Forgiving of
             // landing on the calendar icon, the field padding, or a wrapper rather
@@ -67,11 +68,13 @@ Cyfor.datetime = {
                 Cyfor.utils.setFieldValue(input, value);
                 Cyfor.utils.flashElement(input);
                 Cyfor.toast.success(`Time set to ${value}`, 1500);
+                Cyfor.log('rightclick', 'time set', { value });
             } else {
                 const value = now.toLocaleDateString('en-GB');
                 Cyfor.utils.setFieldValue(input, value);
                 Cyfor.utils.flashElement(input);
                 Cyfor.toast.success(`Date set to ${value}`, 1500);
+                Cyfor.log('rightclick', 'date set', { value });
             }
         };
 
@@ -137,6 +140,7 @@ Cyfor.datetime = {
                 pick.click();
                 Cyfor.utils.flashElement(trigger);
                 Cyfor.toast.success(`Status set to ${target}`, 1500);
+                Cyfor.log('rightclick', 'status set', { value: target });
                 return;
             }
             attempts++;
@@ -204,6 +208,7 @@ Cyfor.datetime = {
                     pick.click();
                     Cyfor.utils.flashElement(el);
                     Cyfor.toast.success(`Set to ${pickedText || 'you'}`, 1500);
+                    Cyfor.log('rightclick', 'user lookup set', { value: pickedText || 'you' });
                     return;
                 }
             }
@@ -342,6 +347,7 @@ Cyfor.datetime = {
         const name = this._findExhibitName(f.host);
         if (!name) return false;
         const hit = this._EXHIBIT_TYPE_MARKERS.find((m) => this._nameHasMarker(name, m.marker));
+        Cyfor.log('rightclick', 'exhibit-type marker', { name, marker: hit && hit.marker, type: hit && hit.type });
         if (!hit) return false;
 
         e.preventDefault();
@@ -359,6 +365,7 @@ Cyfor.datetime = {
                 pick.click();
                 Cyfor.utils.flashElement(this._comboInput(host) || host);
                 Cyfor.toast.success('Exhibit type set to ' + hit.type, 1500);
+                Cyfor.log('rightclick', 'exhibit type set', { type: hit.type });
                 return true;
             }
             return false;
@@ -431,6 +438,7 @@ Cyfor.datetime = {
                 pick.click();
                 Cyfor.utils.flashElement(this._comboInput(host) || host);
                 Cyfor.toast.success('Forensic case set to ' + (label || 'top match'), 1500);
+                Cyfor.log('rightclick', 'forensic case set', { value: label || 'top match' });
                 return;
             }
             if (attempts === 5) this._openCombobox(host); // nudge open again if needed

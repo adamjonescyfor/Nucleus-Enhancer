@@ -8,7 +8,6 @@ Cyfor.main = {
     _lastUrl: location.href,
     _observer: null,
     _debouncedHandler: null,
-    _scrapeDebounced: null,
     _lastCachedProfileName: '',
     _identityCached: false,
 
@@ -114,9 +113,6 @@ Cyfor.main = {
             this._onNavigate();
         }
 
-        // Cheap work runs on every cycle.
-        this._scrapeIfNeeded();
-
         if (Cyfor.config.enableNav &&
             Cyfor.navigation.isOnProcessPage() &&
             !document.getElementById('cyfor-nav-left')) {
@@ -136,6 +132,10 @@ Cyfor.main = {
         }
 
         Cyfor.templates._scanEditors();
+
+        // Fully load an Exhibit-Process list (lazy rows) so navigation counts are
+        // complete — no-op for non-EP lists and already-loaded tables.
+        if (Cyfor.config.enableNav) Cyfor.navigation.maybePreload();
     },
 
     _onNavigate: function () {
@@ -150,25 +150,6 @@ Cyfor.main = {
         Cyfor.downloads._processed = new WeakSet();
 
         if (Cyfor.contextMenu) Cyfor.contextMenu.hide();
-    },
-
-    _scrapeIfNeeded: function () {
-        var rows = document.querySelectorAll('tr[data-row-key-value]');
-        if (rows.length === 0) return;
-
-        if (!this._scrapeDebounced) {
-            this._scrapeDebounced = Cyfor.utils.debounce(function (r) {
-                if (!Cyfor.utils.isContextInvalid()) {
-                    Cyfor.navigation.scrapeProcessList(r);
-                }
-            }, Cyfor.constants.SCRAPE_DEBOUNCE_MS);
-
-            Cyfor.cleanup.register(function () {
-                this._scrapeDebounced.cancel();
-            }.bind(this));
-        }
-
-        this._scrapeDebounced(rows);
     },
 
     _bindLifecycle: function () {

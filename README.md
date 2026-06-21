@@ -41,7 +41,7 @@ Faster casework, consistent reporting, and centrally‑managed templates — rig
 | ⚡ | **Instant templates** | Click the 📄 button or right‑click in a Notes / Forensic Strategy box; **Alt+T** opens the menu, **Alt+Z** undoes an insert. Search and categories built in. |
 | ☁️ | **Official templates** | Your team's approved templates (badged **Official**) sync down automatically — they can't be overridden by personal uploads. You can still load your own `.txt` templates alongside. |
 | ⭐ | **Pins, recents & variables** | Pin favourites (☆ in the popup → ★ first in every menu); recently‑used float to the top; templates auto‑fill `{{date}}`, `{{time}}`, `{{dateTime}}`, `{{examiner}}`, `{{teamName}}`, `{{caseRef}}`. |
-| 🕓 | **Right‑click quick‑fill** | Right‑click any date or time field to fill it with *now*; right‑click **Completed By** / **Sealed By** to fill it with *you*. |
+| 🕓 | **Right‑click quick‑fill** | Right‑click any date or time field for *now*; **Completed By / Sealed By / Conducted By / Assigned Staff** for *you*; **Exhibit Type** to auto‑pick from the exhibit name (SIM / memory / USB / drive); and a **Forensic Case** lookup to grab the latest case. |
 | 🧭 | **Record navigation** | **Alt+← / Alt+→** (or the on‑page arrows) move between Exhibit Process records in list order. |
 | 📝 | **Notes formatting** | Notes columns in list views are expanded into readable, structured blocks automatically. |
 | ↔️ | **Column presets** | Drag column names in the popup to reorder list‑view tables; save layouts as presets per table. |
@@ -67,7 +67,8 @@ Rebind via the popup's **Customise…** link.
 Everything lives in **Salesforce** — the manager is just a faster window onto the same records. Uninstalling the extension never touches the data.
 
 **Template admins** get the full dashboard:
-- **Create / edit / clone / delete** any team's templates and **assign** them to any team or **Global**. *Clone* copies an existing template into a new **Draft**.
+- **Create / edit / clone / delete** any team's templates and **assign** them to a team, **several teams**, or **Global**. *Clone* copies an existing template into a new **Draft**.
+- **Rich‑text editing** — a full formatting toolbar (fonts, sizes, colour, bold/italic/underline, lists, indent, alignment, links, images), paste straight from Word, a live readout of the formatting at the cursor, and a character counter against Salesforce's field limit. Templates carry their formatting through into the Notes box on insert.
 - **Version control** — minor/major bumps **only when content changes** (status/team/date edits don't create a version), a status lifecycle (Draft → Active → Under Review → Superseded → Retired), effective & review‑due dates, and a change reason for the audit trail.
 - **History & diff** — browse snapshots, compare any two versions side‑by‑side, filter, export to CSV.
 - **Reviews** — everything overdue or due within 30/60 days, surfaced on the dashboard and sidebar.
@@ -94,6 +95,7 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 ## 🔒 Security & architecture
 
 - **No credentials in the extension.** Salesforce OAuth runs through a hardened **Cloudflare Worker proxy**; the Consumer Key & Secret live only as Cloudflare secrets — never shipped, never committed.
+- **Hardened OAuth flow** — Authorization Code with **PKCE** (an intercepted code is useless without the verifier that never leaves the extension) plus a **CSRF `state`** the extension generates and verifies on every callback. Tokens live only in the background service worker; content scripts never see them.
 - **Light on infrastructure** — template data goes **directly** between the extension and Salesforce; the worker only handles the occasional token refresh.
 - **Always current** — a tightly‑gated background sync keeps every device up to date within ~20 minutes (only while a Salesforce tab is open), and the in‑page menus update live.
 - SOQL values are escaped/validated, all rendered Salesforce data is HTML‑escaped, and the disclosure report strips commercially sensitive content.
@@ -121,6 +123,9 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 | The 📄 button / right‑click menu isn't appearing | Make sure you're in a **Notes** or **Forensic Strategy** rich‑text box; check the toggles in the popup's Core Features. |
 | "Export Case Report" button missing | Open a **Forensic Case** record page — it docks into the action bar. |
 | Can't delete a template ("version history…") | Your admin permission set needs Delete on the version object — see the [admin guide](docs/salesforce-admin-guide.md). |
+| A template won't save ("too long" / "data value too large") | Salesforce's Content field holds ~32,000 characters (formatting counts too) — the editor shows a live counter; trim the content or use a smaller image. |
+| The team picker shows a single dropdown, not tick‑boxes | Multi‑team assignment needs the optional `Teams__c` field — see the [admin guide](docs/salesforce-admin-guide.md). Until it's added, templates target one team or Global. |
+| Something's misbehaving and you want it fixed | Popup → **Diagnostics** → turn on **Capture diagnostic log**, reproduce it, then **Download log** and send the `.txt` to the developer. See [docs/Nucleus_Enhancer_Diagnostics.md](docs/Nucleus_Enhancer_Diagnostics.md). |
 | Anything else | The popup's **Help & tips** section, or ask your template admin. |
 
 ---

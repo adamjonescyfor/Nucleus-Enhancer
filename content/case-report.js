@@ -31,6 +31,7 @@
     // on extension context invalidation, consistent with the other content
     // scripts. Falls back to raw APIs if it isn't available.
     var CLEAN = (typeof Cyfor !== 'undefined' && Cyfor.cleanup) ? Cyfor.cleanup : null;
+    function rlog() { if (typeof Cyfor !== 'undefined' && Cyfor.log) Cyfor.log.apply(null, ['report'].concat([].slice.call(arguments))); }
 
     // Parse /lightning/r/<ObjectApiName>/<RecordId>/view and accept Forensic Case pages.
     function parseCasePage() {
@@ -315,6 +316,7 @@
         var original = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
         toast('Building disclosure report…', 'info');
+        rlog('export start', { caseId: ctx.id, object: ctx.object });
 
         try {
             var resp = await sendMessage({ action: 'caseReport.fetch', caseObject: ctx.object, caseId: ctx.id });
@@ -331,12 +333,14 @@
 
             downloadHtml(html, filename);
             toast('Disclosure report downloaded.', 'success');
+            rlog('export done', { file: filename });
         } catch (e) {
             console.error('[CYFOR] Case report error:', e);
             var msg = e.message || String(e);
             if (msg === 'NOT_AUTHENTICATED' || msg === 'NOT_CONFIGURED') {
                 msg = 'Connect via Salesforce OAuth in the extension first.';
             }
+            rlog('export error', { error: msg });
             toast('Export failed: ' + msg, 'error');
         } finally {
             running = false;

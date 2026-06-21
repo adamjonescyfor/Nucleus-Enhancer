@@ -104,6 +104,7 @@ Cyfor.downloads = {
 
     _startDownload: async function (btn, tableWrapper) {
         this._setBtnState(btn, 'Downloading…', true);
+        Cyfor.log('photos', 'download start');
 
         // Re-query tbody fresh to avoid stale DOM references
         var tbody = tableWrapper.querySelector('tbody');
@@ -221,6 +222,7 @@ Cyfor.downloads = {
             }
 
             // 3. DONE
+            Cyfor.log('photos', 'download done', { success, failed });
             if (failed === 0) {
                 Cyfor.toast.success('Successfully triggered ' + success + ' downloads.', 6000);
             } else {
@@ -229,6 +231,7 @@ Cyfor.downloads = {
 
         } catch (err) {
             console.error('[CYFOR] Download error:', err);
+            Cyfor.log('photos', 'download error', { error: err && err.message });
             Cyfor.toast.error('Download process failed — ' + (err.message || 'unknown error'), 5000);
         }
 

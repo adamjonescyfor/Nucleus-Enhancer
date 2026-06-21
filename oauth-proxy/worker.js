@@ -121,7 +121,7 @@ async function rateLimitOk(request, env) {
 async function handleAuthUrl(request, env, corsHeaders) {
     const body = await readJson(request);
     if (!body) return badReq('Invalid JSON body', corsHeaders);
-    const { codeChallenge, redirectUri } = body;
+    const { codeChallenge, redirectUri, state } = body;
 
     if (!isStr(codeChallenge, 256) || !isStr(redirectUri, 2048)) {
         return badReq('Missing or invalid codeChallenge / redirectUri', corsHeaders);
@@ -138,6 +138,9 @@ async function handleAuthUrl(request, env, corsHeaders) {
     authUrl.searchParams.set('code_challenge',        codeChallenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
     authUrl.searchParams.set('prompt',                'login');
+    // CSRF state: Salesforce echoes this back in the callback, where the extension
+    // verifies it matches what it sent. Optional, so older clients still work.
+    if (isStr(state, 256)) authUrl.searchParams.set('state', state);
 
     return Response.json({ url: authUrl.toString() }, { headers: corsHeaders });
 }

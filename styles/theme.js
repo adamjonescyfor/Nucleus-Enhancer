@@ -41,6 +41,19 @@
         else if (mql.addListener) mql.addListener(onChange);
     }
 
+    // Live updates when the preference changes in ANOTHER context — e.g. the popup
+    // theme picker — so an open manager (or popup) re-themes with no refresh. The
+    // guard ignores the echo from our own set(), which has already applied.
+    try {
+        chrome.storage.onChanged.addListener(function (changes, area) {
+            if (area !== 'sync' || !changes[KEY]) return;
+            var next = changes[KEY].newValue || 'auto';
+            if (next === current) return;
+            current = next;
+            apply(current);
+        });
+    } catch (e) { /* storage unavailable */ }
+
     window.CyforTheme = {
         get: function () { return current; },
         set: function (pref) {

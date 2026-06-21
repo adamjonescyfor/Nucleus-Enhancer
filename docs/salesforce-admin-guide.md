@@ -1,6 +1,6 @@
 # Salesforce admin guide — CYFOR Nucleus Enhancer
 
-**For:** Callum (Salesforce admin). One place for everything the extension needs from Salesforce: the objects, the permissions, and the rollout checklist for ~100 analysts.
+**For:** the Salesforce administrator. One place for everything the extension needs from Salesforce: the objects, the permissions, and the rollout checklist for ~100 analysts.
 
 ## The objects
 
@@ -13,6 +13,22 @@
 | `NucleusReportTemplate__c` | MG22 Word templates (Mitul's feature, currently disabled) | ⬜ when Mitul picks it up |
 
 Field API names never need to match exactly — the extension discovers them from each object's describe.
+
+## Multi-team assignment (optional — one template visible to several teams)
+
+Today a template targets **one** team (the `Team__c` lookup) or is **Global** (lookup empty). To let an admin assign a template to *several* teams — e.g. Digital Forensics **and** Cyber, but not eDiscovery — add **one field**. The extension auto-detects it and switches the manager's Team picker to a multi-select; **until it exists, everything stays exactly as it is now** (single team or Global).
+
+**Add** a **Multi-Select Picklist** on `NucleusTemplate__c`:
+- **Label:** `Teams` (suggested API name `Teams__c` — any name works; the extension finds any multi-select picklist whose name/label contains "team").
+- **Values:** the **team codes**, exactly as in `NucleusTeam__c.TeamCode__c` — one picklist entry per active team. (Codes, **not** display names.)
+- **Field-Level Security:** ⚠️ **Readable by everyone who uses templates** — the analyst sync query filters on this field (`Teams__c INCLUDES (…)`), so if it is hidden from them they will see **no** templates. **Editable** for template admins only.
+- Add it to the page layout.
+
+**Keep** the existing `Team__c` lookup (don't delete) — it's the migration source and the fallback for un-migrated templates.
+
+**One-time migration:** for every template that has `Team__c` set, copy that team's **code** into `Teams__c`. Global templates (no team) stay empty. *(Clearing `Team__c` afterwards is optional — the extension clears it automatically the next time that template is edited.)*
+
+**Resulting visibility:** a template shows to a user when it is Global (neither team field set) **OR** the legacy lookup targets their team **OR** `Teams__c` includes their team code. Assigning via the multi-select clears the single lookup on the next save, so templates converge to the new field over time.
 
 ## Permissions
 
@@ -46,22 +62,23 @@ Two objects use Auto Number names, so list views show meaningless `NTV-0042` / `
 
 ## Rollout checklist
 
-**Admin-only (Callum / Andy / Law):**
+**Admin-only (the Salesforce admins):**
 1. ☐ Connected-app access for all users (profile/permission-set assignment).
 2. ☐ Read perms on the four existing Nucleus objects for all users (a "user" permission set or profile update).
 3. ☐ Assign the template-admin permission set to each chosen admin (per the table above — esp. Delete/Modify All on `NucleusTemplateVersion__c`).
 4. ☐ Create `NucleusTemplateUsage__c` ([spec](salesforce-usage-object.md)) — the **only new object**; optional but recommended, zero extension work after.
-5. ☐ Readable record names (section above) — nice-to-have.
-6. ☐ Optional cleanup: delete the unused custom **Changed By / Changed By Email** fields (the extension stopped writing them; standard Created/Last Modified By replaced them).
-7. ☐ After everyone is on the current extension version: tell the developer, who can raise the Cloudflare worker's `MIN_CLIENT_VERSION` to retire old builds.
+5. ☐ (Optional) Multi-team field — add the `Teams__c` multi-select picklist + read FLS for all + one-time migration ([Multi-team assignment](#multi-team-assignment-optional--one-template-visible-to-several-teams)) if admins should be able to assign a template to several teams.
+6. ☐ Readable record names (section above) — nice-to-have.
+7. ☐ Optional cleanup: delete the unused custom **Changed By / Changed By Email** fields (the extension stopped writing them; standard Created/Last Modified By replaced them).
+8. ☐ After everyone is on the current extension version: tell the developer, who can raise the Cloudflare worker's `MIN_CLIENT_VERSION` to retire old builds.
 
-**Data entry (anyone with access — e.g. Adam, once step 2 is done):**
-8. ☐ A `NucleusTeamMember__c` record per user (right team; the user's name as the record Name once step 5.2 is done).
-9. ☐ Tick `IsAdmin__c` on the chosen admins' Team Member records (remember: admins need BOTH this flag — which unlocks the manager UI — and the permission set from step 3, which is what Salesforce enforces).
+**Data entry (anyone with access, once step 2 is done):**
+9. ☐ A `NucleusTeamMember__c` record per user (right team; the user's name as the record Name once step 6.2 is done).
+10. ☐ Tick `IsAdmin__c` on the chosen admins' Team Member records (remember: admins need BOTH this flag — which unlocks the manager UI — and the permission set from step 3, which is what Salesforce enforces).
 
 ## How responsibilities split
 
-- **Salesforce admin (Callum/Andy/Law):** objects/fields/Flows, permission sets and their assignment, connected-app access. All access control is enforced here — the extension can only do what the signed-in user can do.
-- **Record data entry (Adam or anyone with access):** Team Member rows (team assignment + admin flags), templates themselves via the Template Manager.
+- **Salesforce admin:** objects/fields/Flows, permission sets and their assignment, connected-app access. All access control is enforced here — the extension can only do what the signed-in user can do.
+- **Record data entry (anyone with access):** Team Member rows (team assignment + admin flags), templates themselves via the Template Manager.
 - **Extension (developer):** UI over the same records. Uninstalling it never touches the data.
 - **Cloudflare worker (developer):** OAuth only. Salesforce data calls go direct from the extension to Salesforce.

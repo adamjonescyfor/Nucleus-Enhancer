@@ -38,7 +38,7 @@ var TEMPLATE_CONCEPTS = {
 async function resolveTemplateFields(base, token, obj) {
     var map = {
         obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
-        team: 'Team__c', teamRel: 'Team__r',
+        team: 'Team__c', teamRel: 'Team__r', teamsMulti: null, contentMaxLength: null,
         versionLabel: null, status: null, changeReason: null,
         effectiveDate: null, reviewDueDate: null, documentId: null
     };
@@ -49,8 +49,25 @@ async function resolveTemplateFields(base, token, obj) {
         Object.keys(resolved).forEach(function (k) { if (resolved[k]) map[k] = resolved[k]; });
         var teamRef = self.SfUtils.findReferenceField(fields, 'NucleusTeam__c');
         if (teamRef) { map.team = teamRef.name; map.teamRel = teamRef.relationshipName; }
+        // OPTIONAL multi-team field: a multi-select picklist of team CODES added by
+        // the Salesforce admin. When present it enables multi-team assignment; when
+        // absent everything falls back to the single Team__c lookup (today's
+        // behaviour, unchanged).
+        var teamsMulti = fields.filter(function (f) {
+            return f.type === 'multipicklist' && /team/i.test((f.name || '') + ' ' + (f.label || ''));
+        })[0];
+        if (teamsMulti) map.teamsMulti = teamsMulti.name;
+        // Real max length of the Content field, so the manager can guard saves
+        // before Salesforce rejects them with "data value too large".
+        var cField = fields.filter(function (f) { return f.name === map.content; })[0];
+        if (cField && cField.length) map.contentMaxLength = cField.length;
     } catch (e) { /* keep defaults */ }
     return map;
+}
+
+// Split a multi-select picklist value ("DF;CYBER") into an array of team codes.
+function splitTeams(v) {
+    return v ? String(v).split(';').map(function (s) { return s.trim(); }).filter(Boolean) : [];
 }
 
 function buildQuery(map, teamCode) {
@@ -59,14 +76,27 @@ function buildQuery(map, teamCode) {
     if (map.content) sel.push(map.content);
     if (map.category) sel.push(map.category);
     if (map.teamRel) sel.push(map.teamRel + '.TeamCode__c');
+    if (map.teamsMulti) sel.push(map.teamsMulti);
     sel.push('LastModifiedBy.Name');
     ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
 
+    // Visibility: a template is shown when it's Global (no team set) OR the user's
+    // team is targeted — via the legacy single lookup AND/OR the multi-team field.
+    // "Global" means neither team field constrains it.
     var teamField = map.team || 'Team__c';
-    var teamFilter = (teamCode && map.teamRel)
-        ? '(' + teamField + " = null OR " + map.teamRel + ".TeamCode__c = '" + esc(teamCode) + "')"
-        : teamField + ' = null';
+    var teamFilter;
+    if (teamCode && map.teamsMulti && map.teamRel) {
+        teamFilter = '((' + teamField + ' = null AND ' + map.teamsMulti + " = null)"
+                   + ' OR ' + map.teamRel + ".TeamCode__c = '" + esc(teamCode) + "'"
+                   + ' OR ' + map.teamsMulti + " INCLUDES ('" + esc(teamCode) + "'))";
+    } else if (teamCode && map.teamRel) {
+        teamFilter = '(' + teamField + " = null OR " + map.teamRel + ".TeamCode__c = '" + esc(teamCode) + "')";
+    } else if (map.teamsMulti) {
+        teamFilter = '(' + teamField + ' = null AND ' + map.teamsMulti + ' = null)';
+    } else {
+        teamFilter = teamField + ' = null';
+    }
 
     return 'SELECT ' + sel.join(', ')
          + ' FROM ' + map.obj
@@ -149,6 +179,7 @@ async function fetchRemoteTemplates(forceRefresh) {
             content:            body,
             category:           (map.category && r[map.category]) || '',
             teamCode:           (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
+            teamCodes:          splitTeams(map.teamsMulti && r[map.teamsMulti]),
             lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
@@ -159,6 +190,10 @@ async function fetchRemoteTemplates(forceRefresh) {
         if (map.documentId)    entry.documentId    = r[map.documentId]    || '';
         sfRemoteTemplates[name] = entry;
     }
+
+    if (self.dlog) self.dlog('sync', 'team-scoped templates', {
+        count: Object.keys(sfRemoteTemplates).length, teamCode: teamCode, multiTeamField: map.teamsMulti || null, contentMax: map.contentMaxLength || null
+    });
 
     var syncedAt = Date.now();
     var toStore = {};
@@ -181,6 +216,7 @@ function buildAdminQuery(map) {
     if (map.active)   sel.push(map.active);
     if (map.team)     sel.push(map.team);
     if (map.teamRel)  { sel.push(map.teamRel + '.Name'); sel.push(map.teamRel + '.TeamCode__c'); }
+    if (map.teamsMulti) sel.push(map.teamsMulti);
     sel.push('LastModifiedBy.Name');
     ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
@@ -255,6 +291,7 @@ async function fetchAllTemplatesForAdmin() {
             teamId:             (map.team && r[map.team]) || null,
             teamName:           (teamRel && teamRel.Name) || null,
             teamCode:           (teamRel && teamRel.TeamCode__c) || null,
+            teamCodes:          splitTeams(map.teamsMulti && r[map.teamsMulti]),
             lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';

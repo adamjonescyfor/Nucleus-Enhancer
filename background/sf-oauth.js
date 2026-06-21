@@ -79,11 +79,16 @@ async function launchOAuthFlow() {
     var codeVerifier  = await generateCodeVerifier();
     var codeChallenge = await generateCodeChallenge(codeVerifier);
 
+    // CSRF guard: a random, single-use `state` we hand to Salesforce (via the proxy)
+    // and verify is echoed back unchanged in the callback. The whole flow completes
+    // inside this one call, so it lives only in this scope — never stored.
+    var state = base64urlEncode(crypto.getRandomValues(new Uint8Array(16)));
+
     // Ask proxy to construct the Salesforce auth URL (proxy injects Consumer Key)
     var urlRes = await fetch(proxyUrl + '/auth-url', {
         method:  'POST',
         headers: proxyHeaders(),
-        body:    JSON.stringify({ codeChallenge: codeChallenge, redirectUri: redirectUrl })
+        body:    JSON.stringify({ codeChallenge: codeChallenge, redirectUri: redirectUrl, state: state })
     });
     if (!urlRes.ok) {
         var urlErr = await urlRes.json().catch(function () { return {}; });
@@ -104,6 +109,15 @@ async function launchOAuthFlow() {
     var error  = parsed.searchParams.get('error');
     if (error) {
         throw new Error('SF_AUTH_ERROR: ' + error + ' — ' + (parsed.searchParams.get('error_description') || ''));
+    }
+
+    // Verify the CSRF state — but only if Salesforce returned one. Once the proxy
+    // forwards `state` to the authorize URL, Salesforce always echoes it and this
+    // becomes a hard check; until then it's a no-op, so the extension and the
+    // Worker can be deployed in either order without breaking sign-in.
+    var returnedState = parsed.searchParams.get('state');
+    if (returnedState && returnedState !== state) {
+        throw new Error('STATE_MISMATCH: OAuth callback state did not match the request — aborting (possible CSRF).');
     }
 
     var code = parsed.searchParams.get('code');

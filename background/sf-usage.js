@@ -85,6 +85,7 @@ async function pushUsage(entry) {
 // error ONLY while the last attempt failed; the next success clears it. Never throws.
 function noteHealth(err) {
     try {
+        if (self.dlog) self.dlog('usage', 'org write', err ? { ok: false, error: err } : { ok: true });
         if (err) chrome.storage.local.set({ usageLogError: err });
         else     chrome.storage.local.remove('usageLogError');
     } catch (e) { /* best-effort */ }
