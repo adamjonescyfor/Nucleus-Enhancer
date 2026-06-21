@@ -94,13 +94,36 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 
 ---
 
-## 🔒 Security & architecture
+## 🔒 Security
 
-- **No credentials in the extension.** Salesforce OAuth runs through a hardened **Cloudflare Worker proxy**; the Consumer Key & Secret live only as Cloudflare secrets — never shipped, never committed.
-- **Hardened OAuth flow** — Authorization Code with **PKCE** (an intercepted code is useless without the verifier that never leaves the extension) plus a **CSRF `state`** the extension generates and verifies on every callback. Tokens live only in the background service worker; content scripts never see them.
-- **Light on infrastructure** — template data goes **directly** between the extension and Salesforce; the worker only handles the occasional token refresh.
-- **Always current** — a tightly‑gated background sync keeps every device up to date within ~20 minutes (only while a Salesforce tab is open), and the in‑page menus update live.
-- SOQL values are escaped/validated, all rendered Salesforce data is HTML‑escaped, and the disclosure report strips commercially sensitive content.
+Security was a first‑class concern throughout — built in **defence‑in‑depth**, not bolted on. The guiding principle: **the extension can only ever do what the signed‑in Salesforce user can do**, it holds no special or backdoor access, and your credentials never live inside it. The full, reviewer‑grade write‑up is in **[docs/SECURITY.md](docs/SECURITY.md)**; the essentials:
+
+#### Your Salesforce credentials never touch the extension
+- Sign‑in uses **OAuth 2.0 Authorization Code with PKCE** — the modern best‑practice flow. The secret half (the *code verifier*) is generated fresh each login and **never leaves your browser**, so an intercepted authorisation code is useless to anyone.
+- A random, single‑use **CSRF `state`** is generated per login and verified on the callback, so a response can't be swapped in from anywhere else.
+- The Salesforce **Consumer Key & Secret live only as encrypted secrets on a Cloudflare Worker** — never shipped in the extension, never committed to source control, never sent to your browser.
+- Access & refresh **tokens are held only by the extension's background worker** on your own device — never by in‑page scripts, and never on any server.
+
+#### The login proxy is locked down
+- It is **stateless** — it stores **nothing** (no tokens, no user data, no database or edge cache), so there is no shared state that could leak or mix between users.
+- **CORS fails closed** and it **rejects any browser origin that isn't this extension** before doing any work. It also verifies the redirect target server‑side and rate‑limits abuse.
+- The real guarantee: the Consumer Secret never leaves Cloudflare, and the token endpoints require a **valid Salesforce authorisation code an attacker cannot forge** — so even a direct caller gets nothing.
+
+#### The extension can only do what you can do
+- It acts **as the signed‑in user** — Salesforce's own permissions and field‑level security *are* the access control. No elevated rights, no shortcuts around sharing rules.
+- Every write path (create / edit / delete templates) is **admin‑gated**; everyone else gets a strictly **read‑only** view.
+
+#### Your data stays between you and Salesforce
+- Template and case data flows **directly** between the extension and Salesforce. The Worker only ever brokers the brief token exchange/refresh and **sees none of your data**.
+- The disclosure‑report export **strips commercially sensitive content** before generating the document.
+
+#### Hardened against tampering
+- All HTML from Salesforce or templates passes through a **strict, whitelist‑based sanitiser** (the output is rebuilt from scratch, so script/`onerror`/`javascript:`/embedded‑SVG tricks can't survive); every rendered value is HTML‑escaped.
+- The background worker **only accepts messages from this extension** — no website can drive it — and content scripts run in an **isolated world**, walled off from the page.
+
+#### Privacy & transparency
+- **No analytics, no telemetry** — nothing about your activity leaves your machine. Feature settings stay **on this device**; only low‑sensitivity preferences (theme, pinned templates) ride Chrome's own account sync if *you* have it enabled — never tokens or case data.
+- The optional diagnostics log is **off by default**, auto‑disables after a day, and is only ever shared if **you** download and send it.
 
 ---
 
@@ -109,7 +132,7 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 
 **Setup:** `cp config.example.js config.js` and set `oauthProxyUrl` to the Cloudflare Worker URL (gitignored). Deploy the worker from `oauth-proxy/` (`wrangler deploy`, then `wrangler secret put SF_CLIENT_ID / SF_CLIENT_SECRET / SF_INSTANCE_URL`); hardening lives in `wrangler.toml` — if the version gate is enabled, reload the extension to a matching version *before* deploying. Load unpacked via `chrome://extensions` (the manifest `key` pins the extension ID).
 
-**Layout:** `content/` in‑page scripts · `background.js` + `background/` service worker & Salesforce modules · `popup/` · `manager/` · `report/` disclosure report · `styles/` tokens/theme/shared UI · `oauth-proxy/` the worker (never ship it in a package) · `docs/` admin guides & **[ROADMAP.md](docs/ROADMAP.md)** (the implementable backlog).
+**Layout:** `content/` in‑page scripts · `background.js` + `background/` service worker & Salesforce modules · `popup/` · `manager/` · `report/` disclosure report · `styles/` tokens/theme/shared UI · `oauth-proxy/` the worker (never ship it in a package) · `docs/` admin guides, **[SECURITY.md](docs/SECURITY.md)** & **[ROADMAP.md](docs/ROADMAP.md)** (the implementable backlog).
 
 **Golden rules:** code changes need a full extension reload (`chrome://extensions` → ↻), not a page refresh · Salesforce field API names are describe‑discovered, never hardcoded · `report/disclosure-report.js` + `styles/case-report.css` are the CTO's (don't edit) · the MG22 feature is Mitul's, flagged off via `MG22_ENABLED`.
 

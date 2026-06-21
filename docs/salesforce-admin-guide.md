@@ -2,6 +2,8 @@
 
 **For:** the Salesforce administrator. One place for everything the extension needs from Salesforce: the objects, the permissions, and the rollout checklist for ~100 analysts.
 
+> 🔒 For how the extension protects credentials, tokens and data (OAuth/PKCE, the locked‑down login proxy, access control, sanitisation, privacy) — see the **[security overview](SECURITY.md)**. The short version that matters for permissions: the extension only ever acts **as the signed‑in user**, so Salesforce permissions are the real access control.
+
 ## The objects
 
 | Object | Purpose | Status |
