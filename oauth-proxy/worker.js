@@ -9,7 +9,9 @@
 //   wrangler secret put SF_INSTANCE_URL    ← e.g. https://cyfor.my.salesforce.com
 //
 // Hardening layers (all configured in wrangler.toml [vars] / [[ratelimits]]):
-//   - ALLOWED_ORIGIN            CORS lock to the extension's chrome-extension:// origin
+//   - ALLOWED_ORIGIN            CORS lock to the extension's chrome-extension:// origin.
+//                               Fails CLOSED (never emits a wildcard) and 403s any other
+//                               browser Origin before doing work.
 //   - ALLOWED_REDIRECT_PREFIX   server-side check that redirect_uri is *our* extension's
 //                               chromiumapp.org callback (works against non-browser callers too)
 //   - MIN_CLIENT_VERSION        optional floor on the extension's reported version ("" = off)
@@ -22,23 +24,35 @@ const MAX_FIELD = 8192;
 
 export default {
     async fetch(request, env) {
-        // ── CORS: reflect only the allow-listed extension origin ──
-        const origin  = request.headers.get('Origin') || '';
-        const allowed = env.ALLOWED_ORIGIN || '';
-        const allowOrigin = allowed ? (origin === allowed ? allowed : '') : '*';
+        // ── CORS: reflect ONLY the allow-listed extension origin — never a
+        // wildcard. This fails CLOSED: if ALLOWED_ORIGIN is unset (misconfig),
+        // no Access-Control-Allow-Origin is emitted, so browsers are blocked
+        // rather than every origin being allowed.
+        const origin   = request.headers.get('Origin') || '';
+        const allowed  = (env.ALLOWED_ORIGIN || '').trim();
+        const originOk = !!allowed && origin === allowed;
 
         const corsHeaders = {
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, X-Client-Version',
             'Vary': 'Origin',
         };
-        if (allowOrigin) corsHeaders['Access-Control-Allow-Origin'] = allowOrigin;
+        if (originOk) corsHeaders['Access-Control-Allow-Origin'] = allowed;
+
+        // Defense-in-depth: a request carrying a browser Origin that ISN'T our
+        // extension is an unauthorised site trying to invoke the proxy — reject it
+        // before any work. Non-browser callers send no Origin and fall through to
+        // the redirect-prefix + Salesforce-credential checks, which are the real
+        // gate (the Consumer Secret never leaves this Worker regardless).
+        if (origin && !originOk) {
+            return new Response('Forbidden', { status: 403, headers: corsHeaders });
+        }
 
         if (request.method === 'OPTIONS') {
             return new Response(null, { headers: corsHeaders });
         }
         if (request.method !== 'POST') {
-            return new Response('Method not allowed', { status: 405 });
+            return new Response('Method not allowed', { status: 405, headers: corsHeaders });
         }
 
         // ── Optional client-version gate (operational control; spoofable) ──

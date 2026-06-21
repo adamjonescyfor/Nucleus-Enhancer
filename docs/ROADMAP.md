@@ -16,8 +16,9 @@ A user can belong to **more than one team**. `background/sf-team.js` `fetchUserT
 ### manager.js modularisation — M (mechanical)
 manager.js is ~1,700 lines (bulk ops added). Extension pages share globals across `<script>` tags, so split without a module system: extract `manager-history.js` (openHistory → diff/CSV/compare) , `manager-editor.js` (openNewEditor/openEditEditor/openCloneEditor/saveTemplate/updateEditorVersionUI) and `manager-views.js` (render*). Load order in manager.html: helpers first, manager.js (init) last. Pure cut-and-paste; verify with node --check + a full manual pass. Do post-rollout — zero user-visible value, real regression surface.
 
-### Worker housekeeping (bundle with the next `wrangler deploy`) — S
-1. Add CORS headers to the 405 method-check response in `oauth-proxy/worker.js` (cosmetic consistency). 2. AFTER the whole company is confirmed on ≥3.1: raise `MIN_CLIENT_VERSION` in `wrangler.toml` to retire old builds (recovery: set to `""` and redeploy).
+### Worker housekeeping — S
+✅ **Done 2026-06-21** (needs a `wrangler deploy`): CORS now **fails closed** — it never emits a wildcard `Access-Control-Allow-Origin`, **403s** any non-extension browser Origin before doing work, and includes CORS headers on the 405. (The Consumer Secret never leaves the Worker regardless; CORS is one defence-in-depth layer, the real gate is the redirect-prefix + unforgeable Salesforce credentials.)
+**Remaining:** AFTER the whole company is confirmed on ≥3.1, raise `MIN_CLIENT_VERSION` in `wrangler.toml` to retire old builds (recovery: set to `""` and redeploy).
 
 ## Wave 3 (later / needs Salesforce work)
 
