@@ -56,6 +56,7 @@ Then **refresh the Salesforce tab**. Either way you'll also see live prefixed li
 | `[Cyfor:sync]` | SW | Team-scoped sync result: template count, the user's team code, whether the multi-team field was detected, and the Content field's max length. |
 | `[Cyfor:crud]` | SW | Each create/update: name, multi-team mode, the team codes written, status. |
 | `[Cyfor:acks]` | SW | A read-acknowledgement being recorded (template id + version). |
+| `[Cyfor:changes]` | SW | An edit suggestion being submitted, or resolved (approved / rejected). |
 
 ---
 

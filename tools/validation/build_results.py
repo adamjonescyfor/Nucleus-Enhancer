@@ -161,6 +161,13 @@ CASES = [
  ("Acknowledgements","Re-ack on new version",M,"Already acknowledged a controlled template","Admin publishes a new version; re-sync","Shows outstanding again — the old acknowledgement no longer matches the current version"),
  ("Acknowledgements","Admin matrix",M,"Admin; some acknowledgements recorded","Manager → Acknowledgements tab","Per controlled template: acked/total + %, status, and the OUTSTANDING members' names — scoped to the template's assigned team(s)"),
  ("Acknowledgements","Outstanding nudge",L,"Outstanding controlled templates for you","Trigger a background sync (SF tab open)","At most one browser notification per day; clicking it opens the manager"),
+ # ── Suggest-an-edit (change-requests) ──
+ ("Suggestions","Member suggests an edit",M,"Member (read-only viewer)","Click 'Suggest edit' on a template; change the text + add a reason; Send","Confirmation shown; a NucleusTemplateChangeRequest__c (Pending) is created by you. Template itself is unchanged"),
+ ("Suggestions","Admin sees pending",M,"Admin; a suggestion exists","Open the manager","'Suggestions' tab appears with a count badge; the suggestion is listed with submitter + reason"),
+ ("Suggestions","Diff",L,"Admin; Suggestions tab","Click 'View diff'","Side-by-side added/removed lines: suggested vs current version"),
+ ("Suggestions","Apply",M,"Admin; a suggestion","Click 'Apply…'","Request marked Approved; editor opens prefilled with the proposed content + a change reason; Saving publishes a normal new version"),
+ ("Suggestions","Reject",L,"Admin; a suggestion","Click 'Reject' and confirm","Request marked Rejected; it leaves the pending list; template unchanged"),
+ ("Suggestions","Admin nudge",L,"Pending suggestions exist","Trigger a background sync","At most one browser notification per day to admins; clicking opens the manager"),
  # ── Visual / UX sweep ──
  ("UX","Layout & overflow",M,"All surfaces","Resize popup/manager; long names","No clipping/overflow; tooltips for truncation; narrow-width holds"),
  ("UX","British spelling",L,"UI text","Scan labels (e.g. 'centre')","British spellings; consistent terminology"),

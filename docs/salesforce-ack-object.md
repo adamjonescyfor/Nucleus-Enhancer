@@ -23,14 +23,14 @@ Label **Requires acknowledgement**, type **Checkbox** (default **unchecked**). T
 - **Template admins (roster) ⚠️:** the matrix's "outstanding" list is the *members of each template's team(s)*, so admins must also be able to **read all `NucleusTeamMember__c` records** — make that object org-wide **Public Read**, or grant the admin permission set **View All** on it. If admins can only see their own membership, the matrix still loads but **under-reports** who's required.
 - `RequiresAck__c` on the template: **editable for admins, readable for everyone** (the sync reads it).
 
-## 4. Optional but recommended — email nudge (the "iPassport" behaviour)
-The extension nudges analysts *in-app* (a once-a-day browser notification + a banner in the manager) when they have outstanding acknowledgements. If you also want an **email** when a controlled template changes — like iPassport — add a **record-triggered Flow** on `NucleusTemplate__c`:
+## 4. Email nudge on change (the "iPassport" behaviour)
+The extension nudges analysts *in-app* (a once-a-day browser notification + a banner in the manager) when they have outstanding acknowledgements. For an **email** when a controlled template changes — like iPassport — add a **record-triggered Flow** on `NucleusTemplate__c`:
 
 - **Trigger:** record updated, **Entry:** `RequiresAck__c = true` **AND** `IsActive__c = true` **AND** the version label field *Is Changed* (a new version published).
 - **Action:** Get the active `NucleusTeamMember__c` records for the template's team(s) → email those users: *"[Template] has been updated to v2.1 — please review and acknowledge in Nucleus."*
 - For **Global** controlled docs (no team), email all active members.
 
-This stays entirely in Salesforce (the extension can't and shouldn't send email). The in-app acknowledge flow + the admin matrix work with or without it.
+This stays entirely in Salesforce (the extension can't and shouldn't send email); the in-app acknowledge flow + the admin matrix don't depend on it.
 
 ## 5. How it behaves once live
 - Analysts see an **Acknowledge** chip on controlled templates and a banner with their outstanding count; opening a template gives an **"I have read & understood v2.1"** button.

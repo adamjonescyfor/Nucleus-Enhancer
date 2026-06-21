@@ -15,7 +15,7 @@ try {
     importScripts(
         'background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js',
         'background/sf-team.js', 'background/sf-versions.js', 'background/sf-usage.js',
-        'background/sf-acks.js',
+        'background/sf-acks.js', 'background/sf-changes.js',
         'report/case-report-fetch.js',
         // MG22A/MG22B report generation — OWNED BY MITUL (feature hidden via the
         // MG22_ENABLED flag in content/case-report.js). These modules stay loaded
@@ -220,7 +220,36 @@ async function runBackgroundSync() {
     try {
         var r = await self.SfTemplates.fetchRemoteTemplates(true);
         if (r && r.ok) { maybeNotifyReviews(r.templates); maybeNotifyAcks(r.templates); }
+        maybeNotifyChanges();
     } catch (e) { /* retry next cycle */ }
+}
+
+// After a successful sync, nudge TEMPLATE ADMINS (once per day) when edit
+// suggestions are awaiting review. Dormant until NucleusTemplateChangeRequest__c
+// exists. Non-fatal.
+async function maybeNotifyChanges() {
+    try {
+        if (!self.SfChanges) return;
+        var stored = await chrome.storage.local.get(['sfOAuthUser', 'changeNotifyDay']);
+        var user = stored.sfOAuthUser;
+        if (!user || !user.isTemplateAdmin) return;
+
+        var res = await self.SfChanges.listPending();
+        if (!res || !res.available || !res.requests || !res.requests.length) return;
+
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var day   = today.toISOString().slice(0, 10);
+        if (stored.changeNotifyDay === day) return; // at most one nudge per day
+        await chrome.storage.local.set({ changeNotifyDay: day });
+
+        var n = res.requests.length;
+        chrome.notifications.create('cyfor-changes-pending', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('report/cyfor-logo.png'),
+            title: 'Template suggestions to review',
+            message: n + ' edit suggestion' + (n === 1 ? '' : 's') + ' awaiting review — open the Template Manager.'
+        });
+    } catch (e) { /* non-fatal by design */ }
 }
 
 // After a successful sync, nudge ANY analyst (once per day) when controlled
@@ -307,7 +336,7 @@ async function maybeNotifyReviews(templates) {
 // Clicking the nudge opens the Template Manager.
 try {
     chrome.notifications.onClicked.addListener(function (id) {
-        if (id === 'cyfor-review-due' || id === 'cyfor-acks-due') chrome.runtime.openOptionsPage();
+        if (id === 'cyfor-review-due' || id === 'cyfor-acks-due' || id === 'cyfor-changes-pending') chrome.runtime.openOptionsPage();
     });
 } catch (e) { /* notifications unavailable */ }
 
@@ -539,6 +568,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return;
             }
             self.SfAcks.fetchMatrix().then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+
+    // ── Template change-requests (member "suggest an edit") — no-op until
+    // NucleusTemplateChangeRequest__c exists (docs/salesforce-change-request-object.md). ──
+    if (message.action === 'changes.status') {
+        if (!self.SfChanges) { sendResponse({ ok: true, available: false }); return true; }
+        self.SfChanges.status().then(sendResponse).catch(() => sendResponse({ ok: true, available: false }));
+        return true;
+    }
+    if (message.action === 'changes.submit') {   // any signed-in user
+        if (!self.SfChanges) { sendResponse({ ok: false, error: 'NOT_AVAILABLE' }); return true; }
+        self.SfChanges.submit(message.templateId, message.proposedContent, message.reason)
+            .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+    if (message.action === 'changes.mine') {      // the user's own suggestions
+        if (!self.SfChanges) { sendResponse({ ok: true, available: false, requests: [] }); return true; }
+        self.SfChanges.listMine().then(sendResponse).catch(() => sendResponse({ ok: true, available: false, requests: [] }));
+        return true;
+    }
+    if (message.action === 'changes.listPending') {  // admins only
+        if (!self.SfChanges) { sendResponse({ ok: true, available: false, requests: [] }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) { sendResponse({ ok: false, error: 'PERMISSION_DENIED' }); return; }
+            self.SfChanges.listPending().then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+    if (message.action === 'changes.resolve') {      // admins only
+        if (!self.SfChanges) { sendResponse({ ok: false, error: 'NOT_AVAILABLE' }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) { sendResponse({ ok: false, error: 'PERMISSION_DENIED' }); return; }
+            self.SfChanges.resolve(message.requestId, message.status, message.adminNote)
+                .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
         })();
         return true;
     }

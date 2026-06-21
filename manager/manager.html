@@ -35,6 +35,10 @@
             <button type="button" class="mgr-nav-item" data-view="acks" style="display:none">
                 <span class="mgr-nav-ico" aria-hidden="true">✓</span> Acknowledgements
             </button>
+            <button type="button" class="mgr-nav-item" data-view="changes" style="display:none">
+                <span class="mgr-nav-ico" aria-hidden="true">✎</span> Suggestions
+                <span class="mgr-nav-badge" id="mgr-nav-changes-badge" style="display:none">0</span>
+            </button>
             <button type="button" class="mgr-nav-item" data-view="settings">
                 <span class="mgr-nav-ico" aria-hidden="true">ⓘ</span> About
             </button>
@@ -178,6 +182,19 @@
                     </p>
                 </div>
                 <div class="mgr-table-card" id="mgr-acks-body"></div>
+            </div>
+
+            <!-- ── Suggestions view (admins; analyst edit-requests) ──────────── -->
+            <div id="mgr-changes-panel" style="display:none">
+                <div class="mgr-panel-head">
+                    <p class="mgr-list-desc">
+                        Edit suggestions from analysts. <strong>View diff</strong> compares a
+                        suggestion against the current version; <strong>Apply</strong> opens it in
+                        the editor for you to finalise and Save (a normal versioned update);
+                        <strong>Reject</strong> dismisses it.
+                    </p>
+                </div>
+                <div id="mgr-changes-body"></div>
             </div>
 
             <!-- ── Settings view ───────────────────────────────────────────── -->

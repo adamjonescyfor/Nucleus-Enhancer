@@ -74,8 +74,9 @@ Everything lives in **Salesforce** — the manager is just a faster window onto 
 - **Reviews** — everything overdue or due within 30/60 days, surfaced on the dashboard and sidebar.
 - **Usage** — an **org‑wide** insertion log (which templates are used, by whom, and where), backed by a per‑device local log.
 - **Read‑acknowledgement (QMS)** — flag templates as **controlled documents**; analysts sign off "read & understood" per version, an **Acknowledgements** matrix shows who's outstanding per team, and a new version re‑opens the requirement. Built for UKAS / ISO 17025 evidence.
+- **Suggestions** — analysts can propose edits; you review each in a **Suggestions** tab with a side‑by‑side **diff**, then **Apply** (opens it in the editor prefilled, so you finalise formatting and Save a normal versioned update) or **Reject**.
 
-**Everyone else** — the popup's **View Templates** button opens the same page **read‑only**: your team's active templates plus Global, with full content, versions, review dates and history. Controlled documents show an **Acknowledge** button so you can record that you've read & understood the current version. Transparency without edit risk.
+**Everyone else** — the popup's **View Templates** button opens the same page **read‑only**: your team's active templates plus Global, with full content, versions, review dates and history. Controlled documents show an **Acknowledge** button so you can record that you've read & understood the current version, and a **Suggest edit** button lets you propose changes for an admin to review. Transparency without edit risk.
 
 > Only **Active** templates reach analysts — drafts, superseded and retired versions stay out of the insert menus. Deleting is for mistakes; for templates that were genuinely in use, **Retire** them instead so the audit trail survives.
 
@@ -135,9 +136,9 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 
 The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
-**Recently shipped:** bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix).
+**Recently shipped:** bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix) · **suggest‑an‑edit** (analysts propose template changes; admins review with a diff and Apply/Reject).
 
-**Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · an optional change‑request workflow (only if analysts ask to *suggest* edits) · `manager.js` modularisation (internal code tidy‑up, no user‑facing change).
+**Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · `manager.js` modularisation (internal code tidy‑up, no user‑facing change).
 
 ---
 

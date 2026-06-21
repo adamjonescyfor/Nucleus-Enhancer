@@ -66,6 +66,7 @@
     // Highlights for the current release — edit on each version bump.
     var WHATS_NEW_ITEMS = [
         'Read & understood sign-off — controlled templates show an “Acknowledge” button, and admins see who is still outstanding per team (for QMS / accreditation).',
+        'Suggest an edit — anyone can propose a template change; admins review it with a diff and apply or reject.',
         'Rich-text template editor (admins) — full formatting, fonts, colour, lists and images, and paste straight from Word.',
         'Assign a template to several teams at once, not just one or Global — and analysts can belong to several teams.',
         'Right-click also fills Exhibit Type and the Forensic Case lookup, and templates carry their formatting into Salesforce.',
