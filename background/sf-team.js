@@ -9,12 +9,15 @@
 
 async function fetchUserTeamInfo(instanceUrl, accessToken, sfUserId) {
     var escUser = (self.SfUtils ? self.SfUtils.soqlEscape(sfUserId) : String(sfUserId || ''));
+    // Fetch ALL active memberships (a user can belong to more than one team).
+    // Ordered by name so the "primary" team (kept for backward-compat) is stable.
     var soql = [
         "SELECT Team__r.Name, Team__r.TeamCode__c, Team__r.Id, IsAdmin__c",
         "FROM NucleusTeamMember__c",
         "WHERE User__c = '" + escUser + "'",
         "AND Team__r.IsActive__c = true",
-        "LIMIT 1"
+        "ORDER BY Team__r.Name ASC",
+        "LIMIT 50"
     ].join(' ');
 
     var cfgResult = await chrome.storage.local.get('sfOAuthConfig');
@@ -49,18 +52,41 @@ async function fetchUserTeamInfo(instanceUrl, accessToken, sfUserId) {
     var records = (data && data.records) || [];
     if (!records.length) return nullTeam();
 
-    var rec  = records[0];
-    var team = rec.Team__r || {};
+    // Build the de-duplicated membership list (a stray duplicate membership record
+    // shouldn't double a team up).
+    var seen  = {};
+    var teams = [];
+    records.forEach(function (rec) {
+        var t  = rec.Team__r || {};
+        var id = t.Id || t.TeamCode__c || t.Name;
+        if (!id || seen[id]) return;
+        seen[id] = true;
+        teams.push({
+            teamId:   t.Id          || null,
+            teamName: t.Name        || null,
+            teamCode: t.TeamCode__c || null,
+            isAdmin:  rec.IsAdmin__c === true
+        });
+    });
+    if (!teams.length) return nullTeam();
+
+    var primary = teams[0]; // stable (ordered by name) — the single-team fields below
     return {
-        teamCode:        team.TeamCode__c || null,
-        teamName:        team.Name        || null,
-        teamId:          team.Id          || null,
-        isTemplateAdmin: rec.IsAdmin__c   === true
+        // Primary team — kept as the top-level fields so everything that reads a
+        // single team (templates query fallback, manager default, etc.) is unchanged.
+        teamCode:        primary.teamCode,
+        teamName:        primary.teamName,
+        teamId:          primary.teamId,
+        // Admin if the user is a template admin in ANY of their teams.
+        isTemplateAdmin: teams.some(function (t) { return t.isAdmin; }),
+        // Full membership list — drives multi-team template visibility and the
+        // popup's "Team A · Team B" identity line. Single-team users get [one].
+        teams:           teams
     };
 }
 
 function nullTeam() {
-    return { teamCode: null, teamName: null, teamId: null, isTemplateAdmin: false };
+    return { teamCode: null, teamName: null, teamId: null, isTemplateAdmin: false, teams: [] };
 }
 
 // All active teams — used by the manager's "assign to any team" picker (admins).

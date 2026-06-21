@@ -9,14 +9,15 @@
 | `NucleusTemplate__c` | The templates (content, version, status, team, review dates) | ✅ live |
 | `NucleusTemplateVersion__c` | One snapshot per content revision — created by the **record-triggered Flow** ([build reference](salesforce-version-history-flow.md)), not the extension | ✅ live |
 | `NucleusTeam__c` / `NucleusTeamMember__c` | Teams, membership, per-team **template admin** flag (`IsAdmin__c`) | ✅ live |
-| `NucleusTemplateUsage__c` | Org-wide insertion log — extension client ships dormant, lights up when created ([spec](salesforce-usage-object.md)) | ⬜ to create |
+| `NucleusTemplateUsage__c` | Org-wide insertion log — which templates are used, by whom, and where ([spec](salesforce-usage-object.md)) | ✅ live |
+| `NucleusTemplateAck__c` | Read-acknowledgement ("read & understood") sign-off for controlled templates ([spec](salesforce-ack-object.md)); also needs a `RequiresAck__c` checkbox on `NucleusTemplate__c` | ⬜ optional (QMS) |
 | `NucleusReportTemplate__c` | MG22 Word templates (Mitul's feature, currently disabled) | ⬜ when Mitul picks it up |
 
 Field API names never need to match exactly — the extension discovers them from each object's describe.
 
 ## Multi-team assignment (optional — one template visible to several teams)
 
-Today a template targets **one** team (the `Team__c` lookup) or is **Global** (lookup empty). To let an admin assign a template to *several* teams — e.g. Digital Forensics **and** Cyber, but not eDiscovery — add **one field**. The extension auto-detects it and switches the manager's Team picker to a multi-select; **until it exists, everything stays exactly as it is now** (single team or Global).
+A template can target **one** team (the `Team__c` lookup), **several** teams (the `Teams__c` multi-select picklist below), or be **Global** (both empty). The extension auto-detects `Teams__c` and switches the manager's Team picker to a multi-select; the single `Team__c` lookup keeps working as the migration source and backstop.
 
 **Add** a **Multi-Select Picklist** on `NucleusTemplate__c`:
 - **Label:** `Teams` (suggested API name `Teams__c` — any name works; the extension finds any multi-select picklist whose name/label contains "team").
@@ -35,8 +36,8 @@ Today a template targets **one** team (the `Team__c` lookup) or is **Global** (l
 ### Everyone (all ~100 analysts)
 - Access to the **connected app** (OAuth login).
 - **Read ONLY** on `NucleusTemplate__c`, `NucleusTemplateVersion__c`, `NucleusTeam__c`, `NucleusTeamMember__c` — explicitly **no Create/Edit/Delete**. Templates are controlled documents: every change must go through an admin so versioning, change reasons and the Active-only publishing flow can't be bypassed by editing directly in Salesforce. (Read-only on Team Member also stops users reassigning teams or self-ticking the admin flag.) The extension needs nothing more — all its write paths are admin-gated.
-- The one exception: **Create + Read** on `NucleusTemplateUsage__c` once it exists (insert-only audit log; no Edit/Delete).
-- A **`NucleusTeamMember__c` record** linking them to their team (this is what scopes which templates they see and powers the read-only "View Templates" page).
+- The one exception: **Create + Read** on `NucleusTemplateUsage__c` (insert-only audit log; no Edit/Delete).
+- A **`NucleusTeamMember__c` record** linking them to their team (this is what scopes which templates they see and powers the read-only "View Templates" page). **A user can belong to several teams** — just give them one Team Member record *per* team. They'll then see every template targeted at any of those teams, and count as a template admin if `IsAdmin__c` is ticked on *any one* of them. No extra setup or fields are needed.
 
 ### Template admins (per team)
 Everything above, plus on the **template-admin permission set**:
@@ -66,15 +67,16 @@ Two objects use Auto Number names, so list views show meaningless `NTV-0042` / `
 1. ☐ Connected-app access for all users (profile/permission-set assignment).
 2. ☐ Read perms on the four existing Nucleus objects for all users (a "user" permission set or profile update).
 3. ☐ Assign the template-admin permission set to each chosen admin (per the table above — esp. Delete/Modify All on `NucleusTemplateVersion__c`).
-4. ☐ Create `NucleusTemplateUsage__c` ([spec](salesforce-usage-object.md)) — the **only new object**; optional but recommended, zero extension work after.
+4. ☐ Create `NucleusTemplateUsage__c` ([spec](salesforce-usage-object.md)) — optional but recommended org-wide insertion log; zero extension work after.
 5. ☐ (Optional) Multi-team field — add the `Teams__c` multi-select picklist + read FLS for all + one-time migration ([Multi-team assignment](#multi-team-assignment-optional--one-template-visible-to-several-teams)) if admins should be able to assign a template to several teams.
-6. ☐ Readable record names (section above) — nice-to-have.
-7. ☐ Optional cleanup: delete the unused custom **Changed By / Changed By Email** fields (the extension stopped writing them; standard Created/Last Modified By replaced them).
-8. ☐ After everyone is on the current extension version: tell the developer, who can raise the Cloudflare worker's `MIN_CLIENT_VERSION` to retire old builds.
+6. ☐ (Optional, QMS) Read-acknowledgement — create `NucleusTemplateAck__c` + the `RequiresAck__c` checkbox + permissions ([spec](salesforce-ack-object.md)). ⚠️ For the admin "who's outstanding" matrix, also let admins **read all `NucleusTeamMember__c` records** (Public Read OWD, or View All in the admin permission set).
+7. ☐ Readable record names (section above) — nice-to-have.
+8. ☐ Optional cleanup: delete the unused custom **Changed By / Changed By Email** fields (the extension stopped writing them; standard Created/Last Modified By replaced them).
+9. ☐ After everyone is on the current extension version: tell the developer, who can raise the Cloudflare worker's `MIN_CLIENT_VERSION` to retire old builds.
 
 **Data entry (anyone with access, once step 2 is done):**
-9. ☐ A `NucleusTeamMember__c` record per user (right team; the user's name as the record Name once step 6.2 is done).
-10. ☐ Tick `IsAdmin__c` on the chosen admins' Team Member records (remember: admins need BOTH this flag — which unlocks the manager UI — and the permission set from step 3, which is what Salesforce enforces).
+10. ☐ A `NucleusTeamMember__c` record per user (right team; the user's name as the record Name once step 7 is done). A user who belongs to **several teams** gets one record per team.
+11. ☐ Tick `IsAdmin__c` on the chosen admins' Team Member records (remember: admins need BOTH this flag — which unlocks the manager UI — and the permission set from step 3, which is what Salesforce enforces).
 
 ## How responsibilities split
 

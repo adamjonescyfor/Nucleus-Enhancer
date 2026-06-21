@@ -27,7 +27,11 @@ var TEMPLATE_CONCEPTS = {
     changeReason:       ['changereason', 'reasonforchange', 'reason'],
     effectiveDate:      ['effectivedate'],
     reviewDueDate:      ['reviewduedate', 'reviewdate'],
-    documentId:         ['documentid', 'docid']
+    documentId:         ['documentid', 'docid'],
+    // OPTIONAL: a checkbox marking a template as a controlled document that needs a
+    // per-analyst "read & understood" acknowledgement. Absent = no template requires
+    // it (safe default — the read-ack feature stays inert).
+    requiresAck:        ['requiresack', 'requiresacknowledgement', 'requiresacknowledgment', 'controlleddoc']
     // "Last changed by" now comes from the system LastModifiedBy.Name (the custom
     // Changed By / Changed By Email fields were removed once the version Flow went
     // live — see docs/salesforce-version-history-flow.md).
@@ -40,7 +44,7 @@ async function resolveTemplateFields(base, token, obj) {
         obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
         team: 'Team__c', teamRel: 'Team__r', teamsMulti: null, contentMaxLength: null,
         versionLabel: null, status: null, changeReason: null,
-        effectiveDate: null, reviewDueDate: null, documentId: null
+        effectiveDate: null, reviewDueDate: null, documentId: null, requiresAck: null
     };
     try {
         var d = await self.SfUtils.describeObject(base, token, obj);
@@ -70,7 +74,7 @@ function splitTeams(v) {
     return v ? String(v).split(';').map(function (s) { return s.trim(); }).filter(Boolean) : [];
 }
 
-function buildQuery(map, teamCode) {
+function buildQuery(map, teamCodes) {
     var esc = self.SfUtils ? self.SfUtils.soqlEscape : function (v) { return String(v == null ? '' : v); };
     var sel = ['Id', 'Name'];
     if (map.content) sel.push(map.content);
@@ -78,20 +82,30 @@ function buildQuery(map, teamCode) {
     if (map.teamRel) sel.push(map.teamRel + '.TeamCode__c');
     if (map.teamsMulti) sel.push(map.teamsMulti);
     sel.push('LastModifiedBy.Name');
-    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId', 'requiresAck']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
 
-    // Visibility: a template is shown when it's Global (no team set) OR the user's
-    // team is targeted — via the legacy single lookup AND/OR the multi-team field.
-    // "Global" means neither team field constrains it.
+    // The user's team codes (one per membership). Normalise to a de-duped,
+    // non-empty list — a single-team user yields exactly one code, so the IN/
+    // INCLUDES below behave identically to the old single-code `=` filter.
+    var codes = [], seenCode = {};
+    (Array.isArray(teamCodes) ? teamCodes : (teamCodes ? [teamCodes] : [])).forEach(function (c) {
+        c = (c == null ? '' : String(c)).trim();
+        if (c && !seenCode[c]) { seenCode[c] = true; codes.push(c); }
+    });
+    var inList = codes.map(function (c) { return "'" + esc(c) + "'"; }).join(', ');
+
+    // Visibility: a template is shown when it's Global (no team set) OR ANY of the
+    // user's teams is targeted — via the legacy single lookup AND/OR the multi-team
+    // field. "Global" means neither team field constrains it.
     var teamField = map.team || 'Team__c';
     var teamFilter;
-    if (teamCode && map.teamsMulti && map.teamRel) {
+    if (codes.length && map.teamsMulti && map.teamRel) {
         teamFilter = '((' + teamField + ' = null AND ' + map.teamsMulti + " = null)"
-                   + ' OR ' + map.teamRel + ".TeamCode__c = '" + esc(teamCode) + "'"
-                   + ' OR ' + map.teamsMulti + " INCLUDES ('" + esc(teamCode) + "'))";
-    } else if (teamCode && map.teamRel) {
-        teamFilter = '(' + teamField + " = null OR " + map.teamRel + ".TeamCode__c = '" + esc(teamCode) + "')";
+                   + ' OR ' + map.teamRel + '.TeamCode__c IN (' + inList + ')'
+                   + ' OR ' + map.teamsMulti + ' INCLUDES (' + inList + '))';
+    } else if (codes.length && map.teamRel) {
+        teamFilter = '(' + teamField + ' = null OR ' + map.teamRel + '.TeamCode__c IN (' + inList + '))';
     } else if (map.teamsMulti) {
         teamFilter = '(' + teamField + ' = null AND ' + map.teamsMulti + ' = null)';
     } else {
@@ -147,9 +161,13 @@ async function fetchRemoteTemplates(forceRefresh) {
         } catch (e) { /* keep existing team info */ }
     }
 
-    var teamCode = sfUser.teamCode || null;
+    // Multi-team membership: scope to ALL the user's team codes. Falls back to the
+    // single primary code for an older sfUser record that predates `teams`.
+    var teamCodes = (sfUser.teams && sfUser.teams.length)
+        ? sfUser.teams.map(function (t) { return t.teamCode; }).filter(Boolean)
+        : (sfUser.teamCode ? [sfUser.teamCode] : []);
     var map = await resolveTemplateFields(base, accessToken, obj);
-    var query = buildQuery(map, teamCode);
+    var query = buildQuery(map, teamCodes);
     var url = base + '/query?q=' + encodeURIComponent(query);
     var response = await doFetch(url, accessToken);
 
@@ -180,6 +198,7 @@ async function fetchRemoteTemplates(forceRefresh) {
             category:           (map.category && r[map.category]) || '',
             teamCode:           (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
             teamCodes:          splitTeams(map.teamsMulti && r[map.teamsMulti]),
+            requiresAck:        !!(map.requiresAck && r[map.requiresAck]),
             lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
@@ -192,7 +211,7 @@ async function fetchRemoteTemplates(forceRefresh) {
     }
 
     if (self.dlog) self.dlog('sync', 'team-scoped templates', {
-        count: Object.keys(sfRemoteTemplates).length, teamCode: teamCode, multiTeamField: map.teamsMulti || null, contentMax: map.contentMaxLength || null
+        count: Object.keys(sfRemoteTemplates).length, teamCodes: teamCodes, multiTeamField: map.teamsMulti || null, contentMax: map.contentMaxLength || null
     });
 
     var syncedAt = Date.now();
@@ -218,7 +237,7 @@ function buildAdminQuery(map) {
     if (map.teamRel)  { sel.push(map.teamRel + '.Name'); sel.push(map.teamRel + '.TeamCode__c'); }
     if (map.teamsMulti) sel.push(map.teamsMulti);
     sel.push('LastModifiedBy.Name');
-    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId']
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId', 'requiresAck']
         .forEach(function (k) { if (map[k]) sel.push(map[k]); });
     return 'SELECT ' + sel.join(', ') + ' FROM ' + map.obj + ' ORDER BY Name ASC';
 }
@@ -292,6 +311,7 @@ async function fetchAllTemplatesForAdmin() {
             teamName:           (teamRel && teamRel.Name) || null,
             teamCode:           (teamRel && teamRel.TeamCode__c) || null,
             teamCodes:          splitTeams(map.teamsMulti && r[map.teamsMulti]),
+            requiresAck:        !!(map.requiresAck && r[map.requiresAck]),
             lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
         };
         if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';

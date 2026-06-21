@@ -1,7 +1,7 @@
 # Salesforce spec — org-wide template usage log (`NucleusTemplateUsage__c`)
 
 **For:** the Salesforce administrator
-**Goal:** one record per template insertion, org-wide — so template admins can see which templates are actually used, by whom, and where (UKAS evidence of template adoption). The extension **already ships the client for this, dormant**: the moment this object exists, usage starts recording automatically — no extension update needed.
+**Goal:** one record per template insertion, org-wide — so template admins can see which templates are actually used, by whom, and where (UKAS evidence of template adoption). The extension writes to it automatically — field API names are describe-discovered, so no extension update is needed. (This is the reference spec for the object; it's already created and live.)
 
 ## Object
 
@@ -26,7 +26,7 @@ Who/when come from the standard **Created By / Created Date** — no custom user
 ## How it behaves in the extension
 
 - Every insert is logged locally (per device, capped at 500) **and** fire-and-forget mirrored to this object once it exists. Failures are silent by design — a usage write can never break an insert.
-- The Template Manager's **Usage** view automatically switches from the local log to the org-wide log (newest 200, with user names) when the object is detected. Admins only.
+- The Template Manager's **Usage** view shows the org-wide log (newest 200, with user names). Admins only.
 - The extension checks for the object at most once per service-worker lifetime, so a missing object costs essentially nothing.
 
 ## Test plan

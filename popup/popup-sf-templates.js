@@ -204,7 +204,12 @@ function renderSfTemplatesStatus(state) {
         badge.className   = 'badge badge-success';
 
         var name = user ? (user.fullName || user.username || user.email || '') : '';
-        var team = (user && user.teamName) ? ' · ' + user.teamName : '';
+        // Show every team the user belongs to (multi-team membership), falling back
+        // to the single primary team for an older session record.
+        var teamNames = (user && user.teams && user.teams.length)
+            ? user.teams.map(function (t) { return t.teamName; }).filter(Boolean)
+            : (user && user.teamName ? [user.teamName] : []);
+        var team = teamNames.length ? ' · ' + teamNames.join(' · ') : '';
         if (nameEl) nameEl.textContent = name ? name + team : 'Connected to Salesforce';
         if (emailEl) {
             emailEl.textContent = (user && user.email) ? user.email : '';

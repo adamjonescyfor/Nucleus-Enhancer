@@ -72,9 +72,10 @@ Everything lives in **Salesforce** — the manager is just a faster window onto 
 - **Version control** — minor/major bumps **only when content changes** (status/team/date edits don't create a version), a status lifecycle (Draft → Active → Under Review → Superseded → Retired), effective & review‑due dates, and a change reason for the audit trail.
 - **History & diff** — browse snapshots, compare any two versions side‑by‑side, filter, export to CSV.
 - **Reviews** — everything overdue or due within 30/60 days, surfaced on the dashboard and sidebar.
-- **Usage** — a per‑device insertion log that upgrades automatically to an **org‑wide** log once the Salesforce usage object exists.
+- **Usage** — an **org‑wide** insertion log (which templates are used, by whom, and where), backed by a per‑device local log.
+- **Read‑acknowledgement (QMS)** — flag templates as **controlled documents**; analysts sign off "read & understood" per version, an **Acknowledgements** matrix shows who's outstanding per team, and a new version re‑opens the requirement. Built for UKAS / ISO 17025 evidence.
 
-**Everyone else** — the popup's **View Templates** button opens the same page **read‑only**: your team's active templates plus Global, with full content, versions, review dates and history. Transparency without edit risk.
+**Everyone else** — the popup's **View Templates** button opens the same page **read‑only**: your team's active templates plus Global, with full content, versions, review dates and history. Controlled documents show an **Acknowledge** button so you can record that you've read & understood the current version. Transparency without edit risk.
 
 > Only **Active** templates reach analysts — drafts, superseded and retired versions stay out of the insert menus. Deleting is for mistakes; for templates that were genuinely in use, **Retire** them instead so the audit trail survives.
 
@@ -88,7 +89,7 @@ Everything the org needs — objects, permissions, and the rollout checklist —
 
 ➡️ **[docs/salesforce-admin-guide.md](docs/salesforce-admin-guide.md)**
 
-The short version: the extension acts **as the signed‑in user**, so Salesforce permissions are the real access control. Analysts need Read on the Nucleus objects + a team‑membership record; template admins need the admin permission set (incl. **Delete/Modify All on the version object** — the #1 gotcha when deleting templates) plus the `IsAdmin__c` flag on their team membership. Version snapshots are created by a [record‑triggered Flow](docs/salesforce-version-history-flow.md); org‑wide usage logging lights up when the [usage object](docs/salesforce-usage-object.md) is created. Field API names are auto‑discovered from each object's describe — they never need to match exactly.
+The short version: the extension acts **as the signed‑in user**, so Salesforce permissions are the real access control. Analysts need Read on the Nucleus objects + a team‑membership record; template admins need the admin permission set (incl. **Delete/Modify All on the version object** — the #1 gotcha when deleting templates) plus the `IsAdmin__c` flag on their team membership. Analysts can belong to **several teams** (just give them one membership record each) and see every template targeted at any of them. Version snapshots are created by a [record‑triggered Flow](docs/salesforce-version-history-flow.md); **read‑acknowledgement** uses a small `NucleusTemplateAck__c` object + a `RequiresAck__c` checkbox ([setup](docs/salesforce-ack-object.md)); the org‑wide usage log uses `NucleusTemplateUsage__c` ([spec](docs/salesforce-usage-object.md)). Field API names are auto‑discovered from each object's describe — they never need to match exactly.
 
 ---
 
@@ -124,7 +125,7 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 | "Export Case Report" button missing | Open a **Forensic Case** record page — it docks into the action bar. |
 | Can't delete a template ("version history…") | Your admin permission set needs Delete on the version object — see the [admin guide](docs/salesforce-admin-guide.md). |
 | A template won't save ("too long" / "data value too large") | Salesforce's Content field holds ~32,000 characters (formatting counts too) — the editor shows a live counter; trim the content or use a smaller image. |
-| The team picker shows a single dropdown, not tick‑boxes | Multi‑team assignment needs the optional `Teams__c` field — see the [admin guide](docs/salesforce-admin-guide.md). Until it's added, templates target one team or Global. |
+| The team picker shows a single dropdown, not tick‑boxes | The `Teams__c` field's field‑level security isn't readable for your user — ask an admin to grant read on it (see the [admin guide](docs/salesforce-admin-guide.md)). |
 | Something's misbehaving and you want it fixed | Popup → **Diagnostics** → turn on **Capture diagnostic log**, reproduce it, then **Download log** and send the `.txt` to the developer. See [docs/Nucleus_Enhancer_Diagnostics.md](docs/Nucleus_Enhancer_Diagnostics.md). |
 | Anything else | The popup's **Help & tips** section, or ask your template admin. |
 
@@ -132,7 +133,11 @@ The short version: the extension acts **as the signed‑in user**, so Salesforce
 
 ## 🗺️ What's next
 
-The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)** — bulk template operations, multi‑team membership, review notifications, read‑acknowledgement tracking, and the **MG22A/B Word report generator** (built, currently feature‑flagged off, owned by Mitul).
+The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+
+**Recently shipped:** bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix).
+
+**Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · an optional change‑request workflow · `manager.js` modularisation. Some shipped items wait on a small Salesforce change — see the [admin guide](docs/salesforce-admin-guide.md).
 
 ---
 

@@ -19,6 +19,8 @@ var bulkSelected       = new Set(); // template names ticked for bulk actions (a
 var multiTeamEnabled   = false;  // true when the Salesforce multi-select team field exists
 var editorTeamCodes    = [];     // team codes ticked in the editor's multi-team picker
 var contentMaxLen      = 0;      // real max length of the Content field (from describe)
+var acksAvailable      = false;  // read-acknowledgement feature live? (NucleusTemplateAck__c exists)
+var myAcks             = {};     // "templateId|version" the current user has acknowledged
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -124,6 +126,7 @@ var VIEW_META = {
     templates: { panel: 'mgr-list-panel',     title: 'Templates', sub: '' },
     reviews:   { panel: 'mgr-reviews-panel',  title: 'Reviews',   sub: 'Documents overdue or due for review soon.' },
     usage:     { panel: 'mgr-usage-panel',    title: 'Usage',     sub: 'Where templates have been inserted on this device.' },
+    acks:      { panel: 'mgr-acks-panel',     title: 'Acknowledgements', sub: 'Who has read & understood each controlled template — and who is outstanding.' },
     settings:  { panel: 'mgr-settings-panel', title: 'About',     sub: 'Who you’re signed in as, the Salesforce connection, and how this works.' }
 };
 
@@ -138,6 +141,7 @@ function setView(view) {
     if (view === 'usage')    openUsage();
     if (view === 'settings') renderSettings();
     if (view === 'reviews')  renderReviews();
+    if (view === 'acks')     renderAckMatrix();
     showState(view === 'templates' ? 'list' : view);
 }
 
@@ -194,6 +198,7 @@ function loadTemplates() {
         updateReviewBadge();
         setView('templates');
 
+        loadMyAcks(function () { renderAckBanner(); renderTemplateList(); }); // QMS acks (dormant if unconfigured)
         loadTeams(); // non-blocking — populates the "assign to any team" picker
     });
 }
@@ -230,6 +235,7 @@ function loadReadOnly() {
             renderStats();
             renderTemplateList();
             setView('templates');
+            loadMyAcks(function () { renderAckBanner(); renderTemplateList(); }); // QMS acks (dormant if unconfigured)
         });
     });
 }
@@ -240,8 +246,13 @@ function renderIdentity() {
     if (!box) return;
     var name = currentUser.fullName || currentUser.username || currentUser.email || (readOnly ? 'Member' : 'Admin');
     document.getElementById('mgr-identity-name').textContent = name;
+    // List every team the user belongs to (multi-team membership), falling back to
+    // the single primary team for an older session record.
+    var idTeams = (currentUser.teams && currentUser.teams.length)
+        ? currentUser.teams.map(function (t) { return t.teamName; }).filter(Boolean)
+        : (currentUser.teamName ? [currentUser.teamName] : []);
     document.getElementById('mgr-identity-team').textContent =
-        (currentUser.teamName ? currentUser.teamName : (readOnly ? '—' : 'All teams'))
+        (idTeams.length ? idTeams.join(' · ') : (readOnly ? '—' : 'All teams'))
         + (readOnly ? ' · member' : ' · admin');
     var av = document.getElementById('mgr-identity-avatar');
     if (av) av.textContent = name.trim().charAt(0).toUpperCase();
@@ -394,6 +405,156 @@ function visibleTemplateNames() {
     });
 }
 
+// ── Read-acknowledgements (QMS) ────────────────────────────────────────────────
+// Dormant until NucleusTemplateAck__c exists; every helper is a no-op when the
+// feature is unavailable, so nothing here changes behaviour for existing orgs.
+
+function ackKey(t) { return (t.id || '') + '|' + (t.versionLabel || ''); }
+
+// A controlled document: flagged RequiresAck, currently Active, with an id+version.
+function isControlledDoc(t) {
+    return !!(t && t.requiresAck && (t.status || 'Active').toLowerCase() === 'active' && t.id && t.versionLabel);
+}
+
+// The current user's team codes (multi-team aware).
+function myTeamCodes() {
+    return (currentUser.teams && currentUser.teams.length)
+        ? currentUser.teams.map(function (x) { return x.teamCode; }).filter(Boolean)
+        : (currentUser.teamCode ? [currentUser.teamCode] : []);
+}
+
+// Is this template in the user's own scope? Global → everyone; otherwise it must
+// target one of their teams. (For members allTemplates is already their scope, so
+// this only matters for admins, whose dataset spans every team.)
+function templateInMyScope(t) {
+    var codes = (t.teamCodes && t.teamCodes.length) ? t.teamCodes : (t.teamCode ? [t.teamCode] : []);
+    if (!codes.length) return true;
+    var mine = myTeamCodes();
+    return codes.some(function (c) { return mine.indexOf(c) !== -1; });
+}
+
+// Does the user still owe an acknowledgement for this template's CURRENT version?
+function needsMyAck(t) {
+    return acksAvailable && isControlledDoc(t) && templateInMyScope(t) && !myAcks[ackKey(t)];
+}
+
+function outstandingAckNames() {
+    return Object.keys(allTemplates).filter(function (n) { return needsMyAck(allTemplates[n]); });
+}
+
+// Load the current user's acknowledgements; flips acksAvailable on if the feature
+// is live. Safe no-op otherwise.
+function loadMyAcks(cb) {
+    chrome.runtime.sendMessage({ action: 'acks.mine' }, function (r) {
+        acksAvailable = !chrome.runtime.lastError && !!(r && r.available === true);
+        myAcks = {};
+        if (acksAvailable) (r.acks || []).forEach(function (k) { myAcks[k] = true; });
+        // The admin matrix tab appears only once the feature is live, for admins.
+        var acksNav = document.querySelector('.mgr-nav-item[data-view="acks"]');
+        if (acksNav) acksNav.style.display = (acksAvailable && !readOnly) ? '' : 'none';
+        if (cb) cb();
+    });
+}
+
+// Banner at the top of the Templates panel: how many controlled docs you owe.
+function renderAckBanner() {
+    var el = document.getElementById('mgr-ack-banner');
+    if (!el) return;
+    var n = acksAvailable ? outstandingAckNames().length : 0;
+    if (!n) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.textContent = '⚠ ' + n + ' controlled template' + (n === 1 ? '' : 's')
+        + ' need your “read & understood” acknowledgement — open one to read and confirm.';
+}
+
+// Acknowledge a template's current version (after the user has opened/read it).
+function acknowledgeTemplate(t, onDone) {
+    chrome.runtime.sendMessage(
+        { action: 'acks.acknowledge', templateId: t.id, versionLabel: t.versionLabel },
+        function (r) {
+            if (!chrome.runtime.lastError && r && r.ok) {
+                myAcks[ackKey(t)] = true;
+                renderAckBanner();
+                renderTemplateList();
+                if (onDone) onDone(true);
+            } else {
+                var msg = (r && r.error && r.error !== 'NOT_AVAILABLE') ? r.error : 'Could not save the acknowledgement.';
+                mgrModal({ title: 'Acknowledgement failed', body: msg, confirmLabel: 'Close', alert: true });
+                if (onDone) onDone(false);
+            }
+        }
+    );
+}
+
+// Admin matrix: who has acknowledged each controlled template's current version,
+// and who is outstanding (scoped to the members of the template's assigned teams).
+function renderAckMatrix() {
+    var box = document.getElementById('mgr-acks-body');
+    if (!box) return;
+    box.innerHTML = '<p class="mgr-state-msg">Loading…</p>';
+
+    chrome.runtime.sendMessage({ action: 'acks.matrix' }, function (r) {
+        if (chrome.runtime.lastError || !r || !r.ok) {
+            box.innerHTML = '<p class="mgr-state-msg">' +
+                ((r && r.error === 'PERMISSION_DENIED') ? 'Template admins only.' : 'Could not load acknowledgements.') + '</p>';
+            return;
+        }
+        if (!r.available) {
+            box.innerHTML = '<p class="mgr-state-msg">Read-acknowledgement isn’t set up in Salesforce yet ' +
+                '(the <code>NucleusTemplateAck__c</code> object doesn’t exist).</p>';
+            return;
+        }
+
+        var members = r.members || [];   // [{ userId, name, teamCodes }]
+        var acks    = r.acks    || [];   // [{ templateId, version, userId, name }]
+
+        // template+version → { userId: true } who acknowledged it.
+        var ackedBy = {};
+        acks.forEach(function (a) {
+            var k = a.templateId + '|' + a.version;
+            (ackedBy[k] = ackedBy[k] || {})[a.userId] = true;
+        });
+
+        var controlled = [];
+        Object.keys(allTemplates).forEach(function (name) {
+            if (isControlledDoc(allTemplates[name])) controlled.push({ name: name, t: allTemplates[name] });
+        });
+        controlled.sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+
+        if (!controlled.length) {
+            box.innerHTML = '<p class="mgr-state-msg">No controlled documents yet. Tick ' +
+                '<strong>Requires acknowledgement</strong> on a template to start tracking read &amp; understood sign-off.</p>';
+            return;
+        }
+
+        var rows = controlled.map(function (c) {
+            var t     = c.t;
+            var codes = (t.teamCodes && t.teamCodes.length) ? t.teamCodes : (t.teamCode ? [t.teamCode] : []);
+            var required = members.filter(function (m) {
+                if (!codes.length) return true; // Global → everyone
+                return m.teamCodes.some(function (mc) { return codes.indexOf(mc) !== -1; });
+            });
+            var acked = ackedBy[t.id + '|' + t.versionLabel] || {};
+            var outstanding = required.filter(function (m) { return !acked[m.userId]; });
+            var done = required.length - outstanding.length;
+            var pct  = required.length ? Math.round(done / required.length * 100) : 100;
+            var statusCell = outstanding.length
+                ? '<span class="mgr-ack-out">' + outstanding.length + ' outstanding</span>'
+                : '<span class="mgr-ack-ok">All acknowledged ✓</span>';
+            var outCell = outstanding.length
+                ? outstanding.map(function (m) { return escHtml(m.name || '(unknown)'); }).sort().join(', ')
+                : '—';
+            return '<tr><td>' + escHtml(c.name) + '</td><td>v' + escHtml(t.versionLabel) + '</td>'
+                 + '<td>' + done + ' / ' + required.length + ' (' + pct + '%)</td>'
+                 + '<td>' + statusCell + '</td><td>' + outCell + '</td></tr>';
+        }).join('');
+
+        box.innerHTML = '<table class="mgr-table mgr-ack-table"><thead><tr>'
+            + '<th>Template</th><th>Version</th><th>Acknowledged</th><th>Status</th><th>Outstanding</th>'
+            + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    });
+}
+
 function renderTemplateList() {
     var tbody   = document.getElementById('mgr-template-rows');
     var emptyEl = document.getElementById('mgr-empty');
@@ -475,9 +636,18 @@ function renderTemplateList() {
         }
         tr.appendChild(docTd);
 
-        // Name
+        // Name (+ QMS acknowledgement chip for controlled documents)
         var nameTd = document.createElement('td');
         nameTd.textContent = name;
+        if (acksAvailable && isControlledDoc(t) && templateInMyScope(t)) {
+            var acked = !!myAcks[ackKey(t)];
+            var chip  = document.createElement('span');
+            chip.className   = 'mgr-ack-chip ' + (acked ? 'mgr-ack-chip--done' : 'mgr-ack-chip--due');
+            chip.textContent = acked ? '✓ Acknowledged' : 'Acknowledge';
+            chip.title       = (acked ? 'You have acknowledged v' : 'Read & acknowledge v') + t.versionLabel;
+            nameTd.appendChild(document.createTextNode(' '));
+            nameTd.appendChild(chip);
+        }
         tr.appendChild(nameTd);
 
         // Version
@@ -1274,14 +1444,31 @@ function openViewModal(name) {
     meta.push((t.teamCodes && t.teamCodes.length) ? t.teamCodes.join(', ') : (t.teamName || t.teamCode || 'Global'));
     if (t.reviewDueDate) meta.push('Review due ' + formatDate(t.reviewDueDate));
     var rich = window.CyforSanitize && CyforSanitize.looksLikeHtml(t.content);
-    mgrModal({
-        title:        name,
-        body:         meta.join('  ·  '),
-        preBody:      rich ? null : (t.content || '(empty)'),
-        preHtml:      rich ? t.content : null,
-        confirmLabel: 'Close',
-        alert:        true
-    });
+
+    var controlled   = acksAvailable && isControlledDoc(t) && templateInMyScope(t);
+    var alreadyAcked = controlled && !!myAcks[ackKey(t)];
+    var body = meta.join('  ·  ');
+    if (alreadyAcked) body += '   ·   ✓ You have acknowledged v' + t.versionLabel;
+
+    var opts = {
+        title:   name,
+        body:    body,
+        preBody: rich ? null : (t.content || '(empty)'),
+        preHtml: rich ? t.content : null
+    };
+
+    if (controlled && !alreadyAcked) {
+        // Controlled document the user still owes — make them confirm they've read
+        // & understood THIS version before the button does anything.
+        opts.alert        = false;
+        opts.confirmLabel = 'I have read & understood v' + t.versionLabel;
+        opts.cancelLabel  = 'Close';
+        mgrModal(opts).then(function (ok) { if (ok) acknowledgeTemplate(t); });
+    } else {
+        opts.alert        = true;
+        opts.confirmLabel = 'Close';
+        mgrModal(opts);
+    }
 }
 
 // Clone an existing template into the new-template editor as a Draft (admins).
@@ -2150,7 +2337,8 @@ function showState(state) {
         'settings':      'mgr-settings-panel',
         'editor':        'mgr-editor-panel',
         'history':       'mgr-history-panel',
-        'usage':         'mgr-usage-panel'
+        'usage':         'mgr-usage-panel',
+        'acks':          'mgr-acks-panel'
     };
     Object.keys(panels).forEach(function (key) {
         var el = document.getElementById(panels[key]);
@@ -2159,7 +2347,7 @@ function showState(state) {
 
     // Topbar title/subtitle: derive from the nav view; editor/history set their own.
     var meta = { 'list': VIEW_META.templates, 'reviews': VIEW_META.reviews,
-                 'usage': VIEW_META.usage, 'settings': VIEW_META.settings }[state];
+                 'usage': VIEW_META.usage, 'acks': VIEW_META.acks, 'settings': VIEW_META.settings }[state];
     var titleEl = document.getElementById('mgr-view-title');
     var subEl   = document.getElementById('mgr-view-sub');
     if (meta && titleEl) {

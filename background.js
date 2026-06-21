@@ -15,6 +15,7 @@ try {
     importScripts(
         'background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js',
         'background/sf-team.js', 'background/sf-versions.js', 'background/sf-usage.js',
+        'background/sf-acks.js',
         'report/case-report-fetch.js',
         // MG22A/MG22B report generation — OWNED BY MITUL (feature hidden via the
         // MG22_ENABLED flag in content/case-report.js). These modules stay loaded
@@ -218,8 +219,50 @@ async function runBackgroundSync() {
     if (!(await hasSalesforceTabOpen())) return;                            // not actively using SF
     try {
         var r = await self.SfTemplates.fetchRemoteTemplates(true);
-        if (r && r.ok) maybeNotifyReviews(r.templates);
+        if (r && r.ok) { maybeNotifyReviews(r.templates); maybeNotifyAcks(r.templates); }
     } catch (e) { /* retry next cycle */ }
+}
+
+// After a successful sync, nudge ANY analyst (once per day) when controlled
+// templates need their read-acknowledgement. Inherently team-scoped — the sync
+// only returns templates the user can see. Dormant until NucleusTemplateAck__c
+// exists. Non-fatal: must never affect the sync.
+async function maybeNotifyAcks(templates) {
+    try {
+        if (!self.SfAcks) return;
+
+        // Controlled docs (requiresAck + Active) the user can see.
+        var controlled = [];
+        Object.keys(templates || {}).forEach(function (name) {
+            var t = templates[name];
+            if (!t || !t.requiresAck || !t.id || !t.versionLabel) return;
+            if ((t.status || 'Active').toLowerCase() !== 'active') return;
+            controlled.push(t);
+        });
+        if (!controlled.length) return;
+
+        var mine = await self.SfAcks.fetchMine();
+        if (!mine || !mine.available) return; // feature dormant — nothing to nudge
+
+        var acked = {};
+        (mine.acks || []).forEach(function (k) { acked[k] = true; });
+        var outstanding = controlled.filter(function (t) { return !acked[t.id + '|' + t.versionLabel]; });
+        if (!outstanding.length) return;
+
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var day   = today.toISOString().slice(0, 10);
+        var stored = await chrome.storage.local.get('ackNotifyDay');
+        if (stored.ackNotifyDay === day) return; // at most one nudge per day
+        await chrome.storage.local.set({ ackNotifyDay: day });
+
+        var n = outstanding.length;
+        chrome.notifications.create('cyfor-acks-due', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('report/cyfor-logo.png'),
+            title: 'Templates to acknowledge',
+            message: n + ' controlled template' + (n === 1 ? '' : 's') + ' need your "read & understood" — open the Template Manager.'
+        });
+    } catch (e) { /* non-fatal by design */ }
 }
 
 // After a successful sync, nudge TEMPLATE ADMINS (once per day) when their
@@ -264,7 +307,7 @@ async function maybeNotifyReviews(templates) {
 // Clicking the nudge opens the Template Manager.
 try {
     chrome.notifications.onClicked.addListener(function (id) {
-        if (id === 'cyfor-review-due') chrome.runtime.openOptionsPage();
+        if (id === 'cyfor-review-due' || id === 'cyfor-acks-due') chrome.runtime.openOptionsPage();
     });
 } catch (e) { /* notifications unavailable */ }
 
@@ -462,6 +505,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             self.SfUsage.listOrgUsage(200)
                 .then((r) => sendResponse(r))
                 .catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+
+    // ── Read-acknowledgements — silent no-op until NucleusTemplateAck__c exists
+    // (see docs/salesforce-ack-object.md). ──
+    if (message.action === 'acks.status') {
+        if (!self.SfAcks) { sendResponse({ ok: true, available: false }); return true; }
+        self.SfAcks.status().then(sendResponse).catch(() => sendResponse({ ok: true, available: false }));
+        return true;
+    }
+    // The current user's own acknowledgements (any signed-in user).
+    if (message.action === 'acks.mine') {
+        if (!self.SfAcks) { sendResponse({ ok: true, available: false, acks: [] }); return true; }
+        self.SfAcks.fetchMine().then(sendResponse).catch(() => sendResponse({ ok: true, available: false, acks: [] }));
+        return true;
+    }
+    // Record that the current user has read & understood a template version.
+    if (message.action === 'acks.acknowledge') {
+        if (!self.SfAcks) { sendResponse({ ok: false, error: 'NOT_AVAILABLE' }); return true; }
+        self.SfAcks.acknowledge(message.templateId, message.versionLabel)
+            .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+    // Admin matrix data (roster + all acks) — template admins only.
+    if (message.action === 'acks.matrix') {
+        if (!self.SfAcks) { sendResponse({ ok: true, available: false, members: [], acks: [] }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) {
+                sendResponse({ ok: false, error: 'PERMISSION_DENIED' });
+                return;
+            }
+            self.SfAcks.fetchMatrix().then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
         })();
         return true;
     }

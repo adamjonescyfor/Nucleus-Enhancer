@@ -32,6 +32,9 @@
             <button type="button" class="mgr-nav-item" data-view="usage">
                 <span class="mgr-nav-ico" aria-hidden="true">▤</span> Usage
             </button>
+            <button type="button" class="mgr-nav-item" data-view="acks" style="display:none">
+                <span class="mgr-nav-ico" aria-hidden="true">✓</span> Acknowledgements
+            </button>
             <button type="button" class="mgr-nav-item" data-view="settings">
                 <span class="mgr-nav-ico" aria-hidden="true">ⓘ</span> About
             </button>
@@ -80,6 +83,7 @@
             <!-- ── Templates view ──────────────────────────────────────────── -->
             <div id="mgr-list-panel" style="display:none">
                 <div class="mgr-stats" id="mgr-stats"></div>
+                <div class="mgr-ack-banner" id="mgr-ack-banner" style="display:none" role="status"></div>
 
                 <div class="mgr-toolbar">
                     <div class="mgr-search">
@@ -167,6 +171,18 @@
                         <tbody id="mgr-usage-rows"></tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- ── Acknowledgements view (admins; QMS read & understood) ─────── -->
+            <div id="mgr-acks-panel" style="display:none">
+                <div class="mgr-panel-head">
+                    <p class="mgr-list-desc">
+                        Read &amp; understood sign-off for controlled templates (those ticked
+                        <strong>Requires acknowledgement</strong>). “Outstanding” is scoped to the
+                        members of each template’s assigned team(s); a new version resets it.
+                    </p>
+                </div>
+                <div class="mgr-table-card" id="mgr-acks-body"></div>
             </div>
 
             <!-- ── Settings view ───────────────────────────────────────────── -->

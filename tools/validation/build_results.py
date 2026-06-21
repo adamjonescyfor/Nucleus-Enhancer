@@ -153,6 +153,14 @@ CASES = [
  ("Security","Acts as the user",H,"Any user","Inspect access","Extension only sees/does what the SF user can; no elevated access"),
  ("Security","No secrets shipped",M,"Build","Inspect package","No OAuth secrets in the extension; config.js gitignored"),
  ("Security","OAuth flow (PKCE + state)",M,"Connecting","Disconnect, then Connect Salesforce","Sign-in completes normally; the flow uses PKCE and a CSRF 'state' the extension verifies. A tampered/mismatched callback aborts with STATE_MISMATCH in the service-worker console"),
+ ("Security","Multi-team membership",M,"User with 2+ NucleusTeamMember__c records (different teams)","Connect; open the template menu + manager About","Identity shows 'Team A · Team B'; menu/manager list templates targeted at EITHER team plus Global — and NOTHING from teams the user is not in. Admin if IsAdmin__c is set on any membership"),
+ ("Security","Single-team unchanged",L,"User in exactly one team","Connect; open the template menu","Behaves exactly as before — their team's templates + Global; identity shows the one team"),
+ # ── Read-acknowledgements (QMS) ──
+ ("Acknowledgements","Mark a controlled doc",M,"Admin; a template","Tick 'Requires acknowledgement' on it; Save","It becomes a controlled document — an Acknowledge chip appears for members of its team(s)"),
+ ("Acknowledgements","Analyst acknowledges",M,"Template ticked RequiresAck; member of its team","Open it in the manager → click 'I have read & understood vX'","Chip flips to '✓ Acknowledged'; banner count drops; a NucleusTemplateAck__c record is created (CreatedBy = you)"),
+ ("Acknowledgements","Re-ack on new version",M,"Already acknowledged a controlled template","Admin publishes a new version; re-sync","Shows outstanding again — the old acknowledgement no longer matches the current version"),
+ ("Acknowledgements","Admin matrix",M,"Admin; some acknowledgements recorded","Manager → Acknowledgements tab","Per controlled template: acked/total + %, status, and the OUTSTANDING members' names — scoped to the template's assigned team(s)"),
+ ("Acknowledgements","Outstanding nudge",L,"Outstanding controlled templates for you","Trigger a background sync (SF tab open)","At most one browser notification per day; clicking it opens the manager"),
  # ── Visual / UX sweep ──
  ("UX","Layout & overflow",M,"All surfaces","Resize popup/manager; long names","No clipping/overflow; tooltips for truncation; narrow-width holds"),
  ("UX","British spelling",L,"UI text","Scan labels (e.g. 'centre')","British spellings; consistent terminology"),
