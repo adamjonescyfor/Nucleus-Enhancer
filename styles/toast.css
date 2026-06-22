@@ -120,29 +120,12 @@
 }
 
 /* ==================================================
-   Variants
+   Variants — flat status colours (no gradients). Solid fills with white
+   text so they read identically over any Salesforce page, light or dark.
+   Green = done, indigo = info/in-progress, red = error, amber = warning.
    ================================================== */
 
-/* Success — deep green */
-.cyfor-toast-success {
-    background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
-    color: #fff;
-}
-
-/* Error — deep red */
-.cyfor-toast-error {
-    background: linear-gradient(135deg, #b71c1c 0%, #c62828 100%);
-    color: #fff;
-}
-
-/* Info — deep blue */
-.cyfor-toast-info {
-    background: linear-gradient(135deg, #01579b 0%, #0277bd 100%);
-    color: #fff;
-}
-
-/* Warning — deep orange */
-.cyfor-toast-warning {
-    background: linear-gradient(135deg, #e65100 0%, #ef6c00 100%);
-    color: #fff;
-}
+.cyfor-toast-success { background: #16a34a; color: #fff; }
+.cyfor-toast-error   { background: #dc2626; color: #fff; }
+.cyfor-toast-info    { background: #4f46e5; color: #fff; }
+.cyfor-toast-warning { background: #d97706; color: #fff; }

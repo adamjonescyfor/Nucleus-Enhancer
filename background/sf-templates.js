@@ -1,0 +1,342 @@
+// ==================================================
+// CYFOR Nucleus Enhancer — Salesforce Template Sync
+// Fetches templates from NucleusTemplate__c via REST API with TTL caching.
+//
+// Field API names are DISCOVERED from the object describe (Salesforce
+// auto-generates names from labels, e.g. "Version Label" -> Version_Label__c,
+// which a hardcoded VersionLabel__c would miss). resolveTemplateFields() is
+// exported so the CRUD path writes to the exact same field names.
+// Exported as self.SfTemplates.
+// ==================================================
+
+(function () {
+
+var CONFIG_KEY    = 'sfOAuthConfig';
+var TOKENS_KEY    = 'sfOAuthTokens';
+var CACHE_KEY     = 'sfRemoteTemplates';
+var SYNCED_AT_KEY = 'sfTemplatesSyncedAt';
+var CACHE_TTL_MS  = 20 * 60 * 1000; // 20 minutes
+
+// concept -> normalised name candidates (see SfUtils.normalizeFieldName).
+var TEMPLATE_CONCEPTS = {
+    content:            ['content'],
+    category:           ['category'],
+    active:             ['isactive', 'active'],
+    versionLabel:       ['versionlabel', 'version'],
+    status:             ['status'],
+    changeReason:       ['changereason', 'reasonforchange', 'reason'],
+    effectiveDate:      ['effectivedate'],
+    reviewDueDate:      ['reviewduedate', 'reviewdate'],
+    documentId:         ['documentid', 'docid'],
+    // OPTIONAL: a checkbox marking a template as a controlled document that needs a
+    // per-analyst "read & understood" acknowledgement. Absent = no template requires
+    // it (safe default — the read-ack feature stays inert).
+    requiresAck:        ['requiresack', 'requiresacknowledgement', 'requiresacknowledgment', 'controlleddoc']
+    // "Last changed by" now comes from the system LastModifiedBy.Name (the custom
+    // Changed By / Changed By Email fields were removed once the version Flow went
+    // live — see docs/salesforce-version-history-flow.md).
+};
+
+// Describe NucleusTemplate__c once and map concepts -> real field API names.
+// Falls back to sensible defaults if describe fails.
+async function resolveTemplateFields(base, token, obj) {
+    var map = {
+        obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
+        team: 'Team__c', teamRel: 'Team__r', teamsMulti: null, contentMaxLength: null,
+        versionLabel: null, status: null, changeReason: null,
+        effectiveDate: null, reviewDueDate: null, documentId: null, requiresAck: null
+    };
+    try {
+        var d = await self.SfUtils.describeObject(base, token, obj);
+        var fields = d.fields || [];
+        var resolved = self.SfUtils.resolveFields(fields, TEMPLATE_CONCEPTS);
+        Object.keys(resolved).forEach(function (k) { if (resolved[k]) map[k] = resolved[k]; });
+        var teamRef = self.SfUtils.findReferenceField(fields, 'NucleusTeam__c');
+        if (teamRef) { map.team = teamRef.name; map.teamRel = teamRef.relationshipName; }
+        // OPTIONAL multi-team field: a multi-select picklist of team CODES added by
+        // the Salesforce admin. When present it enables multi-team assignment; when
+        // absent everything falls back to the single Team__c lookup (today's
+        // behaviour, unchanged).
+        var teamsMulti = fields.filter(function (f) {
+            return f.type === 'multipicklist' && /team/i.test((f.name || '') + ' ' + (f.label || ''));
+        })[0];
+        if (teamsMulti) map.teamsMulti = teamsMulti.name;
+        // Real max length of the Content field, so the manager can guard saves
+        // before Salesforce rejects them with "data value too large".
+        var cField = fields.filter(function (f) { return f.name === map.content; })[0];
+        if (cField && cField.length) map.contentMaxLength = cField.length;
+    } catch (e) { /* keep defaults */ }
+    return map;
+}
+
+// Split a multi-select picklist value ("DF;CYBER") into an array of team codes.
+function splitTeams(v) {
+    return v ? String(v).split(';').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+}
+
+function buildQuery(map, teamCodes) {
+    var esc = self.SfUtils ? self.SfUtils.soqlEscape : function (v) { return String(v == null ? '' : v); };
+    var sel = ['Id', 'Name'];
+    if (map.content) sel.push(map.content);
+    if (map.category) sel.push(map.category);
+    if (map.teamRel) sel.push(map.teamRel + '.TeamCode__c');
+    if (map.teamsMulti) sel.push(map.teamsMulti);
+    sel.push('LastModifiedBy.Name');
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId', 'requiresAck']
+        .forEach(function (k) { if (map[k]) sel.push(map[k]); });
+
+    // The user's team codes (one per membership). Normalise to a de-duped,
+    // non-empty list — a single-team user yields exactly one code, so the IN/
+    // INCLUDES below behave identically to the old single-code `=` filter.
+    var codes = [], seenCode = {};
+    (Array.isArray(teamCodes) ? teamCodes : (teamCodes ? [teamCodes] : [])).forEach(function (c) {
+        c = (c == null ? '' : String(c)).trim();
+        if (c && !seenCode[c]) { seenCode[c] = true; codes.push(c); }
+    });
+    var inList = codes.map(function (c) { return "'" + esc(c) + "'"; }).join(', ');
+
+    // Visibility: a template is shown when it's Global (no team set) OR ANY of the
+    // user's teams is targeted — via the legacy single lookup AND/OR the multi-team
+    // field. "Global" means neither team field constrains it.
+    var teamField = map.team || 'Team__c';
+    var teamFilter;
+    if (codes.length && map.teamsMulti && map.teamRel) {
+        teamFilter = '((' + teamField + ' = null AND ' + map.teamsMulti + " = null)"
+                   + ' OR ' + map.teamRel + '.TeamCode__c IN (' + inList + ')'
+                   + ' OR ' + map.teamsMulti + ' INCLUDES (' + inList + '))';
+    } else if (codes.length && map.teamRel) {
+        teamFilter = '(' + teamField + ' = null OR ' + map.teamRel + '.TeamCode__c IN (' + inList + '))';
+    } else if (map.teamsMulti) {
+        teamFilter = '(' + teamField + ' = null AND ' + map.teamsMulti + ' = null)';
+    } else {
+        teamFilter = teamField + ' = null';
+    }
+
+    return 'SELECT ' + sel.join(', ')
+         + ' FROM ' + map.obj
+         + ' WHERE ' + (map.active || 'IsActive__c') + ' = true'
+         + ' AND ' + teamFilter
+         + ' ORDER BY Name ASC';
+}
+
+async function fetchRemoteTemplates(forceRefresh) {
+    if (!forceRefresh) {
+        var cacheResult = await chrome.storage.local.get([CACHE_KEY, SYNCED_AT_KEY]);
+        var cachedAt = cacheResult[SYNCED_AT_KEY];
+        if (cachedAt && (Date.now() - cachedAt) < CACHE_TTL_MS) {
+            var cached = cacheResult[CACHE_KEY];
+            if (cached && typeof cached === 'object') {
+                return { ok: true, fromCache: true, templates: cached, syncedAt: cachedAt };
+            }
+        }
+    }
+
+    var accessToken;
+    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
+    catch (e) { return { ok: false, error: e.message }; }
+
+    if (forceRefresh && self.SfUtils && self.SfUtils.clearDescribeCache) self.SfUtils.clearDescribeCache();
+
+    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser']);
+    var config  = results[CONFIG_KEY]    || {};
+    var tokens  = results[TOKENS_KEY]    || {};
+    var sfUser  = results['sfOAuthUser'] || {};
+
+    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) return { ok: false, error: 'Not authenticated — connect via Salesforce OAuth first.' };
+
+    var apiVersion = config.apiVersion || 'v62.0';
+    var base = instanceUrl + '/services/data/' + apiVersion;
+    var obj = config.templateObject || 'NucleusTemplate__c';
+
+    // Refresh team membership + admin status each sync (may have changed).
+    if (self.SfTeam && sfUser.id) {
+        try {
+            var teamInfo = await self.SfTeam.fetchUserTeamInfo(instanceUrl, accessToken, sfUser.id);
+            if (teamInfo) {
+                sfUser = Object.assign({}, sfUser, teamInfo);
+                var up = {}; up['sfOAuthUser'] = sfUser;
+                await chrome.storage.local.set(up);
+            }
+        } catch (e) { /* keep existing team info */ }
+    }
+
+    // Multi-team membership: scope to ALL the user's team codes. Falls back to the
+    // single primary code for an older sfUser record that predates `teams`.
+    var teamCodes = (sfUser.teams && sfUser.teams.length)
+        ? sfUser.teams.map(function (t) { return t.teamCode; }).filter(Boolean)
+        : (sfUser.teamCode ? [sfUser.teamCode] : []);
+    var map = await resolveTemplateFields(base, accessToken, obj);
+    var query = buildQuery(map, teamCodes);
+    var url = base + '/query?q=' + encodeURIComponent(query);
+    var response = await doFetch(url, accessToken);
+
+    if (response.status === 401) {
+        try { accessToken = await self.SfOAuth.refreshAccessToken(); }
+        catch (e) { return { ok: false, error: 'Authentication expired. Please reconnect in the extension popup.' }; }
+        response = await doFetch(url, accessToken);
+    }
+
+    if (!response.ok) {
+        var errBody = await response.json().catch(function () { return []; });
+        var emsg = Array.isArray(errBody) ? (errBody[0] && errBody[0].message ? errBody[0].message : response.status) : response.status;
+        return { ok: false, error: 'Salesforce query failed: ' + emsg };
+    }
+
+    var data = await response.json();
+    var sfRemoteTemplates = {};
+    var records = data.records || [];
+    for (var i = 0; i < records.length; i++) {
+        var r = records[i];
+        var name = r.Name;
+        var body = (map.content && r[map.content]) || '';
+        if (!name || !body) continue;
+
+        var entry = {
+            id:                 r.Id || '',
+            content:            body,
+            category:           (map.category && r[map.category]) || '',
+            teamCode:           (map.teamRel && r[map.teamRel] && r[map.teamRel].TeamCode__c) || null,
+            teamCodes:          splitTeams(map.teamsMulti && r[map.teamsMulti]),
+            requiresAck:        !!(map.requiresAck && r[map.requiresAck]),
+            lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
+        };
+        if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
+        if (map.status)        entry.status        = r[map.status]        || 'Active';
+        if (map.changeReason)  entry.changeReason  = r[map.changeReason]  || '';
+        if (map.effectiveDate) entry.effectiveDate = r[map.effectiveDate] || null;
+        if (map.reviewDueDate) entry.reviewDueDate = r[map.reviewDueDate] || null;
+        if (map.documentId)    entry.documentId    = r[map.documentId]    || '';
+        sfRemoteTemplates[name] = entry;
+    }
+
+    if (self.dlog) self.dlog('sync', 'team-scoped templates', {
+        count: Object.keys(sfRemoteTemplates).length, teamCodes: teamCodes, multiTeamField: map.teamsMulti || null, contentMax: map.contentMaxLength || null
+    });
+
+    var syncedAt = Date.now();
+    var toStore = {};
+    toStore[CACHE_KEY] = sfRemoteTemplates;
+    toStore[SYNCED_AT_KEY] = syncedAt;
+    await chrome.storage.local.set(toStore);
+
+    return { ok: true, fromCache: false, templates: sfRemoteTemplates, syncedAt: syncedAt, fields: map };
+}
+
+// ── Admin "manage all teams" view ─────────────────────────────────────────────
+// Unlike the team-scoped sync, this returns EVERY template (all teams + global)
+// in EVERY status (incl. Draft/Superseded/Retired) so a template admin can manage
+// the whole estate from the manager. Admin-gated.
+
+function buildAdminQuery(map) {
+    var sel = ['Id', 'Name'];
+    if (map.content)  sel.push(map.content);
+    if (map.category) sel.push(map.category);
+    if (map.active)   sel.push(map.active);
+    if (map.team)     sel.push(map.team);
+    if (map.teamRel)  { sel.push(map.teamRel + '.Name'); sel.push(map.teamRel + '.TeamCode__c'); }
+    if (map.teamsMulti) sel.push(map.teamsMulti);
+    sel.push('LastModifiedBy.Name');
+    ['versionLabel', 'status', 'changeReason', 'effectiveDate', 'reviewDueDate', 'documentId', 'requiresAck']
+        .forEach(function (k) { if (map[k]) sel.push(map[k]); });
+    return 'SELECT ' + sel.join(', ') + ' FROM ' + map.obj + ' ORDER BY Name ASC';
+}
+
+async function fetchAllTemplatesForAdmin() {
+    var accessToken;
+    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
+    catch (e) { return { ok: false, error: e.message }; }
+
+    if (self.SfUtils && self.SfUtils.clearDescribeCache) self.SfUtils.clearDescribeCache();
+
+    var results = await chrome.storage.local.get([CONFIG_KEY, TOKENS_KEY, 'sfOAuthUser']);
+    var config  = results[CONFIG_KEY]    || {};
+    var tokens  = results[TOKENS_KEY]    || {};
+    var sfUser  = results['sfOAuthUser'] || {};
+
+    if (!sfUser.isTemplateAdmin) return { ok: false, error: 'PERMISSION_DENIED', user: sfUser };
+
+    var instanceUrl = (tokens.instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) return { ok: false, error: 'Not authenticated — connect via Salesforce OAuth first.' };
+
+    var apiVersion = config.apiVersion || 'v62.0';
+    var base = instanceUrl + '/services/data/' + apiVersion;
+    var obj  = config.templateObject || 'NucleusTemplate__c';
+
+    var map   = await resolveTemplateFields(base, accessToken, obj);
+
+    // If Status is a picklist, return its real values so the manager dropdown
+    // can only offer values that exist (avoids INVALID_PICKLIST on save). Empty
+    // => the field is free text and the manager uses its default lifecycle list.
+    var statusOptions = [];
+    try {
+        var d = await self.SfUtils.describeObject(base, accessToken, obj);
+        var sf = (d.fields || []).filter(function (f) { return f.name === map.status; })[0];
+        if (sf && sf.type === 'picklist' && Array.isArray(sf.picklistValues)) {
+            statusOptions = sf.picklistValues
+                .filter(function (p) { return p.active !== false; })
+                .map(function (p) { return p.value; });
+        }
+    } catch (e) { /* leave empty */ }
+
+    var query = buildAdminQuery(map);
+    var url   = base + '/query?q=' + encodeURIComponent(query);
+    var response = await doFetch(url, accessToken);
+
+    if (response.status === 401) {
+        try { accessToken = await self.SfOAuth.refreshAccessToken(); }
+        catch (e) { return { ok: false, error: 'Authentication expired. Please reconnect in the extension popup.' }; }
+        response = await doFetch(url, accessToken);
+    }
+    if (!response.ok) {
+        var errBody = await response.json().catch(function () { return []; });
+        var emsg = Array.isArray(errBody) ? (errBody[0] && errBody[0].message ? errBody[0].message : response.status) : response.status;
+        return { ok: false, error: 'Salesforce query failed: ' + emsg };
+    }
+
+    var data = await response.json();
+    var out = {};
+    var records = data.records || [];
+    for (var i = 0; i < records.length; i++) {
+        var r = records[i];
+        var name = r.Name;
+        if (!name) continue;
+        var teamRel = map.teamRel ? r[map.teamRel] : null;
+        var entry = {
+            id:                 r.Id || '',
+            content:            (map.content && r[map.content]) || '',
+            category:           (map.category && r[map.category]) || '',
+            isActive:           map.active ? (r[map.active] === true) : true,
+            teamId:             (map.team && r[map.team]) || null,
+            teamName:           (teamRel && teamRel.Name) || null,
+            teamCode:           (teamRel && teamRel.TeamCode__c) || null,
+            teamCodes:          splitTeams(map.teamsMulti && r[map.teamsMulti]),
+            requiresAck:        !!(map.requiresAck && r[map.requiresAck]),
+            lastChangedByName:  (r.LastModifiedBy && r.LastModifiedBy.Name) || ''
+        };
+        if (map.versionLabel)  entry.versionLabel  = r[map.versionLabel]  || '1.0';
+        if (map.status)        entry.status        = r[map.status]        || (entry.isActive ? 'Active' : 'Draft');
+        if (map.changeReason)  entry.changeReason  = r[map.changeReason]  || '';
+        if (map.effectiveDate) entry.effectiveDate = r[map.effectiveDate] || null;
+        if (map.reviewDueDate) entry.reviewDueDate = r[map.reviewDueDate] || null;
+        if (map.documentId)    entry.documentId    = r[map.documentId]    || '';
+        out[name] = entry;
+    }
+    return { ok: true, templates: out, fields: map, user: sfUser, statusOptions: statusOptions };
+}
+
+function doFetch(url, accessToken) {
+    return fetch(url, {
+        headers: { 'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json' }
+    }).catch(function (e) {
+        return { ok: false, status: 0, json: function () { return Promise.resolve({ message: e.message }); } };
+    });
+}
+
+self.SfTemplates = {
+    fetchRemoteTemplates: fetchRemoteTemplates,
+    fetchAllTemplatesForAdmin: fetchAllTemplatesForAdmin,
+    resolveTemplateFields: resolveTemplateFields
+};
+
+}());

@@ -20,22 +20,12 @@ Cyfor.notes = {
         }
     },
 
-    /**
-     * Simple interval-based scanning.
-     */
     _startScanning() {
-        this._stopScanning();
-        this.formatAll(); // Format immediately
-        this._intervalId = Cyfor.cleanup.setInterval(() => {
-            this.formatAll();
-        }, 2000);
+        this.formatAll();
     },
 
     _stopScanning() {
-        if (this._intervalId != null) {
-            Cyfor.cleanup.clearInterval(this._intervalId);
-            this._intervalId = null;
-        }
+        // interval removed — formatAll is now triggered by _onDomChange
     },
 
     /**
@@ -64,23 +54,23 @@ Cyfor.notes = {
         // Preserve the original raw text, dynamically reading HTML paragraphs to prevent glued text.
         let raw = cell.getAttribute('data-cyfor-raw');
         if (!raw) {
-            // Clone the cell so we can manipulate it to find line breaks without breaking the UI
-            const clone = cell.cloneNode(true);
-            
-            // Replace <br> tags with explicit newlines
-            const brs = clone.querySelectorAll('br');
-            for (const br of brs) {
-                br.replaceWith('\n');
+            // Walk the live cell DOM without cloning, extracting text with newlines for block elements
+            const walker = document.createTreeWalker(cell, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+            let text = '';
+            let node = walker.nextNode();
+            while (node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    text += node.textContent;
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tag = node.tagName;
+                    if (tag === 'BR') {
+                        text += '\n';
+                    } else if (tag === 'P' || tag === 'DIV' || tag === 'LI') {
+                        if (text.length > 0 && !text.endsWith('\n')) text += '\n';
+                    }
+                }
+                node = walker.nextNode();
             }
-            
-            // Pad block tags with newlines so they don't glue together when textContent runs
-            const blocks = clone.querySelectorAll('p, div, li');
-            for (const block of blocks) {
-                block.prepend('\n');
-                block.append('\n');
-            }
-
-            let text = clone.textContent || '';
             
             // Fallback: Salesforce sometimes puts perfectly formatted text inside the hover title attribute
             const spanWithTitle = cell.querySelector('span[title]');
@@ -113,28 +103,64 @@ Cyfor.notes = {
      */
     _parse(raw) {
         let text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        text = text.replace(/[^\S\n]+/g, ' ');
+        text = text.replace(/[^\S\n]+/g, ' ');   // collapse spaces/tabs (keep newlines)
+        text = text.replace(/ *\n */g, '\n');     // trim each line's edges
         text = text.replace(/\n{3,}/g, '\n\n');
         text = text.trim();
 
         if (!text) return `<div class="cyfor-n-text">${Cyfor.utils.escapeHtml(raw)}</div>`;
 
-        // Step 1: Find break points
-        const breakPoints = this._findBreakPoints(text);
+        const nlCount = (text.match(/\n/g) || []).length;
+        let lines;
 
-        // Add existing newlines as break points (this works beautifully now that we preserved them)
-        for (let i = 0; i < text.length; i++) {
-            if (text[i] === '\n') breakPoints.add(i);
+        if (nlCount >= 2) {
+            // STRUCTURED: the note already has line breaks — trust them. Only ungue an
+            // INDIVIDUAL line that is clearly concatenated. This stops the historic
+            // over-splitting of well-formed templates (e.g. "GrayKey" -> "Gray Key",
+            // "[ExhibRef]" -> "[Exhib Ref]", "Case reference - YES/NO" being torn apart).
+            lines = [];
+            for (const ln of text.split('\n')) {
+                if (ln === '') { lines.push(''); continue; }
+                if (this._looksGlued(ln)) {
+                    for (const piece of this._splitAtBreakPoints(ln, this._findBreakPoints(ln))) lines.push(piece);
+                } else {
+                    lines.push(ln);
+                }
+            }
+        } else {
+            // GLUED: little/no line structure (e.g. a truncated list-view cell that
+            // concatenated everything) — reconstruct the breaks heuristically.
+            const breakPoints = this._findBreakPoints(text);
+            for (let i = 0; i < text.length; i++) if (text[i] === '\n') breakPoints.add(i);
+            lines = this._mergeFragments(this._splitAtBreakPoints(text, breakPoints));
         }
 
-        // Step 2: Split into lines
-        const lines = this._splitAtBreakPoints(text, breakPoints);
+        return this._buildHtml(lines, raw);
+    },
 
-        // Step 3: Merge fragments
-        const merged = this._mergeFragments(lines);
+    /**
+     * Heuristic: does this single line look like several lines concatenated WITHOUT
+     * a break (so it needs un-gluing)? Conservative — only fires on clear glue
+     * signatures, so normal long sentences and "Label - value" lines are left alone.
+     */
+    _looksGlued(line) {
+        if (line.length < 45) return false;
+        if (/^[-–—_=*\s]+$/.test(line)) return false; // a pure divider rule is not "glued"
 
-        // Step 4: Build HTML
-        return this._buildHtml(merged, raw);
+        // Count glue signatures. A single CamelCase word (e.g. "GrayKey") in an
+        // otherwise clean line scores 1 and is left alone; concatenated cells score
+        // several (many CamelCase/number joins, colon-glue, sentence-glue…) and get
+        // un-glued. Threshold of 2 keeps real tokens safe while catching free-form
+        // notes that Salesforce ran together.
+        let signals = 0;
+        if (/[a-z0-9]:[A-Z]/.test(line)) signals++;          // word:Word
+        if (/\d:\d{2}[A-Za-z]/.test(line)) signals++;         // 12:02Word
+        if (/\b(?:YES|NO|N\/A)[A-Za-z]/.test(line)) signals++; // YESWord
+        if (/[^\s\-–—_=*][-–—_=*]{5,}/.test(line)) signals++;  // text-----
+        if (/[a-z]\.[A-Z]/.test(line)) signals++;              // word.Word (sentence glued)
+        signals += (line.match(/[a-z]{3}[A-Z][a-z]/g) || []).length; // CamelCase joins
+        signals += (line.match(/[\d\])][A-Z][a-z]/g) || []).length;  // 3Word / )Word / ]Word
+        return signals >= 2;
     },
 
     /**
@@ -157,6 +183,18 @@ Cyfor.notes = {
 
         // Regex-based transition patterns (ungluing logic)
         this._findRegexBreaks(text, bp);
+
+        // Never split INSIDE a protected token ("DuckDuckGo" stays whole).
+        // Breaks at a token's START remain allowed, so "extractionChatGPT"
+        // still splits before "ChatGPT".
+        const pre = data.protectedTokenRe;
+        if (pre && bp.size) {
+            pre.lastIndex = 0;
+            let m;
+            while ((m = pre.exec(text)) !== null) {
+                for (let p = m.index + 1; p < m.index + m[0].length; p++) bp.delete(p);
+            }
+        }
 
         return bp;
     },
@@ -226,12 +264,14 @@ Cyfor.notes = {
                 regex: /(:)([A-Z0-9])/g,
                 offsetFn: (m) => m.index + 1,
                 filter: (m, txt) => {
-                    // Prevent splitting timestamps: If there's a number AFTER the colon, 
-                    // check if there's a number BEFORE the colon. If yes, it's a time (e.g. 12:02) — DO NOT SPLIT.
+                    // Don't split timestamps: number before colon → it's a time (e.g. 12:02)
                     if (/[0-9]/.test(m[2])) {
                         const charBefore = m.index > 0 ? txt[m.index - 1] : '';
                         if (/[0-9]/.test(charBefore)) return false;
                     }
+                    // Don't split forensic codes like REF:, HASH:, CASE:, SHA1: (M-11)
+                    const prefix = txt.substring(Math.max(0, m.index - 6), m.index);
+                    if (/\b[A-Z]{2,6}$/.test(prefix)) return false;
                     return true;
                 }
             },
@@ -251,7 +291,22 @@ Cyfor.notes = {
                 regex: /\b(YES|NO|N\/A)([A-Z])/g,
                 offsetFn: (m) => m.index + m[1].length
             },
-            // Lowercase letter immediately followed by an Uppercase letter (CamelCase gluing, e.g. "successTrace")
+            // Digit glued to a Capital-led word (e.g. "verified 3Discord", "0769Unsealed").
+            // Requires the capital to start a real word (Upper+lower) so versions/codes
+            // like "MG22A" or "2.0" aren't split.
+            {
+                regex: /(\d)([A-Z][a-z])/g,
+                offsetFn: (m) => m.index + 1
+            },
+            // Closing bracket/paren glued to a Capital-led word (e.g. "[257]Excluded", "(86)Error").
+            {
+                regex: /([\])])([A-Z][a-z])/g,
+                offsetFn: (m) => m.index + 1
+            },
+            // CamelCase gluing (e.g. "NotesLive", "MediaTotal", "extractionChatGPT",
+            // "TeleguardUnsealed"). This ONLY runs on text already judged "glued"
+            // (concatenated cells), never on clean template lines — so real tokens like
+            // "GrayKey"/"[ExhibRef]" on their own line are untouched.
             {
                 regex: /([a-z]{3,})([A-Z][a-z])/g,
                 offsetFn: (m) => m.index + m[1].length
@@ -343,74 +398,108 @@ Cyfor.notes = {
         let html = '';
         let sectionOpen = false;
         const esc = Cyfor.utils.escapeHtml;
+        const closeSection = () => { if (sectionOpen) { html += '</div>'; sectionOpen = false; } };
+        const openSection  = () => { if (!sectionOpen) { html += '<div class="cyfor-n-section">'; sectionOpen = true; } };
+        const emitHeader   = (txt) => {
+            closeSection();
+            html += '<div class="cyfor-n-section">';
+            html += `<div class="cyfor-n-header">${esc(txt)}</div>`;
+            sectionOpen = true;
+        };
 
         for (const line of lines) {
             if (line === '') continue;
 
-            // Handle manual dashed horizontal lines (e.g. "----------------------")
+            // Manual horizontal rule (e.g. "----------------------")
             if (/^[-–—_=*]{5,}$/.test(line)) {
-                if (sectionOpen) {
-                    html += '</div>';
-                    sectionOpen = false;
-                }
+                closeSection();
                 html += '<hr class="cyfor-n-divider" />';
                 continue;
             }
 
-            // Catch Section Headers from our library
+            // Known section header from the curated library
             if (Cyfor.notesData.isKnownHeader(line)) {
-                if (sectionOpen) html += '</div>';
-                const clean = line.replace(/[*#]/g, '').replace(/^[\s:–\-]+|[\s:–\-]+$/g, '');
-                html += `<div class="cyfor-n-section">`;
-                html += `<div class="cyfor-n-header">${esc(clean)}</div>`;
-                sectionOpen = true;
+                emitHeader(line.replace(/[*#]/g, '').replace(/^[\s:–\-]+|[\s:–\-]+$/g, ''));
                 continue;
             }
 
-            // Catch Prefix Headings (e.g. "MB3: 27/01/2026 - PRE-IMAGING" or "KW3 - 10:15am")
+            // Prefix headings (e.g. "MB3: 27/01/2026 - PRE-IMAGING" or "KW3 - 10:15am")
             if (/^([A-Z0-9]{2,8}\s*[-–:]\s*\d{1,2}:\d{2}(?:am|pm)?|[A-Z0-9]+:\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[-–]\s*.+)$/i.test(line)) {
-                if (sectionOpen) html += '</div>';
-                html += `<div class="cyfor-n-section">`;
-                html += `<div class="cyfor-n-header">${esc(line)}</div>`;
-                sectionOpen = true;
+                emitHeader(line);
                 continue;
             }
 
-            // Open implicit section
-            if (!sectionOpen) {
-                html += '<div class="cyfor-n-section">';
-                sectionOpen = true;
-            }
-
-            // Catch Bullet Points (e.g. "- Item 1")
+            // Bullet points ("- item", "* item", "• item")
             const bulletMatch = line.match(/^[-*•]\s+(.+)$/);
             if (bulletMatch) {
-                html += `<div class="cyfor-n-text" style="padding-left: 10px;">• ${this._colorize(esc(bulletMatch[1]))}</div>`;
+                openSection();
+                html += `<div class="cyfor-n-text cyfor-n-bullet">${this._colorize(esc(bulletMatch[1]))}</div>`;
                 continue;
             }
 
-            // Catch Key: Value
+            // Key: value — colon, dash-separated, question, or empty-value label
             const kv = this._parseKeyValue(line);
             if (kv) {
-                html += '<div class="cyfor-n-row">';
+                openSection();
+                html += '<div class="cyfor-n-row' + (kv.value ? '' : ' cyfor-n-row-label') + '">';
                 html += `<span class="cyfor-n-key">${esc(kv.key)}${kv.sep}</span>`;
-                if (kv.value) {
-                    html += ` <span class="cyfor-n-val">${this._colorize(esc(kv.value))}</span>`;
-                }
+                if (kv.value) html += ` <span class="cyfor-n-val">${this._colorize(esc(kv.value))}</span>`;
                 html += '</div>';
                 continue;
             }
 
-            // Plain text fallback
+            // Heuristic heading: a short title line (e.g. "GrayKey Imaging Commence",
+            // "Grading Notes", "Generated Material") that isn't in the library.
+            if (this._looksLikeHeader(line)) {
+                emitHeader(line.replace(/[*#]/g, '').trim());
+                continue;
+            }
+
+            // Plain text
+            openSection();
             html += `<div class="cyfor-n-text">${this._colorize(esc(line))}</div>`;
         }
 
-        if (sectionOpen) html += '</div>';
+        closeSection();
         return html || `<div class="cyfor-n-text">${esc(raw)}</div>`;
+    },
+
+    // Section-keyword vocabulary for heading detection (forensic note structure).
+    _HEADER_KW: /\b(commence|commenced|complete|completed|began|begin|imaging|processing|export|material|materials|reporting|reseal|re-seal|unseal|fastcopy|grading|qa|strategy|objectives?|objectivess|circumstances|exhibits|limitations|disclosure|formats?|methods?|overview|acquisition|analysis|continuity|photographs?|faraday|specific|summary|generated|booking)\b/i,
+
+    /**
+     * Heuristic: is this short line a section heading not in the curated library?
+     * Deliberately conservative — it requires a section KEYWORD ("…Commence",
+     * "Grading Notes", "Generated Material", "Reporting"…) and rejects anything with
+     * a digit, colon, question mark or sentence punctuation, so action/value lines
+     * ("Commence 00:00", "HS connected to GK", "Mobile > Smart Flow") stay as text.
+     */
+    _looksLikeHeader(line) {
+        const t = line.trim();
+        if (t.length < 3 || t.length > 42) return false;
+        if (/[:?>\d]/.test(t)) return false;          // labels / questions / flows / times → not headings
+        if (/^[-*•]/.test(t)) return false;            // bullets
+        if (/[.,;]$/.test(t)) return false;            // ends like a sentence ("Hi,", "Thanks,")
+        if (t.split(/\s+/).length > 6) return false;
+        return this._HEADER_KW.test(t);
     },
 
     _parseKeyValue(line) {
         const lineLower = line.toLowerCase();
+
+        // Question + answer FIRST so a long QA question becomes the whole key (not a
+        // shorter known-field prefix): "…notes been added to case timeline in LIMA? YES"
+        // → key "…LIMA?", value "YES".
+        const question = line.match(/^([^?]{5,140}\?)\s+(.+)$/);
+        if (question) {
+            return { key: question[1].trim(), sep: '', value: question[2].trim() };
+        }
+
+        // Standalone question, no answer yet: "If not, what corrective action was taken?"
+        const bareQ = line.match(/^(.{5,160}\?)$/);
+        if (bareQ) {
+            return { key: bareQ[1].trim(), sep: '', value: '' };
+        }
 
         // Match against known fields
         for (const field of Cyfor.notesData.fields) {
@@ -434,43 +523,70 @@ Cyfor.notes = {
                 return { key: line.substring(0, field.length), sep: '', value: afterField.trim() };
             }
 
-            // Field followed by space then value
-            if (/^\s+\S/.test(afterField) && field.length > 12) {
-                return { key: line.substring(0, field.length), sep: ':', value: afterField.trim() };
+            // Field followed by a space then a value. Long fields take any value;
+            // short fields (Make, Notes, Status…) only when the value is clearly a
+            // value (time / number / yes-no / short token) so prose like
+            // "Make sure the device is off" isn't mistaken for "Make: ...".
+            if (/^\s+\S/.test(afterField)) {
+                const v = afterField.trim();
+                if (field.length > 12 || /^(\d{1,2}:\d{2}|\d[\d.,:/]*|yes|no|n\/?a|partial|pass(?:ed)?|fail(?:ed)?|completed?)\b/i.test(v)) {
+                    return { key: line.substring(0, field.length), sep: ':', value: v };
+                }
             }
-            
+
             // Exact match (boolean flag or empty value)
             if (afterField.trim() === '') {
                 return { key: line.substring(0, field.length), sep: ':', value: '' };
             }
         }
 
-        // Generic "Key: Value" (RESTRICTED TO COLONS TO AVOID MANGLING HYPHENATED SENTENCES)
-        const generic = line.match(/^([^:–\-]{2,60})\s*[:]\s+(.+)$/);
-        if (generic) {
-            const key = generic[1].trim();
-            if (key.split(/\s+/).length <= 8) {
-                return { key, sep: ':', value: generic[2].trim() };
+        // Generic "Key: Value" (colon with a value).
+        const generic = line.match(/^([^:?]{2,60}):\s+(.+)$/);
+        if (generic && generic[1].split(/\s+/).length <= 9) {
+            return { key: generic[1].trim(), sep: ':', value: generic[2].trim() };
+        }
+
+        // Empty-value label: "Circumstances:", "Exhibit Reference:", "Police Force:",
+        // "Case Type (eg Prosecution/Defence/Family/Corporate):".
+        const label = line.match(/^([^:?]{2,64}):\s*$/);
+        if (label && label[1].split(/\s+/).length <= 10) {
+            return { key: label[1].trim(), sep: ':', value: '' };
+        }
+
+        // Dash-separated "Label - value" (e.g. "Commenced - 00:00", "Subject - Return",
+        // "Case reference - YES/NO"). Guarded against hyphenated prose / signatures:
+        // the separator must be a dash FOLLOWED by a space, the key must be short and
+        // free of commas, and a bare lead dash (a bullet) is excluded.
+        const dash = line.match(/^([^-–—][^-–—]{0,39}?)\s*[-–—]\s+(.+)$/);
+        if (dash) {
+            const key = dash[1].trim();
+            if (key && key.indexOf(',') === -1 && key.split(/\s+/).length <= 6 && !/[.?!]$/.test(key)) {
+                return { key, sep: ':', value: dash[2].trim() };
             }
         }
 
-        // Question pattern: "Some question? VALUE"
-        const question = line.match(/^([^?]{5,120}\?)\s+(.+)$/);
-        if (question) {
-            return { key: question[1].trim(), sep: '', value: question[2].trim() };
+        // Trailing answer with no separator: a statement ending in a YES/NO-style
+        // token (the source sometimes drops the "?"), e.g. "…Strategy been provided YES/NO".
+        const ans = line.match(/^(.{3,150}?)\s+((?:yes|no|n\/?a|partial)(?:\s*\/\s*(?:yes|no|n\/?a|na))*)$/i);
+        if (ans && !/[.,;:?]$/.test(ans[1])) {
+            return { key: ans[1].trim(), sep: '', value: ans[2].trim() };
         }
 
         return null;
     },
 
-    _colorize(html) {
-        return html
-            .replace(/\b(YES)\b/g, '<span class="cyfor-val-yes">YES</span>')
-            .replace(/\b(NO)\b/g, '<span class="cyfor-val-no">NO</span>')
-            .replace(/\b(N\/A)\b/gi, '<span class="cyfor-val-na">N/A</span>')
-            .replace(/\b(PASS(?:ED)?)\b/gi, '<span class="cyfor-val-yes">$1</span>')
-            .replace(/\b(FAIL(?:ED)?)\b/gi, '<span class="cyfor-val-no">$1</span>')
-            .replace(/\b(PENDING)\b/gi, '<span class="cyfor-val-pending">PENDING</span>');
+    // Highlight status tokens (YES/NO/N/A/PASS/FAIL/PENDING/PARTIAL), case-insensitive,
+    // preserving the original casing. Single pass so it never re-scans inserted markup.
+    // `text` is already HTML-escaped, so there are no real tags to worry about.
+    _colorize(text) {
+        return text.replace(/\b(YES|NO|N\/?A|PASS(?:ED)?|FAIL(?:ED)?|PENDING|PARTIAL)\b/gi, (m) => {
+            const u = m.toUpperCase().replace('/', '');
+            let cls = 'cyfor-val-pending';
+            if (u === 'YES' || u.indexOf('PASS') === 0) cls = 'cyfor-val-yes';
+            else if (u === 'NO' || u.indexOf('FAIL') === 0) cls = 'cyfor-val-no';
+            else if (u === 'NA') cls = 'cyfor-val-na';
+            return `<span class="${cls}">${m}</span>`;
+        });
     },
 
     init() {

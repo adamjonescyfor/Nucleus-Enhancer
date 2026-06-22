@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "CYFOR Nucleus Enhancer",
-    "version": "2.3.0",
+    "version": "3.0.0",
     "description": "Right-click Date/Time, Record Navigation, Top-Aligned Notes Formatting, Context-Aware Table Column Reordering, Template Injection (incl. Forensic Strategy), Right-Click Template Menu, and more.",
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoYTXqyyFPYXvvLf5CGYHhXWf15NSo5gSKw3UMEzOM3+hqpbpjTqRNMVpigQaODrqNYR8SDiG0rAD5IACrDvhhSzf277X6q4WQfknnZ/eS80aWmDGPUb49aRDMMOVroQDgs9Y9BooUWwXprvXuQHd5mUol0Z+3BvKX2Yfp/VEhD+CEwFHCtxb+uEub+jZoOi05HRdG9w9aFNNsAOvGeSMrurMyX24wU6Vhl/XfDWx7bMH8p2KD51ijDh2SXMx+d7mAND7xFC5xf/lCDlnC1WydixUZ7FCLvrHBjUK9PkQT3VWTpAjXIVO2+5V3XIHT3aVKUQVshw4xGGqI69LevfscQIDAQAB",
 
@@ -9,20 +9,44 @@
         "activeTab",
         "storage",
         "downloads",
-        "cookies",
-        "scripting"
+        "scripting",
+        "identity",
+        "alarms",
+        "notifications"
     ],
 
     "host_permissions": [
         "https://*.lightning.force.com/*",
         "https://*.my.salesforce.com/*",
         "https://*.file.force.com/*",
-        "https://*.amazonaws.com/*"
+        "https://*.content.force.com/*",
+        "https://*.documentforce.com/*",
+        "https://*.salesforce.com/*",
+        "https://*.workers.dev/*"
     ],
+
+    "icons": {
+        "16": "icons/icon16.png",
+        "32": "icons/icon32.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
 
     "action": {
         "default_popup": "popup/popup.html",
-        "default_title": "CYFOR Nucleus Enhancer"
+        "default_title": "CYFOR Nucleus Enhancer",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+
+    "options_page": "manager/manager.html",
+
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'none'; worker-src 'self'"
     },
 
     "background": {
@@ -36,6 +60,13 @@
                 "mac": "Alt+Z"
             },
             "description": "Undo last template insertion"
+        },
+        "open-template-menu": {
+            "suggested_key": {
+                "default": "Alt+T",
+                "mac": "Alt+T"
+            },
+            "description": "Open template dropdown in active editor"
         }
     },
 
@@ -44,15 +75,18 @@
             "matches": ["https://*.lightning.force.com/*"],
             "run_at": "document_idle",
             "js": [
+                "content/theme-apply.js",
                 "content/utils.js",
+                "content/debug.js",
                 "content/config.js",
                 "content/toast.js",
                 "content/undo.js",
+                "content/usage.js",
                 "content/builtin-templates.js",
+                "lib/sanitize-html.js",
                 "content/editor.js",
                 "content/datetime.js",
                 "content/navigation.js",
-                "content/autoend.js",
                 "content/columns.js",
                 "content/notes-data.js",
                 "content/notes.js",
@@ -67,10 +101,16 @@
                 "styles/notes.css",
                 "styles/templates.css",
                 "styles/toast.css",
-                "styles/autoend.css",
                 "styles/context-menu.css",
-                "styles/animations.css"
+                "styles/case-report.css"
             ]
+        }
+    ],
+
+    "web_accessible_resources": [
+        {
+            "resources": ["report/cyfor-logo.png"],
+            "matches": ["https://*.lightning.force.com/*"]
         }
     ]
 }

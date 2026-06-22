@@ -66,49 +66,71 @@ Cyfor.downloads = {
             Cyfor.toast.warning('Download already in progress', 2000);
             return;
         }
-
         this._downloading = true;
 
+        // 1. Locate the scrollable table container
+        var tableWrapper = scopeRoot.querySelector('.table-wrapper');
+        if (!tableWrapper) {
+            var wrappers = Cyfor.utils.querySelectorAllDeep('.table-wrapper', scopeRoot);
+            if (wrappers.length > 0) tableWrapper = wrappers[0];
+        }
+        if (!tableWrapper) {
+            Cyfor.toast.error('Could not find scrollable table container.', 3000);
+            this._downloading = false;
+            return;
+        }
+
+        var tbody = tableWrapper.querySelector('tbody');
+        if (!tbody) {
+            Cyfor.toast.error('Table body not found.', 3000);
+            this._downloading = false;
+            return;
+        }
+
+        var initialImages = tbody.querySelectorAll('img.thumbnail-image');
+        if (initialImages.length === 0) {
+            Cyfor.toast.warning('No photographs found', 2500);
+            this._downloading = false;
+            return;
+        }
+
+        var self = this;
+        Cyfor.toast.info(
+            'Ready to download photographs. If Chrome asks to allow multiple downloads, click Allow.',
+            0,
+            { label: 'Start Download', onClick: function () { self._startDownload(btn, tableWrapper); } }
+        );
+    },
+
+    _startDownload: async function (btn, tableWrapper) {
+        this._setBtnState(btn, 'Downloading…', true);
+        Cyfor.log('photos', 'download start');
+
+        // Re-query tbody fresh to avoid stale DOM references
+        var tbody = tableWrapper.querySelector('tbody');
+        if (!tbody) {
+            Cyfor.toast.error('Table body not found — please try again.', 3000);
+            this._setBtnState(btn, 'Download All', false);
+            this._downloading = false;
+            return;
+        }
+
         try {
-            // 1. Locate the scrollable table container
-            var tableWrapper = scopeRoot.querySelector('.table-wrapper');
-            if (!tableWrapper) {
-                var wrappers = Cyfor.utils.querySelectorAllDeep('.table-wrapper', scopeRoot);
-                if (wrappers.length > 0) tableWrapper = wrappers[0];
-            }
-            if (!tableWrapper) throw new Error('Could not find scrollable table container.');
-
-            var tbody = tableWrapper.querySelector('tbody');
-            if (!tbody) throw new Error('Table body not found.');
-
-            // Check if there are any images at all
-            var initialImages = tbody.querySelectorAll('img.thumbnail-image');
-            if (initialImages.length === 0) {
-                Cyfor.toast.warning('No photographs found', 2500);
-                this._setBtnState(btn, 'Download All', false);
-                this._downloading = false;
-                return;
-            }
-
-            var confirmMsg = 'The script will now rapidly scroll through the table to load all images and download them natively.\n\nIMPORTANT: If Chrome shows a popup near the URL bar asking "Allow multiple downloads?", please click "Allow".';
-            if (!confirm(confirmMsg)) {
-                this._setBtnState(btn, 'Download All', false);
-                this._downloading = false;
-                return;
-            }
-
             // 2. THE AUTO-SCROLLING MACRO
             var processedIds = new Set();
             var success = 0;
             var failed = 0;
             var consecutiveEmptyPasses = 0;
+            var totalPasses = 0;
+            var MAX_PASSES = Cyfor.constants.DOWNLOAD_MAX_PASSES;
 
             // Reset scroll to top
             tableWrapper.scrollTop = 0;
             await this._delay(300);
 
             // Loop until we hit the bottom of the table
-            while (consecutiveEmptyPasses < 3) {
+            while (consecutiveEmptyPasses < Cyfor.constants.DOWNLOAD_EMPTY_PASS_LIMIT && totalPasses < MAX_PASSES) {
+                totalPasses++;
                 var rows = tbody.querySelectorAll('tr.slds-hint-parent');
                 var foundNewInThisPass = false;
 
@@ -126,11 +148,20 @@ Cyfor.downloads = {
                     foundNewInThisPass = true;
                     processedIds.add(recordId);
 
-                    this._setBtnState(btn, 'Downloading (' + processedIds.size + ')...', true);
+                    // Reuse this pass's row list (already queried above) instead of
+                    // re-running the selector twice per record.
+                    var visibleCount = rows.length;
+                    var progressPct = visibleCount > 0
+                        ? Math.min(99, Math.round((processedIds.size / Math.max(processedIds.size, visibleCount)) * 100))
+                        : -1;
+                    this._setBtnState(btn, 'Downloading (' + processedIds.size + ')...', true, progressPct);
+                    if (success > 0 && success % 5 === 0) {
+                        Cyfor.toast.info('Downloading… ' + success + ' files triggered', 1500);
+                    }
 
                     // Scroll this specific row into view so the dropdown doesn't clip out of bounds
                     row.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    await this._delay(50); 
+                    await this._delay(Cyfor.constants.DOWNLOAD_ROW_SCROLL_MS);
 
                     // Find and open the dropdown menu
                     var menuComponent = row.querySelector('lightning-button-menu');
@@ -143,7 +174,7 @@ Cyfor.downloads = {
                     if (!menuBtn) { failed++; continue; }
 
                     menuBtn.click();
-                    await this._delay(100); // Wait for LWC menu to render
+                    await this._delay(Cyfor.constants.DOWNLOAD_MENU_RENDER_MS);
 
                     // Find the "Download File" item
                     var menuItems = menuComponent.querySelectorAll('lightning-menu-item');
@@ -170,8 +201,7 @@ Cyfor.downloads = {
 
                     if (clicked) {
                         success++;
-                        // Very short delay before moving to the next file (Chrome handles this fast)
-                        await this._delay(150); 
+                        await this._delay(Cyfor.constants.DOWNLOAD_FILE_GAP_MS);
                     } else {
                         failed++;
                         menuBtn.click(); // Close menu if we failed to find download button
@@ -180,11 +210,11 @@ Cyfor.downloads = {
 
                 // Scroll down by roughly the height of the visible area to load the next chunk of rows
                 var previousScroll = tableWrapper.scrollTop;
-                tableWrapper.scrollTop += (tableWrapper.clientHeight - 50); 
-                await this._delay(300); // Give Salesforce a moment to inject new rows into the HTML
+                tableWrapper.scrollTop += (tableWrapper.clientHeight - 50);
+                await this._delay(Cyfor.constants.DOWNLOAD_SCROLL_WAIT_MS);
 
                 // If we didn't find any new IDs AND the scroll bar didn't physically move, we've hit the bottom
-                if (!foundNewInThisPass && Math.abs(tableWrapper.scrollTop - previousScroll) < 5) {
+                if (!foundNewInThisPass && Math.abs(tableWrapper.scrollTop - previousScroll) < Cyfor.constants.DOWNLOAD_SCROLL_THRESHOLD_PX) {
                     consecutiveEmptyPasses++;
                 } else {
                     consecutiveEmptyPasses = 0;
@@ -192,6 +222,7 @@ Cyfor.downloads = {
             }
 
             // 3. DONE
+            Cyfor.log('photos', 'download done', { success, failed });
             if (failed === 0) {
                 Cyfor.toast.success('Successfully triggered ' + success + ' downloads.', 6000);
             } else {
@@ -200,6 +231,7 @@ Cyfor.downloads = {
 
         } catch (err) {
             console.error('[CYFOR] Download error:', err);
+            Cyfor.log('photos', 'download error', { error: err && err.message });
             Cyfor.toast.error('Download process failed — ' + (err.message || 'unknown error'), 5000);
         }
 
@@ -212,12 +244,20 @@ Cyfor.downloads = {
     // HELPERS
     // ========================================
 
-    _setBtnState: function (btn, text, disabled) {
+    _setBtnState: function (btn, text, disabled, progress) {
         if (!btn || !btn.isConnected) return;
         btn.textContent = text;
         btn.disabled = disabled;
         btn.style.opacity = disabled ? '0.7' : '';
         btn.style.cursor = disabled ? 'wait' : '';
+        // Progress bar via CSS custom property (L-5)
+        if (typeof progress === 'number' && progress >= 0) {
+            btn.style.setProperty('--cyfor-dl-progress', progress + '%');
+            btn.classList.add('cyfor-btn-progress');
+        } else {
+            btn.style.removeProperty('--cyfor-dl-progress');
+            btn.classList.remove('cyfor-btn-progress');
+        }
     },
 
     _delay: function (ms) {

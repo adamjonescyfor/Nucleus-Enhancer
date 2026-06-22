@@ -16,24 +16,11 @@ Cyfor.templates = {
      * multiple times (e.g. after tab visibility changes).
      */
     start() {
-        this.stop();
-
-        // Initial scan
         this._scanEditors();
-
-        this._intervalId = Cyfor.cleanup.setInterval(() => {
-            this._scanEditors();
-        }, 1500);
     },
 
-    /**
-     * Stop scanning for editors.
-     */
     stop() {
-        if (this._intervalId != null) {
-            Cyfor.cleanup.clearInterval(this._intervalId);
-            this._intervalId = null;
-        }
+        // interval removed — _scanEditors is now triggered by _onDomChange
     },
 
     /**
@@ -45,23 +32,68 @@ Cyfor.templates = {
         const containers = Cyfor.utils.querySelectorAllDeep('.slds-rich-text-editor');
 
         for (const container of containers) {
-            if (this._processed.has(container)) continue;
-            if (!container.querySelector('.slds-rich-text-editor__toolbar')) continue;
+            const processed = this._processed.has(container);
+            // Fast path: already set up and our button is still present.
+            if (processed && container.querySelector('.cyfor-template-btn')) continue;
 
+            if (!container.querySelector('.slds-rich-text-editor__toolbar')) continue; // not ready — retry next scan
+            if (!Cyfor.editor.isTemplatableField(container)) { this._processed.add(container); continue; }
+
+            const firstTime = !processed;
             this._processed.add(container);
 
-            if (!Cyfor.editor.isTemplatableField(container)) continue;
+            // (Re)attach the button + menu if missing. Lightning sometimes
+            // re-renders an editor we'd already processed and strips our button —
+            // previously that required a page refresh to recover; now it self-heals.
+            if (!container.querySelector('.cyfor-template-btn')) {
+                container.style.position = 'relative';
+                const orphanMenu = container.querySelector('.cyfor-template-menu');
+                if (orphanMenu) orphanMenu.remove(); // avoid a duplicate menu
+                this._attachButton(container);
+                this._attachMenu(container);
+                this._maybeShowFirstUseTip();
+            }
 
-            container.style.position = 'relative';
-
-            this._attachButton(container);
-            this._attachMenu(container);
-
-            // Auto-insert if enabled (Notes only — Forensic Strategy is manual)
-            if (Cyfor.config.enableAutoInsert && Cyfor.editor.isMainNotesField(container)) {
-                this._attemptAutoInsert(container);
+            // Smart suggestions run ONCE per editor (re-attaches above must not
+            // re-trigger an auto-insert / re-show a suggestion on every re-render):
+            //  - Notes: auto-insert (if enabled) the process→template mapping,
+            //    otherwise offer it as a one-click suggestion.
+            //  - Forensic Strategy: never auto-inserted, but offer the Forensic
+            //    Strategy template as a one-click suggestion.
+            if (firstTime) {
+                if (Cyfor.editor.isMainNotesField(container)) {
+                    if (Cyfor.config.enableAutoInsert) {
+                        this._attemptAutoInsert(container);
+                    } else {
+                        this._suggestByType(container);
+                    }
+                } else if (Cyfor.editor.isForensicStrategyField(container)) {
+                    this._suggestForensicStrategy(container);
+                }
             }
         }
+    },
+
+    /**
+     * One-time discoverability tip: the first time a template button ever
+     * appears for this user (any device — chrome.storage.sync flag), point out
+     * how to insert. Analysts who never open the popup would otherwise never
+     * learn the feature exists.
+     */
+    _tipChecked: false,
+    _maybeShowFirstUseTip() {
+        if (this._tipChecked) return;
+        this._tipChecked = true;
+        try {
+            chrome.storage.sync.get(['tipInsertSeen'], (res) => {
+                if (chrome.runtime.lastError || (res && res.tipInsertSeen)) return;
+                try { chrome.storage.sync.set({ tipInsertSeen: true }); } catch (e) { /* ignore */ }
+                Cyfor.toast.info(
+                    'Tip: click the 📄 button or right-click in this box to insert your team’s templates',
+                    8000
+                );
+            });
+        } catch (e) { /* context invalidated — skip */ }
     },
 
     /**
@@ -89,6 +121,14 @@ Cyfor.templates = {
         // Prevent editor activation when clicking the button
         btn.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); });
 
+        const openMenu = (m) => {
+            this._populateMenu(m, container);
+            m.classList.add('visible');
+            btn.setAttribute('aria-expanded', 'true');
+            const search = m.querySelector('.cyfor-template-search');
+            if (search) Cyfor.cleanup.setTimeout(() => search.focus(), 50);
+        };
+
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -98,18 +138,26 @@ Cyfor.templates = {
 
             const wasOpen = menu.classList.contains('visible');
             this._closeAllMenus();
+            if (wasOpen) { btn.setAttribute('aria-expanded', 'false'); return; } // toggle closed
 
-            if (!wasOpen) {
-                this._populateMenu(menu, container);
-                menu.classList.add('visible');
-                btn.setAttribute('aria-expanded', 'true');
+            // If the editor is already live, open immediately.
+            if (Cyfor.editor.findEditor(container)) { openMenu(menu); return; }
 
-                // Focus search box if present
-                const search = menu.querySelector('.cyfor-template-search');
-                if (search) {
-                    Cyfor.cleanup.setTimeout(() => search.focus(), 50);
-                }
-            }
+            // Otherwise the field is showing Salesforce's non-editable "standin".
+            // Clicking it lazy-loads the Quill editor, which RE-RENDERS the field
+            // and strips the menu we'd show — that's why it used to need a second
+            // click. So activate FIRST, then open once the editor and our re-
+            // attached menu are ready (bounded ~1.6s; falls back to any menu).
+            Cyfor.editor.activate(container).catch(() => {});
+            let tries = 0;
+            const waitOpen = () => {
+                if (Cyfor.utils.isContextInvalid()) return;
+                const m2 = container.querySelector('.cyfor-template-menu');
+                if (m2 && Cyfor.editor.findEditor(container)) { openMenu(m2); return; }
+                if (tries++ < 26) Cyfor.cleanup.setTimeout(waitOpen, 60);
+                else if (m2) openMenu(m2); // gave up waiting — open anyway
+            };
+            Cyfor.cleanup.setTimeout(waitOpen, 60);
         });
 
         // Keyboard: Enter/Space to toggle
@@ -137,6 +185,14 @@ Cyfor.templates = {
     },
 
     /**
+     * Whether a template is an official (Salesforce-synced) one.
+     */
+    _isOfficial(key) {
+        const r = Cyfor.config.sfRemoteTemplates;
+        return !!(r && Object.prototype.hasOwnProperty.call(r, key));
+    },
+
+    /**
      * Populate menu with template items, search box, and undo option.
      */
     _populateMenu(menu, container) {
@@ -145,11 +201,56 @@ Cyfor.templates = {
         const allKeys = Object.keys(templates).sort((a, b) =>
             a.toLowerCase().localeCompare(b.toLowerCase())
         );
+        Cyfor.log('templates', 'menu populated', { count: allKeys.length, forensic: Cyfor.editor.isForensicStrategyField(container) });
 
         // Pin Forensic Strategy template to top if appropriate
-        const keys = (Cyfor.editor.isForensicStrategyField(container))
+        const baseKeys = (Cyfor.editor.isForensicStrategyField(container))
             ? this._sortKeysForensicFirst(allKeys)
             : allKeys;
+
+        // User-pinned templates float to the very top (★, set in the popup).
+        const pinnedSet = new Set((Cyfor.config.pinnedTemplates || []).filter(k => templates[k]));
+        const keys = pinnedSet.size
+            ? [...baseKeys.filter(k => pinnedSet.has(k)), ...baseKeys.filter(k => !pinnedSet.has(k))]
+            : baseKeys;
+
+        // Recently used (top 3) — rendered above search box (L-3)
+        const recentKeys = (Cyfor.config.recentTemplates || []).filter(k => templates[k]);
+        if (recentKeys.length > 0) {
+            const recentLabel = document.createElement('div');
+            recentLabel.className = 'cyfor-template-section-label';
+            recentLabel.textContent = 'Recently used';
+            menu.appendChild(recentLabel);
+            for (const key of recentKeys) {
+                const item = document.createElement('div');
+                item.className = 'cyfor-template-item cyfor-template-item-recent';
+                if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
+                item.textContent = key;
+                item.title = `Insert "${key}"`;
+                item.setAttribute('role', 'menuitem');
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('data-template-key', key);
+                item.addEventListener('mousedown', (e) => e.stopPropagation());
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    Cyfor.editor.insertIntoContainer(container, templates[key], key)
+                        .then((success) => {
+                            if (success) {
+                                Cyfor.toast.success(`"${key}" inserted`, 3000, {
+                                    label: 'Undo',
+                                    onClick: () => Cyfor.undo.undo()
+                                });
+                            }
+                        });
+                    this._closeAllMenus();
+                });
+                menu.appendChild(item);
+            }
+            const sep = document.createElement('div');
+            sep.className = 'cyfor-template-separator';
+            menu.appendChild(sep);
+        }
 
         // Search box (4+ templates)
         if (keys.length >= 4) {
@@ -161,9 +262,20 @@ Cyfor.templates = {
             search.setAttribute('role', 'searchbox');
 
             search.addEventListener('input', () => {
-                const q = search.value.toLowerCase();
-                menu.querySelectorAll('.cyfor-template-item').forEach(item => {
-                    item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+                const q = search.value.trim();
+                const qLow = q.toLowerCase();
+                menu.querySelectorAll('.cyfor-template-item[role="menuitem"]').forEach(item => {
+                    const name = item.getAttribute('data-template-key') || '';
+                    const matches = name.toLowerCase().includes(qLow);
+                    item.style.display = matches ? '' : 'none';
+                    // Highlight match in item text (L-4)
+                    if (q && matches) {
+                        const escaped = Cyfor.utils.escapeHtml(name);
+                        const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
+                        item.innerHTML = escaped.replace(re, '<mark>$1</mark>');
+                    } else {
+                        item.textContent = name;
+                    }
                 });
             });
 
@@ -173,6 +285,10 @@ Cyfor.templates = {
                 if (e.key === 'Escape') {
                     this._closeAllMenus();
                     e.stopPropagation();
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const first = menu.querySelector('.cyfor-template-item[role="menuitem"]:not([style*="display: none"])');
+                    if (first) first.focus();
                 }
             });
 
@@ -214,13 +330,31 @@ Cyfor.templates = {
             return;
         }
 
+        // Arrow key navigation across items (M-7)
+        menu.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+            const items = Array.from(menu.querySelectorAll('.cyfor-template-item[role="menuitem"]'))
+                .filter(el => el.style.display !== 'none');
+            if (items.length === 0) return;
+            const idx = items.indexOf(document.activeElement);
+            e.preventDefault();
+            if (e.key === 'ArrowDown') items[(idx + 1) % items.length].focus();
+            else if (e.key === 'ArrowUp') items[(idx - 1 + items.length) % items.length].focus();
+            else if (e.key === 'Home') items[0].focus();
+            else if (e.key === 'End') items[items.length - 1].focus();
+        });
+
         // Template items
         for (const key of keys) {
             const item = document.createElement('div');
             item.className = 'cyfor-template-item';
+            if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
+            if (pinnedSet.has(key)) item.classList.add('cyfor-template-item--pinned');
             item.textContent = key;
             item.title = `Insert "${key}"`;
             item.setAttribute('role', 'menuitem');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('data-template-key', key);
 
             item.addEventListener('mousedown', (e) => e.stopPropagation());
             item.addEventListener('click', (e) => {
@@ -317,6 +451,7 @@ Cyfor.templates = {
 
         Cyfor.editor.insertIntoContainer(container, templateText, templateName)
             .then((success) => {
+                Cyfor.log('templates', 'auto-insert', { name: templateName, ok: !!success });
                 if (success) {
                     Cyfor.toast.info(`Auto-inserted "${templateName}"`, 3000, {
                         label: 'Undo',
@@ -324,6 +459,98 @@ Cyfor.templates = {
                     });
                 }
             });
+    },
+
+    /**
+     * When auto-insert is off, offer the process-type-mapped template as a
+     * single click (non-intrusive toast) for an empty Notes field.
+     */
+    _suggestByType(container, retries) {
+        retries = retries || 0;
+        const maxRetries = 15;
+
+        const editor = Cyfor.editor.findEditor(container);
+        if (!editor && retries < maxRetries) {
+            Cyfor.cleanup.setTimeout(() => {
+                this._suggestByType(container, retries + 1);
+            }, 600);
+            return;
+        }
+        if (!editor) return;
+
+        const text = editor.innerText.trim();
+        if (text.length > 0 && text !== '\n') return;
+
+        const root = container.closest('.slds-modal') || document.body;
+        const processType = this._detectProcessType(root);
+        if (!processType) return;
+
+        const templateName = Cyfor.config.processMap[processType];
+        if (!templateName) return;
+
+        const templateText = Cyfor.config.templates[templateName];
+        if (!templateText) return;
+
+        Cyfor.log('templates', 'suggest', { processType, name: templateName });
+        Cyfor.toast.info(`Suggested for "${processType}": ${templateName}`, 6000, {
+            label: 'Insert',
+            onClick: () => {
+                Cyfor.editor.insertIntoContainer(container, templateText, templateName)
+                    .then((success) => {
+                        if (success) {
+                            Cyfor.toast.success(`"${templateName}" inserted`, 2500, {
+                                label: 'Undo',
+                                onClick: () => Cyfor.undo.undo()
+                            });
+                        }
+                    });
+            }
+        });
+    },
+
+    /**
+     * Offer the Forensic Strategy template as a one-click suggestion when an
+     * empty Forensic Strategy field is opened (e.g. on the main case page).
+     */
+    _suggestForensicStrategy(container, retries) {
+        retries = retries || 0;
+        const maxRetries = 15;
+
+        const editor = Cyfor.editor.findEditor(container);
+        if (!editor && retries < maxRetries) {
+            Cyfor.cleanup.setTimeout(() => {
+                this._suggestForensicStrategy(container, retries + 1);
+            }, 600);
+            return;
+        }
+        if (!editor) return;
+
+        const text = editor.innerText.trim();
+        if (text.length > 0 && text !== '\n') return;
+
+        const keys = Object.keys(Cyfor.config.templates || {});
+        // Prefer an exact "Forensic Strategy" template, else any name containing it.
+        let name = keys.find((k) => k.trim().toLowerCase() === 'forensic strategy');
+        if (!name) name = keys.find((k) => /forensic\s*strategy/i.test(k));
+        if (!name) return;
+
+        const templateText = Cyfor.config.templates[name];
+        if (!templateText) return;
+
+        Cyfor.toast.info(`Suggested: ${name}`, 6000, {
+            label: 'Insert',
+            onClick: () => {
+                Cyfor.editor.insertIntoContainer(container, templateText, name)
+                    .then((success) => {
+                        if (success) {
+                            Cyfor.toast.success(`"${name}" inserted`, 2500, {
+                                label: 'Undo',
+                                onClick: () => Cyfor.undo.undo()
+                            });
+                        }
+                    });
+            }
+        });
     },
 
     /**
@@ -403,6 +630,7 @@ Cyfor.templates = {
 
         // React to template changes — subscribed ONCE
         Cyfor.config.onChange.nucleusTemplates.push(() => this._refreshAllMenus());
+        Cyfor.config.onChange.sfRemoteTemplates.push(() => this._refreshAllMenus());
 
         // Listen for Quick Insert messages from popup — registered ONCE
         try {
@@ -412,7 +640,13 @@ Cyfor.templates = {
                     sendResponse({ ok: true });
                     return true;
                 }
-                // Don't respond to messages we don't own
+                if (msg.action === 'open-template-menu') {
+                    // Click the first visible template button (Alt+T shortcut — L-8)
+                    const btn = document.querySelector('.cyfor-template-btn');
+                    if (btn) btn.click();
+                    sendResponse({ ok: !!btn });
+                    return true;
+                }
             };
             chrome.runtime.onMessage.addListener(handler);
             Cyfor.cleanup.register(() => {

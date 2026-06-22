@@ -308,9 +308,26 @@ Cyfor.notesData = {
         "Subject", "Comment", "Errors", "Tool", "Included"
     ].sort((a, b) => b.length - a.length),
 
+    /**
+     * Trademarks/product names with internal capitals that must never be split
+     * by the glued-text un-gluing rules ("DuckDuckGo" ≠ "Duck" + "DuckGo").
+     * Splits BEFORE a token stay allowed ("extractionChatGPT" still becomes
+     * "extraction" + "ChatGPT"). Data-driven — add new names here, one line.
+     * Matched as plain substrings (no \b) so "3DuckDuckGo" is covered too.
+     */
+    protectedTokens: [
+        'DuckDuckGo', 'YouTube', 'WhatsApp', 'TikTok', 'FaceTime', 'ChatGPT',
+        'GrayKey', 'FastCopy', 'BitLocker', 'OneDrive', 'OneNote', 'OnePlus',
+        'GitHub', 'LinkedIn', 'PayPal', 'MacBook', 'AirDrop', 'AirTag',
+        'PowerPoint', 'SharePoint', 'SnapChat', 'WeChat', 'WickrMe', 'TeleGuard',
+        'ProtonMail', 'VeraCrypt', 'TrueCrypt', 'KeePass', 'LastPass', 'CarPlay',
+        'PlayStation', 'JavaScript', 'MetaData', 'FileVault'
+    ],
+
     // Pre-built indexes
     headerSet: null,
     fieldByFirstWord: null,
+    protectedTokenRe: null,
 
     /**
      * Build fast lookup indexes from the raw arrays.
@@ -331,6 +348,10 @@ Cyfor.notesData = {
             }
             this.fieldByFirstWord[firstWord].push(field);
         }
+
+        // Case-sensitive (exact trademark spellings); the un-gluing rules only
+        // ever fire on internal capitals, so lowercase variants can't mis-split.
+        this.protectedTokenRe = new RegExp('(?:' + this.protectedTokens.join('|') + ')', 'g');
     },
 
     /**

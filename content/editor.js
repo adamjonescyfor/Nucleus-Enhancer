@@ -84,6 +84,21 @@ Cyfor.editor = {
     },
 
     /**
+     * Update the recently-used template list in storage (L-3).
+     * Keeps the last 3 unique names in MRU order.
+     */
+    _trackRecentTemplate(templateName) {
+        try {
+            chrome.storage.local.get(['recentTemplates'], (res) => {
+                let recent = (res.recentTemplates || []).filter(n => n !== templateName);
+                recent.unshift(templateName);
+                if (recent.length > 3) recent = recent.slice(0, 3);
+                chrome.storage.local.set({ recentTemplates: recent });
+            });
+        } catch {}
+    },
+
+    /**
      * Find the active Quill or contenteditable editor inside a container.
      */
     findEditor(container) {
@@ -109,32 +124,79 @@ Cyfor.editor = {
             // Click the placeholder to trigger lazy init
             const standin = container.querySelector('.standin');
             const textarea = container.querySelector('.slds-rich-text-editor__textarea');
-            if (standin) {
-                standin.click();
-            } else if (textarea) {
-                textarea.click();
-            }
+            if (standin) standin.click();
+            else if (textarea) textarea.click();
 
-            let attempts = 0;
-            const maxAttempts = 12;
+            const timeoutId = Cyfor.cleanup.setTimeout(() => {
+                obs.disconnect();
+                reject(new Error('Could not activate editor'));
+            }, Cyfor.constants.EDITOR_ACTIVATE_TIMEOUT_MS);
 
-            const poll = Cyfor.cleanup.setInterval(() => {
-                attempts++;
+            const obs = new MutationObserver(() => {
                 const editor = this.findEditor(container);
-
                 if (editor) {
-                    Cyfor.cleanup.clearInterval(poll);
+                    obs.disconnect();
+                    Cyfor.cleanup.clearTimeout(timeoutId);
                     editor.focus();
                     resolve(editor);
-                    return;
                 }
-
-                if (attempts >= maxAttempts) {
-                    Cyfor.cleanup.clearInterval(poll);
-                    reject(new Error('Could not activate editor'));
-                }
-            }, 200);
+            });
+            obs.observe(container, { subtree: true, childList: true });
         });
+    },
+
+    /**
+     * Substitute template variables: {{date}}, {{examiner}}, {{caseRef}}.
+     * Unresolved variables become [variableName] placeholders.
+     */
+    substituteVariables(text) {
+        // Fast path: most templates have no variables — skip all the work.
+        if (text.indexOf('{{') === -1) return text;
+
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        let result = text
+            .replace(/\{\{date\}\}/gi, dateStr)
+            .replace(/\{\{time\}\}/gi, timeStr)
+            .replace(/\{\{dateTime\}\}/gi, dateStr + ' ' + timeStr);
+
+        if (/\{\{teamName\}\}/i.test(result)) {
+            const team = (Cyfor.config && Cyfor.config.sfUser && Cyfor.config.sfUser.teamName) || '[teamName]';
+            result = result.replace(/\{\{teamName\}\}/gi, team);
+        }
+
+        // Only resolve the examiner / case ref if the template references them —
+        // the case-ref lookup does a (relatively costly) shadow-piercing DOM scan,
+        // and running it on every insert was a big part of the insert delay.
+        if (/\{\{examiner\}\}/i.test(result)) {
+            const examiner = (Cyfor.main && Cyfor.main._lastCachedProfileName)
+                || ((Cyfor.config && Cyfor.config.sfUser && Cyfor.config.sfUser.fullName))
+                || '[examiner]';
+            result = result.replace(/\{\{examiner\}\}/gi, examiner);
+        }
+
+        if (/\{\{caseRef\}\}/i.test(result)) {
+            let caseRef = '[caseRef]';
+            try {
+                const headerSelectors = [
+                    'h1.slds-page-header__title',
+                    '.slds-page-header__title .slds-truncate',
+                    'lightning-formatted-text.slds-page-header__title'
+                ];
+                for (const sel of headerSelectors) {
+                    const el = document.querySelector(sel) ||
+                        (Cyfor.utils.querySelectorAllDeep(sel, document.body, 5)[0]);
+                    if (el) {
+                        const t = (el.textContent || '').trim();
+                        if (t) { caseRef = t; break; }
+                    }
+                }
+            } catch {}
+            result = result.replace(/\{\{caseRef\}\}/gi, caseRef);
+        }
+
+        return result;
     },
 
     /**
@@ -144,8 +206,43 @@ Cyfor.editor = {
      * NOTE: Does NOT reposition cursor — lets it stay wherever the user/Quill
      * placed it. This matches the original behavior and avoids fighting Quill.
      */
+    /**
+     * Insert rich HTML by simulating a paste, which Quill converts through its own
+     * clipboard matchers — handling multi-block content that execCommand mangles
+     * (it tends to drop everything after the first block). Returns true only if a
+     * handler consumed the event; returns false where synthetic clipboard data
+     * isn't supported, so the caller falls back to execCommand.
+     */
+    _pasteRichHtml(editor, html) {
+        try {
+            const dt = new DataTransfer();
+            dt.setData('text/html', html);
+            dt.setData('text/plain', window.CyforSanitize ? CyforSanitize.toText(html) : '');
+            const evt = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+            // Bail if this platform doesn't carry clipboardData on synthetic events.
+            if (!evt.clipboardData || evt.clipboardData.getData('text/html') !== html) return false;
+            const notCancelled = editor.dispatchEvent(evt);
+            return notCancelled === false || evt.defaultPrevented;
+        } catch (e) {
+            return false;
+        }
+    },
+
     insertText(editor, text, templateName) {
         if (!editor || !text) return false;
+
+        // Rich templates are stored as HTML; detect on the raw content (before
+        // variable substitution, which never adds/removes tags).
+        const SAN = window.CyforSanitize;
+        const isHtml = !!(SAN && SAN.looksLikeHtml(text));
+
+        // Apply variable substitution before inserting (L-1)
+        text = this.substituteVariables(text);
+
+        // Track recently used templates (L-3)
+        if (templateName) {
+            this._trackRecentTemplate(templateName);
+        }
 
         // Save state for undo BEFORE modifying
         Cyfor.undo.push(editor, templateName);
@@ -154,26 +251,41 @@ Cyfor.editor = {
 
         let inserted = false;
 
-        // Method 1: execCommand (works with Quill's undo stack)
-        try {
-            inserted = document.execCommand('insertText', false, text);
-        } catch {}
-
-        // Method 2: insertHTML with proper paragraph structure
-        if (!inserted) {
-            try {
-                const html = text.split('\n')
-                    .map(line => `<p>${Cyfor.utils.escapeHtml(line) || '<br>'}</p>`)
-                    .join('');
-                inserted = document.execCommand('insertHTML', false, html);
-            } catch {}
-        }
-
-        // Method 3: Direct DOM manipulation (last resort)
-        // Uses innerText += which preserves existing content
-        if (!inserted) {
-            editor.innerText += text;
-            inserted = true;
+        if (isHtml && SAN) {
+            // Insert SANITISED HTML so Salesforce keeps the formatting it supports
+            // (bold/italic/underline, lists, colour, font, size); tables, scripts
+            // and Word junk are stripped (Quill rejects them anyway).
+            const clean = SAN.html(text);
+            // Quill ingests multi-block rich HTML reliably through its OWN paste
+            // pipeline; execCommand('insertHTML') often drops everything after the
+            // first block. Try a synthetic paste first, then fall back.
+            let method = '';
+            inserted = this._pasteRichHtml(editor, clean);
+            if (inserted) method = 'paste';
+            if (!inserted) {
+                try { inserted = document.execCommand('insertHTML', false, clean); if (inserted) method = 'insertHTML'; }
+                catch (e) { /* fall through */ }
+            }
+            if (!inserted) {
+                try { inserted = document.execCommand('insertText', false, SAN.toText(text)); if (inserted) method = 'insertText(plain)'; }
+                catch (e) { /* fall through */ }
+            }
+            if (!inserted) { editor.innerHTML += clean; inserted = true; method = 'innerHTML'; }
+            Cyfor.log('insert', 'rich template', { name: templateName, method, chars: clean.length });
+        } else {
+            // Plain text — original behaviour.
+            try { inserted = document.execCommand('insertText', false, text); }
+            catch (e) { /* fall through to the next insert method */ }
+            if (!inserted) {
+                try {
+                    const html = text.split('\n')
+                        .map(line => `<p>${Cyfor.utils.escapeHtml(line) || '<br>'}</p>`)
+                        .join('');
+                    inserted = document.execCommand('insertHTML', false, html);
+                } catch (e) { /* fall through to the next insert method */ }
+            }
+            if (!inserted) { editor.innerText += text; inserted = true; }
+            Cyfor.log('insert', 'plain template', { name: templateName, ok: inserted });
         }
 
         // Notify framework of changes
@@ -181,6 +293,11 @@ Cyfor.editor = {
         editor.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 
         Cyfor.utils.flashElement(editor);
+
+        // Audit trail: log the insertion (best-effort, local-only).
+        if (inserted && templateName && Cyfor.usage) {
+            try { Cyfor.usage.record(templateName); } catch (e) { /* ignore */ }
+        }
         return inserted;
     },
 

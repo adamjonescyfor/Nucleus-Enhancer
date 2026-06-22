@@ -40,15 +40,31 @@ Cyfor.columns = {
                     const columns = ths.map(th => {
                         const key = th.getAttribute('data-col-key-value');
                         let name = (th.getAttribute('aria-label') || th.innerText || '').trim();
-                        
+
                         if (!name) return null;
                         if (key && key.toLowerCase().includes('action')) return null; // Ignore Actions column
                         if (key && (key.includes('rowNumber') || key.includes('CHECKBOX'))) return null; // Ignore checkboxes
-                        
+
                         return name;
                     }).filter(Boolean);
 
-                    sendResponse({ ok: true, contextId, columns });
+                    // The NATURAL (pre-reorder) column order, so the popup's "Reset"
+                    // can show the true default even when the live table is currently
+                    // reordered by a saved preference. _cyforNaturalOrder holds keys;
+                    // map them back to the visible column labels.
+                    const keyToName = {};
+                    ths.forEach(th => {
+                        const k = th.getAttribute('data-col-key-value');
+                        const n = (th.getAttribute('aria-label') || th.innerText || '').trim();
+                        if (k && n) keyToName[k] = n;
+                    });
+                    const nat = table._cyforNaturalOrder || [];
+                    let naturalColumns = nat.length
+                        ? nat.map(k => keyToName[k]).filter(n => n && columns.includes(n))
+                        : columns.slice();
+                    columns.forEach(n => { if (!naturalColumns.includes(n)) naturalColumns.push(n); });
+
+                    sendResponse({ ok: true, contextId, columns, naturalColumns });
                     return true;
                 }
             };
@@ -117,13 +133,24 @@ Cyfor.columns = {
      * Enforce column sorting on a specific table element.
      */
     _processTable(table, force) {
-        const desiredKeys = this._getDesiredOrder(table, force);
-        if (!desiredKeys || desiredKeys.length === 0) return;
+        // Capture the NATURAL column order once, before we ever reorder this table,
+        // so a Reset (cleared preference) restores it live — no page refresh needed.
+        if (!table._cyforNaturalOrder) {
+            const ths = Array.from(table.querySelectorAll('thead tr:first-child th'));
+            const nat = ths.map(th => th.getAttribute('data-col-key-value')).filter(Boolean);
+            if (nat.length) table._cyforNaturalOrder = nat;
+        }
 
-        // Apply our custom order to all table rows (both <thead> and <tbody>)
+        const desiredKeys = this._getDesiredOrder(table, force);
+        // No custom order for this table → put it back to the natural order
+        // (undoes a previous reorder), rather than leaving it shuffled.
+        const order = (desiredKeys && desiredKeys.length) ? desiredKeys : table._cyforNaturalOrder;
+        if (!order || order.length === 0) return;
+
+        // Apply the order to all table rows (both <thead> and <tbody>)
         const rows = table.querySelectorAll('tr');
         for (const row of rows) {
-            this._reorderRow(row, desiredKeys);
+            this._reorderRow(row, order);
         }
     },
 
@@ -141,7 +168,10 @@ Cyfor.columns = {
         }
 
         if (!table._cyforDesiredOrder || force) {
-            const userOrder = (Cyfor.config.tableColumnPrefs[contextId] || []).map(s => s.trim().toLowerCase());
+            // Support both legacy string[] and new { default: string[], presets: [] } format (L-7)
+            const stored = Cyfor.config.tableColumnPrefs[contextId] || [];
+            const orderArr = Array.isArray(stored) ? stored : (stored.default || []);
+            const userOrder = orderArr.map(s => s.trim().toLowerCase());
             
             // If the user hasn't customized THIS table type, do nothing.
             if (userOrder.length === 0) {
@@ -225,11 +255,17 @@ Cyfor.columns = {
             }
         }
 
-        // Apply changes: appendChild moves an existing node to the end automatically
+        // Disconnect observer before DOM mutations to avoid feedback loop
         if (needsUpdate) {
+            const obs = Cyfor.observer;
+            if (obs) obs.disconnect();
             for (const cell of newOrder) {
                 row.appendChild(cell);
             }
+            if (obs) obs.observe(
+                Cyfor.observerTarget || document.body,
+                Cyfor.observerOptions || { subtree: true, childList: true }
+            );
         }
     }
 };

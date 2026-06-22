@@ -1,0 +1,77 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — Custom dropdown
+   A themed listbox rendered over a hidden native <select>. Used in the popup
+   and the manager because some browsers render native <option> lists
+   with the OS theme and ignore CSS colours. Fully var()-driven so it follows
+   the teal/navy tokens (and proper white text in dark) on every OS.
+   Enhanced by styles/custom-select.js (window.CyforSelect).
+   ================================================== */
+
+.cyf-cs { position: relative; }
+
+.cyf-cs-native {                 /* hide the native select but keep it functional */
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    margin: 0;
+}
+
+.cyf-cs-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 11px;
+    border: 1px solid var(--border-strong, #c2ced5);
+    border-radius: var(--radius, 9px);
+    background: var(--surface, #fff);
+    color: var(--text-primary, #0d2a38);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.3;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.cyf-cs-trigger:focus-visible,
+.cyf-cs.is-open .cyf-cs-trigger {
+    outline: none;
+    border-color: var(--brand, #4f46e5);
+    box-shadow: 0 0 0 3px var(--brand-ring, rgba(14,154,167,.38));
+}
+
+.cyf-cs-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cyf-cs-arrow { color: var(--text-muted, #6a8090); font-size: 11px; flex-shrink: 0; transition: transform .15s; }
+.cyf-cs.is-open .cyf-cs-arrow { transform: rotate(180deg); }
+
+.cyf-cs-menu {
+    /* position:fixed + JS-computed coords so the list escapes any ancestor
+       overflow:hidden (e.g. popup sections) and scrolls normally. */
+    position: fixed;
+    z-index: 2147483000;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #d5dee3);
+    border-radius: var(--radius, 9px);
+    box-shadow: var(--shadow-lg, 0 18px 40px rgba(11,42,58,.16));
+    padding: 5px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.cyf-cs-item {
+    padding: 8px 11px;
+    border-radius: var(--radius-sm, 6px);
+    font-size: 13px;
+    color: var(--text-primary, #0d2a38);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cyf-cs-item.is-active   { background: var(--brand-tint, #eef2ff); }
+.cyf-cs-item.is-selected { background: var(--brand, #4f46e5); color: var(--on-brand, #fff); font-weight: 700; }
+.cyf-cs-item.is-selected.is-active { background: var(--brand-strong, #4338ca); }
+.cyf-cs-item.is-disabled { color: var(--text-muted, #6a8090); cursor: not-allowed; }

@@ -9,6 +9,7 @@ Cyfor.toast = {
     _queue: [],
     _activeToast: null,
     _dismissTimer: null,
+    _pendingShowTimer: null,
 
     // Toast type definitions
     _types: {
@@ -50,9 +51,29 @@ Cyfor.toast = {
      * @returns {object} Handle with `.dismiss()` method
      */
     show(message, type = 'success', duration = 3000, action = null) {
-        // Dismiss any existing toast immediately
-        this._dismissImmediate();
+        // Cancel any pending delayed show
+        if (this._pendingShowTimer) {
+            Cyfor.cleanup.clearTimeout(this._pendingShowTimer);
+            this._pendingShowTimer = null;
+        }
 
+        if (this._activeToast) {
+            // Grace period: let previous toast fade so Undo button remains reachable (M-9)
+            this.dismiss();
+            this._pendingShowTimer = Cyfor.cleanup.setTimeout(() => {
+                this._pendingShowTimer = null;
+                this._createToast(message, type, duration, action);
+            }, 200);
+            return { dismiss: () => {
+                Cyfor.cleanup.clearTimeout(this._pendingShowTimer);
+                this._pendingShowTimer = null;
+            }};
+        }
+
+        return this._createToast(message, type, duration, action);
+    },
+
+    _createToast(message, type, duration, action) {
         const container = this._ensureContainer();
         const typeDef = this._types[type] || this._types.info;
 
@@ -80,6 +101,7 @@ Cyfor.toast = {
             actionBtn.className = 'cyfor-toast-action';
             actionBtn.textContent = action.label;
             actionBtn.setAttribute('type', 'button');
+            actionBtn.setAttribute('aria-label', action.label + ' — ' + message);
             actionBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 action.onClick();
@@ -173,6 +195,10 @@ Cyfor.toast = {
      * Dismiss without animation (used when replacing one toast with another).
      */
     _dismissImmediate() {
+        if (this._pendingShowTimer) {
+            Cyfor.cleanup.clearTimeout(this._pendingShowTimer);
+            this._pendingShowTimer = null;
+        }
         Cyfor.cleanup.clearTimeout(this._dismissTimer);
         this._dismissTimer = null;
 

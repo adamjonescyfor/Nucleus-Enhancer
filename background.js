@@ -4,11 +4,90 @@
 // and manages extension lifecycle events.
 // ==================================================
 
-const DEFAULT_COLUMN_ORDER = [
-    'Process Ref', 'Record Type', 'Type', 'Exhibit',
-    'Exhibit Type', 'Status', 'Start Date/Time',
-    'End Date/Time', 'Completed By', 'Notes'
-];
+try {
+    importScripts('config.js');
+} catch (e) {
+    // config.js is gitignored; fall back to empty defaults
+    self.CYFOR_CONFIG = { oauthProxyUrl: '' };
+}
+
+try {
+    importScripts(
+        'background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js',
+        'background/sf-team.js', 'background/sf-versions.js', 'background/sf-usage.js',
+        'background/sf-acks.js', 'background/sf-changes.js',
+        'report/case-report-fetch.js',
+        // MG22A/MG22B report generation — OWNED BY MITUL (feature hidden via the
+        // MG22_ENABLED flag in content/case-report.js). These modules stay loaded
+        // so the feature is one flag-flip away; they're inert while the button is hidden.
+        'lib/fflate.min.js', 'lib/docx-fill.js', 'report/mg-extract.js', 'background/sf-report-templates.js'
+    );
+} catch (e) {
+    console.error('[CYFOR] Failed to load OAuth modules:', e);
+}
+
+// ── Opt-in debug logging (service-worker console). Off by default; flip with
+// chrome.storage.local.set({ cyforDebug: true }). See docs/Nucleus_Enhancer_Diagnostics.md.
+// Capture buffer — fills only while debug is on; downloaded from the popup. Hard-
+// capped at DEBUG_MAX entries so it can never grow without bound.
+var debugBuffer = [];
+var DEBUG_MAX   = 2000;
+var _persistT   = null;
+
+// Safety net: a forgotten toggle auto-switches OFF and bins its buffer after a
+// day, so diagnostics can never keep logging — or hold storage — indefinitely.
+var CYFOR_DEBUG  = false;
+var _debugExpiry = 0;
+var DEBUG_TTL_MS = 24 * 60 * 60 * 1000;
+function _checkDebugExpiry() {
+    if (_debugExpiry && Date.now() > _debugExpiry) {
+        CYFOR_DEBUG = false;
+        _debugExpiry = 0;
+        debugBuffer = [];
+        try { chrome.storage.local.set({ cyforDebug: false, cyforDebugExpiry: null, cyforDebugLog: [] }); } catch (e) { /* ignore */ }
+        return true;
+    }
+    return false;
+}
+try {
+    chrome.storage.local.get(['cyforDebug', 'cyforDebugExpiry', 'cyforDebugLog'], function (r) {
+        CYFOR_DEBUG  = !!(r && r.cyforDebug);
+        _debugExpiry = (r && r.cyforDebugExpiry) || 0;
+        if (r && Array.isArray(r.cyforDebugLog)) debugBuffer = r.cyforDebugLog.slice(-DEBUG_MAX);
+        _checkDebugExpiry();   // clear a forgotten session on every worker startup
+    });
+    chrome.storage.onChanged.addListener(function (c, area) {
+        if (area !== 'local') return;
+        if (c.cyforDebug) CYFOR_DEBUG = !!c.cyforDebug.newValue;
+        if (c.cyforDebugExpiry) _debugExpiry = c.cyforDebugExpiry.newValue || 0;
+    });
+} catch (e) { /* storage unavailable — stay off */ }
+function _persistDebug() {
+    if (_persistT) return;
+    _persistT = setTimeout(function () {
+        _persistT = null;
+        try { chrome.storage.local.set({ cyforDebugLog: debugBuffer }); } catch (e) { /* ignore */ }
+    }, 1500);
+}
+function pushDebug(entry) {
+    if (!entry) return;
+    debugBuffer.push(entry);
+    if (debugBuffer.length > DEBUG_MAX) debugBuffer.splice(0, debugBuffer.length - DEBUG_MAX);
+    _persistDebug();
+}
+function _argsToText(args) {
+    return args.map(function (a) {
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a); } catch (e) { return String(a); }
+    }).join(' ');
+}
+function dlog(area) {
+    if (!CYFOR_DEBUG || _checkDebugExpiry()) return;
+    var args = Array.prototype.slice.call(arguments, 1);
+    try { console.log.apply(console, ['[Cyfor:' + area + ']'].concat(args)); } catch (e) { /* ignore */ }
+    pushDebug({ t: Date.now(), src: 'bg', area: area, text: _argsToText(args) });
+}
+self.dlog = dlog;
 
 // Relay registered keyboard commands to the active tab
 chrome.commands.onCommand.addListener((command) => {
@@ -26,14 +105,24 @@ chrome.runtime.onInstalled.addListener((details) => {
             enableDate: true,
             enableContextMenu: true,
             enableNav: true,
-            enableAutoEnd: false,
             enableFormatNotes: true,
             enableAutoInsert: false,
             tableColumnPrefs: {},
             nucleusTemplates: {},
             processMap: {},
             templateCount: 0,
-            downloadFolder: 'CYFOR Photographs'
+            downloadFolder: 'CYFOR Photographs',
+            sfOAuthConfig: {
+                oauthProxyUrl:  (self.CYFOR_CONFIG && self.CYFOR_CONFIG.oauthProxyUrl) || 'https://cyfor-oauth-proxy.nucleusenhancer.workers.dev',
+                templateObject: 'NucleusTemplate__c',
+                contentField:   'Content__c',
+                categoryField:  'Category__c',
+                activeField:    'IsActive__c',
+                apiVersion:     'v62.0'
+            },
+            sfOAuthUser:        null,
+            sfRemoteTemplates:  {},
+            sfTemplatesSyncedAt: null
         });
     } else if (details.reason === 'update') {
         // Ensure new toggle has a value on upgrade
@@ -45,8 +134,267 @@ chrome.runtime.onInstalled.addListener((details) => {
     }
 });
 
+// ── Self-heal already-open Salesforce tabs on install/update ───────────────────
+// Chrome does NOT re-inject content scripts into tabs that were already open when
+// the extension installs or updates (incl. a dev reload / auto-update). Those
+// tabs keep the OLD, now-invalidated runtime context (chrome.runtime.id is gone),
+// so the in-page features go dead until the user manually refreshes. Re-injecting
+// the declared scripts + CSS gives those tabs a fresh, working context with no
+// refresh. The content scripts guard their DOM injections (existing-element /
+// namespace checks), so re-running is idempotent.
+async function reinjectContentScripts() {
+    if (!chrome.scripting || !chrome.runtime.getManifest) return;
+    var specs = chrome.runtime.getManifest().content_scripts || [];
+    for (var s = 0; s < specs.length; s++) {
+        var spec = specs[s];
+        var matches = spec.matches || [];
+        if (!matches.length) continue;
+        var tabs;
+        try { tabs = await chrome.tabs.query({ url: matches }); }
+        catch (e) { continue; }
+        for (var t = 0; t < tabs.length; t++) {
+            var tabId = tabs[t].id;
+            if (tabId == null) continue;
+            try {
+                if (spec.css && spec.css.length) {
+                    await chrome.scripting.insertCSS({ target: { tabId: tabId }, files: spec.css });
+                }
+                if (spec.js && spec.js.length) {
+                    // One call preserves load order (utils before its dependents).
+                    await chrome.scripting.executeScript({ target: { tabId: tabId }, files: spec.js });
+                }
+            } catch (e) { /* tab not injectable (navigating, discarded, perms) — skip */ }
+        }
+    }
+}
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install' || details.reason === 'update') reinjectContentScripts();
+});
+
+// ── Background template sync ──────────────────────────────────────────────────
+// Keeps every connected device current without the user opening the popup, so an
+// admin's template change reaches everyone within BG_SYNC_MINUTES.
+//
+// Cost: templates are fetched DIRECTLY from Salesforce (not via the Cloudflare
+// worker), so this poll adds NO worker requests — the worker is only hit by the
+// occasional OAuth token refresh (~once per ~2h token lifetime, independent of
+// sync frequency). The poll is further gated to connected users who actually have
+// a Salesforce tab open, so idle installs make zero requests.
+var BG_SYNC_ALARM   = 'cyforTemplateSync';
+var BG_SYNC_MINUTES = 20;
+
+// Create the alarm only if it doesn't already exist, so frequent service-worker
+// restarts can't keep resetting (and thus never firing) the timer.
+function ensureSyncAlarm() {
+    try {
+        chrome.alarms.get(BG_SYNC_ALARM, (existing) => {
+            if (!existing) chrome.alarms.create(BG_SYNC_ALARM, { periodInMinutes: BG_SYNC_MINUTES });
+        });
+    } catch (e) { /* alarms unavailable */ }
+}
+chrome.runtime.onInstalled.addListener(ensureSyncAlarm);
+chrome.runtime.onStartup.addListener(ensureSyncAlarm);
+ensureSyncAlarm(); // also on service-worker spin-up
+
+// True only when the user has Salesforce open (so we don't poll for idle installs).
+// Fails open if the query can't run, so we never silently stop syncing.
+function hasSalesforceTabOpen() {
+    return new Promise((resolve) => {
+        try {
+            chrome.tabs.query(
+                { url: ['https://*.lightning.force.com/*', 'https://*.my.salesforce.com/*'] },
+                (tabs) => {
+                    if (chrome.runtime.lastError) { resolve(true); return; }
+                    resolve(Array.isArray(tabs) && tabs.length > 0);
+                }
+            );
+        } catch (e) { resolve(true); }
+    });
+}
+
+async function runBackgroundSync() {
+    if (!self.SfOAuth || !self.SfTemplates) return;
+    var stored = await chrome.storage.local.get(['sfOAuthTokens']);
+    if (!stored.sfOAuthTokens || !stored.sfOAuthTokens.accessToken) return; // not connected
+    if (!(await hasSalesforceTabOpen())) return;                            // not actively using SF
+    try {
+        var r = await self.SfTemplates.fetchRemoteTemplates(true);
+        if (r && r.ok) { maybeNotifyReviews(r.templates); maybeNotifyAcks(r.templates); }
+        maybeNotifyChanges();
+    } catch (e) { /* retry next cycle */ }
+}
+
+// After a successful sync, nudge TEMPLATE ADMINS (once per day) when edit
+// suggestions are awaiting review. Dormant until NucleusTemplateChangeRequest__c
+// exists. Non-fatal.
+async function maybeNotifyChanges() {
+    try {
+        if (!self.SfChanges) return;
+        var stored = await chrome.storage.local.get(['sfOAuthUser', 'changeNotifyDay']);
+        var user = stored.sfOAuthUser;
+        if (!user || !user.isTemplateAdmin) return;
+
+        var res = await self.SfChanges.listPending();
+        if (!res || !res.available || !res.requests || !res.requests.length) return;
+
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var day   = today.toISOString().slice(0, 10);
+        if (stored.changeNotifyDay === day) return; // at most one nudge per day
+        await chrome.storage.local.set({ changeNotifyDay: day });
+
+        var n = res.requests.length;
+        chrome.notifications.create('cyfor-changes-pending', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('report/cyfor-logo.png'),
+            title: 'Template suggestions to review',
+            message: n + ' edit suggestion' + (n === 1 ? '' : 's') + ' awaiting review — open the Template Manager.'
+        });
+    } catch (e) { /* non-fatal by design */ }
+}
+
+// After a successful sync, nudge ANY analyst (once per day) when controlled
+// templates need their read-acknowledgement. Inherently team-scoped — the sync
+// only returns templates the user can see. Dormant until NucleusTemplateAck__c
+// exists. Non-fatal: must never affect the sync.
+async function maybeNotifyAcks(templates) {
+    try {
+        if (!self.SfAcks) return;
+
+        // Controlled docs (requiresAck + Active) the user can see.
+        var controlled = [];
+        Object.keys(templates || {}).forEach(function (name) {
+            var t = templates[name];
+            if (!t || !t.requiresAck || !t.id || !t.versionLabel) return;
+            if ((t.status || 'Active').toLowerCase() !== 'active') return;
+            controlled.push(t);
+        });
+        if (!controlled.length) return;
+
+        var mine = await self.SfAcks.fetchMine();
+        if (!mine || !mine.available) return; // feature dormant — nothing to nudge
+
+        var acked = {};
+        (mine.acks || []).forEach(function (k) { acked[k] = true; });
+        var outstanding = controlled.filter(function (t) { return !acked[t.id + '|' + t.versionLabel]; });
+        if (!outstanding.length) return;
+
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var day   = today.toISOString().slice(0, 10);
+        var stored = await chrome.storage.local.get('ackNotifyDay');
+        if (stored.ackNotifyDay === day) return; // at most one nudge per day
+        await chrome.storage.local.set({ ackNotifyDay: day });
+
+        var n = outstanding.length;
+        chrome.notifications.create('cyfor-acks-due', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('report/cyfor-logo.png'),
+            title: 'Templates to acknowledge',
+            message: n + ' controlled template' + (n === 1 ? '' : 's') + ' need your "read & understood" — open the Template Manager.'
+        });
+    } catch (e) { /* non-fatal by design */ }
+}
+
+// After a successful sync, nudge TEMPLATE ADMINS (once per day) when their
+// team's templates are overdue / due for review within 30 days. Non-fatal:
+// any failure here must never affect the sync itself.
+async function maybeNotifyReviews(templates) {
+    try {
+        var stored = await chrome.storage.local.get(['sfOAuthUser', 'reviewNotifyDay']);
+        var user = stored.sfOAuthUser;
+        if (!user || !user.isTemplateAdmin) return;
+
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var in30  = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+        var overdue = 0, due30 = 0;
+        Object.keys(templates || {}).forEach(function (name) {
+            var t = templates[name];
+            var status = (t.status || '').toLowerCase();
+            if (!t.reviewDueDate || status === 'superseded' || status === 'retired') return;
+            var due = new Date(t.reviewDueDate + 'T00:00:00');
+            if (isNaN(due.getTime())) return;
+            if (due < today) overdue++;
+            else if (due <= in30) due30++;
+        });
+        if (!overdue && !due30) return;
+
+        var day = today.toISOString().slice(0, 10);
+        if (stored.reviewNotifyDay === day) return; // at most one nudge per day
+        await chrome.storage.local.set({ reviewNotifyDay: day });
+
+        var parts = [];
+        if (overdue) parts.push(overdue + ' overdue');
+        if (due30)   parts.push(due30 + ' due within 30 days');
+        chrome.notifications.create('cyfor-review-due', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('report/cyfor-logo.png'),
+            title: 'Template reviews due',
+            message: parts.join(' · ') + ' — open the Template Manager to review.'
+        });
+    } catch (e) { /* non-fatal by design */ }
+}
+
+// Clicking the nudge opens the Template Manager.
+try {
+    chrome.notifications.onClicked.addListener(function (id) {
+        if (id === 'cyfor-review-due' || id === 'cyfor-acks-due' || id === 'cyfor-changes-pending') chrome.runtime.openOptionsPage();
+    });
+} catch (e) { /* notifications unavailable */ }
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm && alarm.name === BG_SYNC_ALARM) runBackgroundSync();
+});
+
+// ── Lazy report-script injection ──────────────────────────────────────────────
+// The disclosure-report generator + its in-page button injector are only useful
+// on Forensic Case record pages, so they are NOT in manifest content_scripts.
+// They're injected on demand here (and ensured before a popup-triggered export),
+// which keeps ~47 KB of script + a per-page MutationObserver/1s timer off every
+// other Salesforce page. The scripts self-guard (window.__cyforCaseReportLoaded),
+// so re-injection is harmless.
+var REPORT_FILES = ['report/disclosure-report.js', 'content/case-report.js'];
+var injectedReportTabs = new Set();
+
+function isForensicCaseUrl(url) {
+    var m = (url || '').match(/\/lightning\/r\/([^/]+)\/[^/]+\/view/);
+    return !!(m && /forensic.*case/i.test(m[1]));
+}
+
+function injectReportScripts(tabId) {
+    return chrome.scripting.executeScript({ target: { tabId: tabId }, files: REPORT_FILES })
+        .then(() => { injectedReportTabs.add(tabId); return true; })
+        .catch(() => false); // tab navigated away / not injectable
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // A full navigation starting tears down the page (and our injected script) —
+    // allow re-injection on the next 'complete'.
+    if (changeInfo.status === 'loading') injectedReportTabs.delete(tabId);
+
+    // Inject on full load (status complete) AND on Lightning SPA URL changes.
+    var url = changeInfo.url || (changeInfo.status === 'complete' ? (tab && tab.url) : null);
+    if (!url || !isForensicCaseUrl(url) || injectedReportTabs.has(tabId)) return;
+    injectReportScripts(tabId);
+});
+chrome.tabs.onRemoved.addListener((tabId) => injectedReportTabs.delete(tabId));
+
 // Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Defense-in-depth: only handle messages from this extension's own content
+    // scripts and pages (web-page JS can't reach onMessage, but this documents
+    // and enforces the boundary regardless).
+    if (!sender || sender.id !== chrome.runtime.id) return;
+    if (!message || !message.action) return;
+
+    // Diagnostics capture buffer (content-script forwarding + popup controls).
+    if (message.action === 'cyforDbg') { pushDebug(message.entry); return; }   // fire-and-forget
+    if (message.action === 'diag.count') { sendResponse({ ok: true, count: debugBuffer.length }); return true; }
+    if (message.action === 'diag.get')   { sendResponse({ ok: true, entries: debugBuffer }); return true; }
+    if (message.action === 'diag.clear') {
+        debugBuffer = [];
+        try { chrome.storage.local.set({ cyforDebugLog: [] }); } catch (e) { /* ignore */ }
+        sendResponse({ ok: true }); return true;
+    }
+
     // Health check
     if (message.action === 'ping') {
         sendResponse({ status: 'ok', version: chrome.runtime.getManifest().version });
@@ -68,14 +416,221 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // Fetch Salesforce user identity using session cookie + REST/OAuth
-    if (message.action === 'getSalesforceIdentity') {
-        getSalesforceIdentity(message.tabId, message.tabUrl)
+    // Launch Salesforce OAuth PKCE flow
+    if (message.action === 'sfOAuth.connect') {
+        if (!self.SfOAuth) { sendResponse({ ok: false, error: 'OAuth module not loaded' }); return true; }
+        self.SfOAuth.launchOAuthFlow()
             .then((result) => sendResponse(result))
-            .catch((err) => {
-                console.warn('[CYFOR] getSalesforceIdentity error:', err);
-                sendResponse({ ok: false, error: err.message || 'Identity fetch failed' });
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Disconnect (clear tokens + revoke)
+    if (message.action === 'sfOAuth.disconnect') {
+        if (!self.SfOAuth) { sendResponse({ ok: false }); return true; }
+        self.SfOAuth.disconnectOAuth()
+            .then(() => sendResponse({ ok: true }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Fetch the connected user's Salesforce profile photo as a data URL
+    if (message.action === 'sfOAuth.getProfilePhoto') {
+        if (!self.SfOAuth || !self.SfOAuth.getProfilePhotoDataUrl) { sendResponse({ ok: false }); return true; }
+        self.SfOAuth.getProfilePhotoDataUrl()
+            .then((dataUrl) => sendResponse({ ok: true, dataUrl: dataUrl }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Fetch/sync templates from Salesforce
+    if (message.action === 'sfTemplates.sync') {
+        if (!self.SfTemplates) { sendResponse({ ok: false, error: 'Templates module not loaded' }); return true; }
+        self.SfTemplates.fetchRemoteTemplates(message.forceRefresh === true)
+            .then((result) => sendResponse(result))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // List templates for the manager page (includes id, teamCode, UKAS fields per entry)
+    if (message.action === 'sfTemplates.list') {
+        chrome.storage.local.get(['sfRemoteTemplates', 'sfOAuthUser'], function (r) {
+            sendResponse({
+                ok:        true,
+                templates: r.sfRemoteTemplates || {},
+                user:      r.sfOAuthUser       || {}
             });
+        });
+        return true;
+    }
+
+    // Admin "manage all teams" view — live query of EVERY template (all teams +
+    // global, all statuses). Used by the manager (not the popup sync).
+    if (message.action === 'sfTemplates.listAll') {
+        if (!self.SfTemplates || !self.SfTemplates.fetchAllTemplatesForAdmin) {
+            sendResponse({ ok: false, error: 'Templates module not loaded' }); return true;
+        }
+        self.SfTemplates.fetchAllTemplatesForAdmin()
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // List all active teams — for the manager's "assign to any team" picker.
+    if (message.action === 'sfTeams.list') {
+        (async function () {
+            try {
+                var stored = await chrome.storage.local.get('sfOAuthTokens');
+                var instanceUrl = ((stored.sfOAuthTokens || {}).instanceUrl || '').replace(/\/$/, '');
+                if (!instanceUrl || !self.SfTeam || !self.SfTeam.fetchAllTeams) {
+                    sendResponse({ ok: false, teams: [] }); return;
+                }
+                var token = await self.SfOAuth.getValidAccessToken();
+                var teams = await self.SfTeam.fetchAllTeams(instanceUrl, token);
+                sendResponse({ ok: true, teams: teams });
+            } catch (e) { sendResponse({ ok: false, teams: [], error: e.message }); }
+        })();
+        return true;
+    }
+
+    // Fetch version history for a single template
+    if (message.action === 'sfTemplates.versions.get') {
+        if (!self.SfVersions) { sendResponse({ ok: false, error: 'Versions module not loaded' }); return true; }
+        self.SfVersions.getVersionHistory(message.templateId)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // Org-wide usage logging — silent no-op until NucleusTemplateUsage__c exists
+    // (see docs/salesforce-usage-object.md). Never errors back to the caller.
+    if (message.action === 'usage.push') {
+        if (!self.SfUsage) { sendResponse({ ok: true, skipped: true }); return true; }
+        self.SfUsage.pushUsage(message.entry || {})
+            .then((r) => sendResponse(r))
+            .catch(() => sendResponse({ ok: true, skipped: true }));
+        return true;
+    }
+
+    // Resolve the id of a record the user just created in a modal (where the URL
+    // and toast can't be read) — their latest record of <object> since <sinceTs>.
+    if (message.action === 'usage.findLatest') {
+        if (!self.SfUsage || !self.SfUsage.findLatestRecord) { sendResponse({ ok: true, id: null }); return true; }
+        self.SfUsage.findLatestRecord(message.object, message.sinceTs)
+            .then((r) => sendResponse(r))
+            .catch(() => sendResponse({ ok: true, id: null }));
+        return true;
+    }
+
+    // Org-wide usage listing for the manager (template admins only).
+    if (message.action === 'usage.listOrg') {
+        if (!self.SfUsage) { sendResponse({ ok: true, available: false, entries: [] }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) {
+                sendResponse({ ok: false, error: 'PERMISSION_DENIED' });
+                return;
+            }
+            self.SfUsage.listOrgUsage(200)
+                .then((r) => sendResponse(r))
+                .catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+
+    // ── Read-acknowledgements — silent no-op until NucleusTemplateAck__c exists
+    // (see docs/salesforce-ack-object.md). ──
+    if (message.action === 'acks.status') {
+        if (!self.SfAcks) { sendResponse({ ok: true, available: false }); return true; }
+        self.SfAcks.status().then(sendResponse).catch(() => sendResponse({ ok: true, available: false }));
+        return true;
+    }
+    // The current user's own acknowledgements (any signed-in user).
+    if (message.action === 'acks.mine') {
+        if (!self.SfAcks) { sendResponse({ ok: true, available: false, acks: [] }); return true; }
+        self.SfAcks.fetchMine().then(sendResponse).catch(() => sendResponse({ ok: true, available: false, acks: [] }));
+        return true;
+    }
+    // Record that the current user has read & understood a template version.
+    if (message.action === 'acks.acknowledge') {
+        if (!self.SfAcks) { sendResponse({ ok: false, error: 'NOT_AVAILABLE' }); return true; }
+        self.SfAcks.acknowledge(message.templateId, message.versionLabel)
+            .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+    // Admin matrix data (roster + all acks) — template admins only.
+    if (message.action === 'acks.matrix') {
+        if (!self.SfAcks) { sendResponse({ ok: true, available: false, members: [], acks: [] }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) {
+                sendResponse({ ok: false, error: 'PERMISSION_DENIED' });
+                return;
+            }
+            self.SfAcks.fetchMatrix().then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+
+    // ── Template change-requests (member "suggest an edit") — no-op until
+    // NucleusTemplateChangeRequest__c exists (docs/salesforce-change-request-object.md). ──
+    if (message.action === 'changes.status') {
+        if (!self.SfChanges) { sendResponse({ ok: true, available: false }); return true; }
+        self.SfChanges.status().then(sendResponse).catch(() => sendResponse({ ok: true, available: false }));
+        return true;
+    }
+    if (message.action === 'changes.submit') {   // any signed-in user
+        if (!self.SfChanges) { sendResponse({ ok: false, error: 'NOT_AVAILABLE' }); return true; }
+        self.SfChanges.submit(message.templateId, message.proposedContent, message.reason)
+            .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+    if (message.action === 'changes.mine') {      // the user's own suggestions
+        if (!self.SfChanges) { sendResponse({ ok: true, available: false, requests: [] }); return true; }
+        self.SfChanges.listMine().then(sendResponse).catch(() => sendResponse({ ok: true, available: false, requests: [] }));
+        return true;
+    }
+    if (message.action === 'changes.listPending') {  // admins only
+        if (!self.SfChanges) { sendResponse({ ok: true, available: false, requests: [] }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) { sendResponse({ ok: false, error: 'PERMISSION_DENIED' }); return; }
+            self.SfChanges.listPending().then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+    if (message.action === 'changes.resolve') {      // admins only
+        if (!self.SfChanges) { sendResponse({ ok: false, error: 'NOT_AVAILABLE' }); return true; }
+        (async () => {
+            const stored = await chrome.storage.local.get(['sfOAuthUser']);
+            if (!stored.sfOAuthUser || !stored.sfOAuthUser.isTemplateAdmin) { sendResponse({ ok: false, error: 'PERMISSION_DENIED' }); return; }
+            self.SfChanges.resolve(message.requestId, message.status, message.adminNote)
+                .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+        })();
+        return true;
+    }
+
+    // Create a new template in Salesforce
+    if (message.action === 'sfTemplates.create') {
+        sfTemplateCrud('create', message.payload)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // Update an existing template in Salesforce
+    if (message.action === 'sfTemplates.update') {
+        sfTemplateCrud('update', message.payload)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
+        return true;
+    }
+
+    // Delete a template from Salesforce
+    if (message.action === 'sfTemplates.delete') {
+        sfTemplateCrud('delete', message.payload)
+            .then((r) => sendResponse(r))
+            .catch((e) => sendResponse({ ok: false, error: e.message }));
         return true;
     }
 
@@ -93,537 +648,285 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true });
         return true;
     }
+
+    // Ensure the lazy-injected report scripts are present in a tab before the
+    // popup triggers an export (covers the race where the popup opens the instant
+    // a case page loads, before onUpdated injection has run).
+    if (message.action === 'caseReport.ensureInjected') {
+        var tid = (typeof message.tabId === 'number') ? message.tabId
+                : (sender.tab && sender.tab.id);
+        if (typeof tid !== 'number') { sendResponse({ ok: false }); return true; }
+        injectReportScripts(tid).then((ok) => sendResponse({ ok: ok }));
+        return true;
+    }
+
+    // Live-fetch a Forensic Case bundle for the disclosure report generator
+    if (message.action === 'caseReport.fetch') {
+        if (!self.CaseReportFetch) { sendResponse({ ok: false, error: 'Case report module not loaded' }); return true; }
+        self.CaseReportFetch.fetchCaseBundle({ caseObject: message.caseObject, caseId: message.caseId })
+            .then((data) => sendResponse({ ok: true, data: data }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // MG22A / MG22B report handlers — OWNED BY MITUL (WIP; UI hidden via the
+    // MG22_ENABLED flag in content/case-report.js). These remain registered but
+    // are never reached while the button is hidden. Left intact for Mitul.
+    // ════════════════════════════════════════════════════════════════════════
+    // List the MG22 report templates available to this user (team-scoped)
+    if (message.action === 'report.listTemplates') {
+        if (!self.SfReportTemplates) { sendResponse({ ok: false, error: 'Report module not loaded' }); return true; }
+        self.SfReportTemplates.listReportTemplates()
+            .then((templates) => sendResponse({ ok: true, templates: templates }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    // Generate a filled .docx report from a template + the live case data
+    if (message.action === 'report.generate') {
+        generateReport(message)
+            .then((r) => sendResponse(r))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
 });
 
-/**
- * Read Salesforce user identity by injecting into the page's MAIN world and
- * reading from Salesforce's own JavaScript globals — no network calls needed.
- * Salesforce always exposes window.UserContext, window.$A, or window.sforce.
- */
-async function getSalesforceIdentity(tabId, tabUrl) {
-    let url;
-    try { url = new URL(tabUrl); } catch (e) { throw new Error('Invalid Salesforce tab URL'); }
+// MG22A / MG22B (Mitul): fetch template + case bundle, map to placeholders, fill
+// the .docx, return base64. Reached only when the MG22 UI flag is enabled.
+async function generateReport(message) {
+    if (!self.SfReportTemplates || !self.CaseReportFetch || !self.MgExtract || !self.DocxFill) {
+        throw new Error('Report modules not loaded');
+    }
+    const templateBytes = await self.SfReportTemplates.fetchTemplateFile(message.templateId);
+    const bundle = await self.CaseReportFetch.fetchCaseBundle({
+        caseObject: message.caseObject, caseId: message.caseId
+    });
+    const stored = await chrome.storage.local.get(['sfOAuthUser', 'mgReportConfig']);
+    const data = self.MgExtract.buildReportData(bundle, stored.sfOAuthUser || {}, stored.mgReportConfig || {}, new Date());
 
-    if (tabId) {
-        try {
-            const results = await chrome.scripting.executeScript({
-                target: { tabId },
-                world: 'MAIN',
-                func: async () => {
-                    const log = (msg, val) => console.log('[CYFOR identity]', msg, val !== undefined ? val : '');
-                    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-                    const findInShadow = (root, sel, depth) => {
-                        if (!root || depth > 20) return null;
-                        const els = root.querySelectorAll(sel);
-                        for (const el of els) {
-                            const text = (el.textContent || '').trim();
-                            if (text) return text;
-                        }
-                        const allEls = root.querySelectorAll('*');
-                        for (const el of allEls) {
-                            if (el.shadowRoot) {
-                                const found = findInShadow(el.shadowRoot, sel, depth + 1);
-                                if (found) return found;
-                            }
-                        }
-                        return null;
-                    };
-                    const findProfileLinkLabel = (root, depth) => {
-                        if (!root || depth > 20) return null;
-
-                        const selectors = [
-                            'a.profile-link-label[href*="/lightning/r/User/"]',
-                            'a.profile-link-label[href*="/User/"]',
-                            'h1.profile-card-name a[href*="/lightning/r/User/"]'
-                        ];
-
-                        for (const selector of selectors) {
-                            const links = root.querySelectorAll(selector);
-                            for (const link of links) {
-                                const text = (link.textContent || '').trim();
-                                if (text && !/^(view profile|profile)$/i.test(text)) {
-                                    return text;
-                                }
-                            }
-                        }
-
-                        const allEls = root.querySelectorAll('*');
-                        for (const el of allEls) {
-                            if (el.shadowRoot) {
-                                const found = findProfileLinkLabel(el.shadowRoot, depth + 1);
-                                if (found) return found;
-                            }
-                        }
-
-                        return null;
-                    };
-                    const extractProfileName = () => {
-                        const profileLinkLabel = findProfileLinkLabel(document, 0);
-                        if (profileLinkLabel) {
-                            log('Exact profile link label:', profileLinkLabel);
-                            return profileLinkLabel;
-                        }
-
-                        const profileName = findInShadow(document, 'h1.profile-card-name', 0);
-                        if (profileName && !/^(view profile|profile)$/i.test(profileName)) {
-                            log('profile-card-name (shadow-aware):', profileName);
-                            return profileName;
-                        }
-
-                        return null;
-                    };
-                    const openUserMenuIfNeeded = async () => {
-                        const selectors = [
-                            '[title^="View profile for "]',
-                            '[aria-label^="View profile for "]',
-                            'button[title="View profile"]',
-                            'button[aria-label="View profile"]',
-                            'one-app-nav-bar-user-menu button',
-                            'button.slds-global-actions__item-action'
-                        ];
-
-                        const findClickable = (root, depth) => {
-                            if (!root || depth > 12) return null;
-                            for (const selector of selectors) {
-                                const matches = root.querySelectorAll(selector);
-                                for (const match of matches) {
-                                    if (match && typeof match.click === 'function') return match;
-                                }
-                            }
-                            const allEls = root.querySelectorAll('*');
-                            for (const el of allEls) {
-                                if (el.shadowRoot) {
-                                    const found = findClickable(el.shadowRoot, depth + 1);
-                                    if (found) return found;
-                                }
-                            }
-                            return null;
-                        };
-
-                        const trigger = findClickable(document, 0);
-                        if (!trigger) {
-                            log('User menu trigger not found');
-                            return false;
-                        }
-
-                        trigger.click();
-                        await wait(350);
-                        return true;
-                    };
-                    const toAbsoluteUrl = (raw) => {
-                        const value = (raw || '').toString().trim();
-                        if (!value) return '';
-                        if (/^https?:\/\//i.test(value)) return value;
-                        if (value.startsWith('//')) return location.protocol + value;
-                        if (value.startsWith('/')) return location.origin + value;
-                        return location.origin + '/' + value.replace(/^\/+/, '');
-                    };
-                    const pickPhotoUrl = (obj) => {
-                        if (!obj || typeof obj !== 'object') return '';
-                        const candidates = [
-                            obj.profilePhotoUrl,
-                            obj.photoUrl,
-                            obj.photoURL,
-                            obj.smallPhotoUrl,
-                            obj.fullPhotoUrl,
-                            obj.thumbnailPhotoUrl,
-                            obj.PhotoUrl,
-                            obj.SmallPhotoUrl,
-                            obj.FullPhotoUrl,
-                            obj.picture,
-                            obj.avatarUrl,
-                            obj.userPhotoUrl
-                        ];
-                        for (const candidate of candidates) {
-                            const absolute = toAbsoluteUrl(candidate);
-                            if (absolute) return absolute;
-                        }
-                        return '';
-                    };
-                    const findProfilePhotoUrl = (root, depth) => {
-                        if (!root || depth > 12) return '';
-                        const selectors = [
-                            'img.profileTrigger.branding-user-profile.circular',
-                            'one-app-nav-bar-user-menu img',
-                            'button[title^="View profile for "] img',
-                            'button[aria-label^="View profile for "] img',
-                            'img.profileTriggerAvatar',
-                            'img[alt*="profile" i]',
-                            'img[class*="avatar" i]'
-                        ];
-                        for (const selector of selectors) {
-                            const matches = root.querySelectorAll(selector);
-                            for (const img of matches) {
-                                const src = (img.currentSrc || img.src || '').trim();
-                                const absolute = toAbsoluteUrl(src);
-                                if (absolute) return absolute;
-                            }
-                        }
-                        const allEls = root.querySelectorAll('*');
-                        for (const el of allEls) {
-                            if (el.shadowRoot) {
-                                const nested = findProfilePhotoUrl(el.shadowRoot, depth + 1);
-                                if (nested) return nested;
-                            }
-                        }
-                        return '';
-                    };
-
-                    // ── 1. window.UserContext ──
-                    try {
-                        const uc = window.UserContext;
-                        log('UserContext:', JSON.stringify(uc));
-                        if (uc && (uc.userName || uc.userId)) {
-                            const first = uc.firstName || '';
-                            const last  = uc.lastName  || '';
-                            const full  = (first + ' ' + last).trim() || uc.userName || '';
-                            return {
-                                ok: true, source: 'UserContext',
-                                user: {
-                                    id: uc.userId || '',
-                                    fullName: full,
-                                    username: uc.userName || '',
-                                    email: uc.userEmail || '',
-                                    profilePhotoUrl: pickPhotoUrl(uc) || findProfilePhotoUrl(document, 0),
-                                    organizationId: uc.organizationId || '',
-                                    domain: location.hostname,
-                                    instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('UserContext error:', e.message); }
-
-                    // ── 2. SfdcApp.userPreferences / SfdcApp context ──
-                    try {
-                        const sfdcCtx = window.SfdcApp && (
-                            window.SfdcApp.userContext ||
-                            (window.SfdcApp.projectConfigs && window.SfdcApp.projectConfigs.userContext)
-                        );
-                        log('SfdcApp.userContext:', JSON.stringify(sfdcCtx));
-                        if (sfdcCtx && (sfdcCtx.userName || sfdcCtx.userId)) {
-                            const first = sfdcCtx.firstName || '';
-                            const last  = sfdcCtx.lastName  || '';
-                            const full  = (first + ' ' + last).trim() || sfdcCtx.userName || '';
-                            return {
-                                ok: true, source: 'SfdcApp',
-                                user: {
-                                    id: sfdcCtx.userId || '',
-                                    fullName: full,
-                                    username: sfdcCtx.userName || '',
-                                    email: sfdcCtx.userEmail || '',
-                                    profilePhotoUrl: pickPhotoUrl(sfdcCtx) || findProfilePhotoUrl(document, 0),
-                                    organizationId: sfdcCtx.organizationId || '',
-                                    domain: location.hostname,
-                                    instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('SfdcApp error:', e.message); }
-
-                    // ── 3. Aura framework global $A ──
-                    try {
-                        const aura = window.$A;
-                        log('$A defined:', !!aura);
-                        if (aura && typeof aura.get === 'function') {
-                            const auraFieldName = aura.get('$SObjectType.CurrentUser.Name');
-                            const auraFieldId = aura.get('$SObjectType.CurrentUser.Id');
-                            const auraFieldUsername = aura.get('$SObjectType.CurrentUser.Username');
-                            const auraFieldEmail = aura.get('$SObjectType.CurrentUser.Email');
-                            log('$A CurrentUser.Name:', auraFieldName);
-                            const ctx = aura.get('$SObjectType.CurrentUser');
-                            log('$A CurrentUser:', JSON.stringify(ctx));
-                            if (auraFieldName || auraFieldUsername || auraFieldEmail) {
-                                return {
-                                    ok: true, source: 'AuraFieldProvider',
-                                    user: {
-                                        id: auraFieldId || '',
-                                        fullName: auraFieldName || auraFieldUsername || '',
-                                        username: auraFieldUsername || '',
-                                        email: auraFieldEmail || '',
-                                        profilePhotoUrl: pickPhotoUrl(ctx) || findProfilePhotoUrl(document, 0),
-                                        organizationId: '',
-                                        domain: location.hostname,
-                                        instanceUrl: location.origin
-                                    }
-                                };
-                            }
-                            if (ctx) {
-                                const name = ctx.Name || ctx.FullName || ctx.Username || '';
-                                if (name) {
-                                    return {
-                                        ok: true, source: 'Aura',
-                                        user: {
-                                            id: ctx.Id || '',
-                                            fullName: name,
-                                            username: ctx.Username || '',
-                                            email: ctx.Email || '',
-                                            profilePhotoUrl: pickPhotoUrl(ctx) || findProfilePhotoUrl(document, 0),
-                                            organizationId: '',
-                                            domain: location.hostname,
-                                            instanceUrl: location.origin
-                                        }
-                                    };
-                                }
-                            }
-                        }
-                    } catch (e) { log('Aura error:', e.message); }
-
-                    // ── 4. sforce global ──
-                    try {
-                        const sf = window.sforce;
-                        log('sforce:', JSON.stringify(sf && sf.one && sf.one.userInfo));
-                        if (sf && sf.one && sf.one.userInfo) {
-                            const ui = sf.one.userInfo;
-                            if (ui.name || ui.userName) {
-                                return {
-                                    ok: true, source: 'sforce',
-                                    user: {
-                                        id: ui.userId || '',
-                                        fullName: ui.name || ui.userName || '',
-                                        username: ui.userName || '',
-                                        email: ui.email || '',
-                                        profilePhotoUrl: pickPhotoUrl(ui) || findProfilePhotoUrl(document, 0),
-                                        organizationId: ui.organizationId || '',
-                                        domain: location.hostname,
-                                        instanceUrl: location.origin
-                                    }
-                                };
-                            }
-                        }
-                    } catch (e) { log('sforce error:', e.message); }
-
-                    // ── 5. Exact profile DOM, opening the user menu if needed ──
-                    try {
-                        var exactProfileName = extractProfileName();
-                        if (!exactProfileName) {
-                            await openUserMenuIfNeeded();
-                            exactProfileName = extractProfileName();
-                        }
-
-                        if (exactProfileName) {
-                            return {
-                                ok: true, source: 'profile-name',
-                                user: {
-                                    id: '', fullName: exactProfileName, username: '',
-                                    email: '', profilePhotoUrl: findProfilePhotoUrl(document, 0), organizationId: '',
-                                    domain: location.hostname, instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('profile-name extraction error:', e.message); }
-
-                    // ── 6. Profile button with title/aria-label extraction (safe - extracts attribute, not text) ──
-                    try {
-                        const walk = (root, depth) => {
-                            if (depth > 15) return null;
-                            const sels = [
-                                '[title^="View profile for "]',
-                                '[aria-label^="View profile for "]'
-                            ];
-                            for (const sel of sels) {
-                                const found = root.querySelectorAll(sel);
-                                for (const el of found) {
-                                    const raw = el.getAttribute('title') || el.getAttribute('aria-label') || '';
-                                    const name = raw.replace(/^View profile for\s+/i, '').trim();
-                                    if (name && name.length > 1) {
-                                        log('Profile button extracted:', name);
-                                        return name;
-                                    }
-                                }
-                            }
-                            const allEls = root.querySelectorAll('*');
-                            for (const el of allEls) {
-                                if (el.shadowRoot) {
-                                    const found = walk(el.shadowRoot, depth + 1);
-                                    if (found) return found;
-                                }
-                            }
-                            return null;
-                        };
-                        const profileButtonName = walk(document, 0);
-                        if (profileButtonName) {
-                            return {
-                                ok: true, source: 'profile-button',
-                                user: {
-                                    id: '', fullName: profileButtonName, username: '',
-                                    email: '', profilePhotoUrl: findProfilePhotoUrl(document, 0), organizationId: '',
-                                    domain: location.hostname, instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('Profile button error:', e.message); }
-
-                    // ── 8. Broader DOM search: user name in profile links/headers ──
-                    try {
-                        const findUserNameInDOM = (root, depth) => {
-                            if (depth > 20) return null;
-                            
-                            // Look for profile links with /User/ in href
-                            const profileLinks = root.querySelectorAll('a[href*="/User/"]');
-                            for (const link of profileLinks) {
-                                const text = (link.textContent || '').trim();
-                                // Skip common UI chrome like "View profile"
-                                if (text && !/^(view profile|profile)$/i.test(text) && /^[A-Z].*[a-z]/.test(text) && text.length > 2 && text.length < 100) {
-                                    log('Found user in profile link:', text);
-                                    return text;
-                                }
-                            }
-                            
-                            // Look in any element with user-like class/id names
-                            const userEls = root.querySelectorAll('[class*="user"], [class*="profile"], [id*="user"], [id*="profile"]');
-                            for (const el of userEls) {
-                                const text = (el.textContent || '').trim();
-                                if (text && /^[A-Z].*[a-z]/.test(text) && text.length > 2 && text.length < 100) {
-                                    // Try to filter out noise like button labels and UI chrome
-                                    if (!/^(profile|user|settings|home|menu|help|search|notification|logout|sign|account|view profile)$/i.test(text)) {
-                                        log('Found user in profile element:', text);
-                                        return text;
-                                    }
-                                }
-                            }
-                            
-                            // Recurse into shadow roots
-                            const allEls = root.querySelectorAll('*');
-                            for (const el of allEls) {
-                                if (el.shadowRoot) {
-                                    const found = findUserNameInDOM(el.shadowRoot, depth + 1);
-                                    if (found) return found;
-                                }
-                            }
-                            return null;
-                        };
-                        
-                        const domUserName = findUserNameInDOM(document, 0);
-                        if (domUserName) {
-                            return {
-                                ok: true, source: 'dom-user-link',
-                                user: {
-                                    id: '', fullName: domUserName, username: '',
-                                    email: '', profilePhotoUrl: findProfilePhotoUrl(document, 0), organizationId: '',
-                                    domain: location.hostname, instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('DOM user search error:', e.message); }
-                    try {
-                        const walk = (root, depth) => {
-                            if (depth > 15) return null;
-                            const sels = [
-                                '[title^="View profile for "]',
-                                '[aria-label^="View profile for "]'
-                            ];
-                            for (const sel of sels) {
-                                const found = root.querySelectorAll(sel);
-                                for (const el of found) {
-                                    const raw = el.getAttribute('title') || el.getAttribute('aria-label') || '';
-                                    const name = raw.replace(/^View profile for\s+/i, '').trim();
-                                    if (name && name.length > 1) return name;
-                                }
-                            }
-                            const allEls = root.querySelectorAll('*');
-                            for (const el of allEls) {
-                                if (el.shadowRoot) {
-                                    const found = walk(el.shadowRoot, depth + 1);
-                                    if (found) return found;
-                                }
-                            }
-                            return null;
-                        };
-                        const domName = walk(document, 0);
-                        log('DOM profile name:', domName);
-                        if (domName) {
-                            return {
-                                ok: true, source: 'dom',
-                                user: {
-                                    id: '', fullName: domName, username: '',
-                                    email: '', profilePhotoUrl: findProfilePhotoUrl(document, 0), organizationId: '',
-                                    domain: location.hostname, instanceUrl: location.origin
-                                }
-                            };
-                        }
-                    } catch (e) { log('DOM walk error:', e.message); }
-
-                    // ── 7. Log all window keys that look user-related for diagnostics ──
-                    try {
-                        const suspects = Object.keys(window).filter(k =>
-                            /user|context|principal|identity|session|account/i.test(k)
-                        );
-                        log('Suspect window globals:', suspects.join(', '));
-                    } catch (e) {}
-
-                    return null;
-                }
-            });
-
-            const injectedResult = results && results[0] && results[0].result;
-            if (injectedResult && injectedResult.ok) {
-                return await augmentIdentityWithProfilePhoto(injectedResult);
-            }
-        } catch (e) {
-            console.warn('[CYFOR] executeScript identity failed:', e.message);
+    // Fill occurrence no / date of offence from an MG21 attached to the case,
+    // if the Salesforce fields didn't supply them. Best-effort, never fatal.
+    try {
+        if (!data.occurrenceNo || !data.dateOfOffence) {
+            const mg21 = await self.SfReportTemplates.fetchMg21Data(message.caseId);
+            if (mg21.occurrenceNo && !data.occurrenceNo) data.occurrenceNo = mg21.occurrenceNo;
+            if (mg21.dateOfOffence && !data.dateOfOffence) data.dateOfOffence = mg21.dateOfOffence;
         }
-    }
+    } catch (e) { /* MG21 optional */ }
 
-    // Fall back to DOM extraction via content script
-    if (tabId) {
-        try {
-            const domResult = await new Promise((resolve, reject) => {
-                chrome.tabs.sendMessage(tabId, { action: 'getSalesforceIdentityDom' }, (r) => {
-                    if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-                    else resolve(r);
-                });
-            });
-            if (domResult && domResult.ok) return await augmentIdentityWithProfilePhoto(domResult);
-        } catch (e) { console.warn('[CYFOR] DOM identity fallback failed:', e.message); }
-    }
-
-    // Session-only: user is on Salesforce but identity could not be read
+    const filled = self.DocxFill.fill(templateBytes, data);
+    const caseRef = (data.caseReference || 'Case').replace(/[<>:"/\\|?*]+/g, '_');
+    const label = (message.templateName || 'Report').replace(/[<>:"/\\|?*]+/g, '_');
     return {
-        ok: true, source: 'session', partial: true,
-        user: { id: '', fullName: '', username: '', email: '', profilePhotoUrl: '', organizationId: '', domain: url.hostname, instanceUrl: url.origin }
+        ok: true,
+        base64: uint8ToBase64(filled),
+        filename: caseRef + ' - ' + label + '.docx',
+        meta: { warnings: (bundle.meta && bundle.meta.warnings) || [] }
     };
 }
 
-async function augmentIdentityWithProfilePhoto(identityResult) {
-    if (!identityResult || !identityResult.user) return identityResult;
-    const photoUrl = identityResult.user.profilePhotoUrl || '';
-    if (!photoUrl) {
-        identityResult.user.profilePhotoDataUrl = '';
-        return identityResult;
+// Service-worker-safe base64 of a Uint8Array (chunked to avoid call-stack limits).
+function uint8ToBase64(u8) {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < u8.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + chunk, u8.length)));
     }
-
-    identityResult.user.profilePhotoDataUrl = await fetchProfilePhotoAsDataUrl(photoUrl);
-    return identityResult;
+    return btoa(binary);
 }
 
-async function fetchProfilePhotoAsDataUrl(photoUrl) {
-    try {
-        const parsed = new URL(photoUrl);
-        if (!/^https?:$/i.test(parsed.protocol)) return '';
+// ── UKAS document-control date helpers ────────────────────────────────────────
+// Effective Date and Review Due Date must never be blank on a controlled
+// document, so we default them: effective = today, review = effective + N months.
+function todayIso() {
+    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (Salesforce Date)
+}
+function addMonthsIso(isoDate, months) {
+    var d = new Date((isoDate || todayIso()) + 'T00:00:00Z');
+    if (isNaN(d.getTime())) d = new Date();
+    d.setUTCMonth(d.getUTCMonth() + months);
+    return d.toISOString().slice(0, 10);
+}
+var REVIEW_PERIOD_MONTHS = 12;
 
-        const response = await fetch(parsed.toString(), {
-            credentials: 'include',
-            cache: 'no-store'
-        });
-        if (!response.ok) return '';
-
-        const blob = await response.blob();
-        if (!blob || !blob.size) return '';
-
-        const mime = blob.type || 'image/jpeg';
-        const buffer = await blob.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        const chunkSize = 0x8000;
-        var binary = '';
-        for (var i = 0; i < bytes.length; i += chunkSize) {
-            var chunk = bytes.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, chunk);
+/**
+ * Translate a Salesforce delete failure (errorCode or raw message) into a clear,
+ * actionable message. Salesforce sharing/permissions aren't something the
+ * extension can grant — so for access errors we point the user at an admin.
+ */
+function friendlyDeleteError(codeOrMsg, fallback, subject) {
+    var s = String(codeOrMsg || '').toUpperCase();
+    if (s.indexOf('INSUFFICIENT_ACCESS') !== -1 || s.indexOf('INSUFFICIENT ACCESS') !== -1) {
+        if (subject === 'versions') {
+            // A template with history can't be deleted until its child version
+            // records are — which needs Delete on the version OBJECT (and, if any
+            // were created by someone else's edit, Modify All to cross ownership).
+            return 'Couldn’t delete this template’s version history in Salesforce, so the '
+                 + 'template can’t be removed. You need Delete access on the Nucleus Template '
+                 + 'Version object — ask a Salesforce admin to grant Delete (or “Modify All”) on '
+                 + 'NucleusTemplateVersion__c. (Some versions may have been created by another '
+                 + 'user’s edit, which also requires Modify All.)';
         }
-        return 'data:' + mime + ';base64,' + btoa(binary);
-    } catch (e) {
-        console.warn('[CYFOR] fetchProfilePhotoAsDataUrl failed:', e.message || e);
-        return '';
+        return 'You don’t have permission to delete this template in Salesforce. '
+             + 'It may be owned by another user or team — ask a Salesforce admin to '
+             + 'delete it or grant you delete access (or “Modify All” on NucleusTemplate__c).';
     }
+    if (s.indexOf('DELETE_FAILED') !== -1 || s.indexOf('REFERENCED') !== -1 || s.indexOf('RESTRICT') !== -1) {
+        return 'This template is still referenced by other records in Salesforce, so it '
+             + 'can’t be deleted. Remove those references first, or ask a Salesforce admin.';
+    }
+    return fallback || String(codeOrMsg || 'Delete failed');
+}
+
+/**
+ * Create, update, or delete a NucleusTemplate__c record via Salesforce REST API.
+ * Only proceeds if the stored sfOAuthUser has isTemplateAdmin === true.
+ * When UKAS fields are available, includes version control data and archives
+ * the previous version to NucleusTemplateVersion__c before any update.
+ */
+async function sfTemplateCrud(op, payload) {
+    var stored = await chrome.storage.local.get(
+        ['sfOAuthUser', 'sfOAuthConfig', 'sfOAuthTokens', 'sfRemoteTemplates']
+    );
+    var user      = stored['sfOAuthUser']      || {};
+    var config    = stored['sfOAuthConfig']    || {};
+    var tokens    = stored['sfOAuthTokens']    || {};
+    var templates = stored['sfRemoteTemplates'] || {};
+
+    if (!user.isTemplateAdmin) throw new Error('PERMISSION_DENIED');
+
+    // The record id goes into the REST URL — only accept a well-formed SF id.
+    if ((op === 'update' || op === 'delete') && !(self.SfUtils && self.SfUtils.isValidSfId(payload.id))) {
+        throw new Error('Invalid template ID');
+    }
+
+    var instanceUrl = (tokens.instanceUrl || config.instanceUrl || '').replace(/\/$/, '');
+    if (!instanceUrl) throw new Error('No Salesforce instance URL');
+
+    var accessToken;
+    try { accessToken = await self.SfOAuth.getValidAccessToken(); }
+    catch (e) { throw new Error('NOT_AUTHENTICATED'); }
+
+    var apiVersion = config.apiVersion || 'v62.0';
+    var base       = instanceUrl + '/services/data/' + apiVersion;
+    var obj        = config.templateObject || 'NucleusTemplate__c';
+    var baseUrl    = base + '/sobjects/' + obj;
+
+    // Discover the real field API names (same resolution the sync uses), so we
+    // write to the fields that actually exist regardless of how they're named.
+    var map = await self.SfTemplates.resolveTemplateFields(base, accessToken, obj);
+
+    // Team assignment: admins can target any team by Id ('' / null = Global).
+    // Falls back to the legacy teamScope / own-team behaviour if no teamId given.
+    var resolveTeamId = function () {
+        if (payload.teamId !== undefined && payload.teamId !== null) return payload.teamId || null;
+        if (payload.teamScope === 'global') return null;
+        return user.teamId || null;
+    };
+    // Multi-team assignment (when the Salesforce multi-select team field exists):
+    // the manager sends teamCodes (array of codes; empty = Global). It becomes the
+    // source of truth, so the legacy single Team__c lookup is cleared in that mode.
+    var multiMode  = Array.isArray(payload.teamCodes);
+    var teamsValue = multiMode ? payload.teamCodes.filter(Boolean).join(';') : '';
+    // Only "Active" status publishes to analysts (others stay hidden from sync).
+    var isActiveForStatus = function () { return (payload.status || 'Active') === 'Active'; };
+
+    var response, errBody;
+    dlog('crud', op, { name: payload.name, multiTeam: multiMode, teams: teamsValue, status: payload.status });
+
+    if (op === 'create') {
+        var createBody = { Name: payload.name };
+        if (map.content)  createBody[map.content]  = payload.content;
+        if (map.category) createBody[map.category] = payload.category || '';
+        if (map.active)   createBody[map.active]   = isActiveForStatus();
+        if (map.team)     createBody[map.team]     = multiMode ? null : resolveTeamId();
+        if (map.teamsMulti && multiMode) createBody[map.teamsMulti] = teamsValue;
+        if (map.versionLabel)  createBody[map.versionLabel]  = payload.versionLabel || '1.0';
+        if (map.status)        createBody[map.status]        = payload.status || 'Active';
+        if (map.changeReason)  createBody[map.changeReason]  = payload.changeReason || 'Initial version';
+        if (map.documentId && payload.documentId)   createBody[map.documentId]    = payload.documentId;
+        // UKAS dates are always populated (never blank): default effective=today,
+        // review=effective + review period.
+        var createEffective = payload.effectiveDate || todayIso();
+        var createReview    = payload.reviewDueDate || addMonthsIso(createEffective, REVIEW_PERIOD_MONTHS);
+        if (map.effectiveDate) createBody[map.effectiveDate] = createEffective;
+        if (map.reviewDueDate) createBody[map.reviewDueDate] = createReview;
+
+        response = await fetch(baseUrl + '/', {
+            method:  'POST',
+            headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+            body:    JSON.stringify(createBody)
+        });
+        if (!response.ok) {
+            errBody = await response.json().catch(function () { return [{}]; });
+            throw new Error(errBody[0] && errBody[0].message ? errBody[0].message : 'Create failed: ' + response.status);
+        }
+        var created = await response.json();
+        await self.SfTemplates.fetchRemoteTemplates(true);
+        return { ok: true, id: created.id };
+
+    } else if (op === 'update') {
+        // NOTE: version snapshots are created by the Salesforce Flow on Content
+        // change (docs/salesforce-version-history-flow.md) — the extension must
+        // NOT archive here too, or every edit would snapshot twice.
+
+        var updateBody = { Name: payload.name };
+        if (map.content)  updateBody[map.content]  = payload.content;
+        if (map.category) updateBody[map.category] = payload.category || '';
+        if (map.active)   updateBody[map.active]   = isActiveForStatus();
+        if (map.team)     updateBody[map.team]     = multiMode ? null : resolveTeamId();
+        if (map.teamsMulti && multiMode) updateBody[map.teamsMulti] = teamsValue;
+        if (map.versionLabel)  updateBody[map.versionLabel]  = payload.versionLabel || '1.1';
+        if (map.status)        updateBody[map.status]        = payload.status || 'Active';
+        // Only write a change reason when one was supplied (content edits). A
+        // metadata-only edit sends no reason and must not blank the existing one.
+        if (map.changeReason && payload.changeReason) updateBody[map.changeReason] = payload.changeReason;
+        // A new version becomes effective when it's saved; default to today and
+        // recompute the review date so neither field is ever left blank.
+        var updateEffective = payload.effectiveDate || todayIso();
+        var updateReview    = payload.reviewDueDate || addMonthsIso(updateEffective, REVIEW_PERIOD_MONTHS);
+        if (map.effectiveDate) updateBody[map.effectiveDate] = updateEffective;
+        if (map.reviewDueDate) updateBody[map.reviewDueDate] = updateReview;
+
+        response = await fetch(baseUrl + '/' + payload.id, {
+            method:  'PATCH',
+            headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+            body:    JSON.stringify(updateBody)
+        });
+        if (!response.ok) {
+            errBody = await response.json().catch(function () { return [{}]; });
+            throw new Error(errBody[0] && errBody[0].message ? errBody[0].message : 'Update failed: ' + response.status);
+        }
+        await self.SfTemplates.fetchRemoteTemplates(true);
+        return { ok: true };
+
+    } else if (op === 'delete') {
+        // Remove child version snapshots first — the NucleusTemplate__c lookup on
+        // NucleusTemplateVersion__c restricts the parent delete while they exist.
+        if (self.SfVersions) {
+            var vres = await self.SfVersions.deleteVersionsForTemplate(payload.id);
+            if (vres && vres.ok === false) {
+                throw new Error(friendlyDeleteError(vres.error,
+                    'Couldn’t remove this template’s version history: ' + vres.error, 'versions'));
+            }
+        }
+
+        response = await fetch(baseUrl + '/' + payload.id, {
+            method:  'DELETE',
+            headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        if (!response.ok) {
+            errBody = await response.json().catch(function () { return [{}]; });
+            var rawMsg = (errBody[0] && errBody[0].message) ? errBody[0].message : ('Delete failed: ' + response.status);
+            var code   = errBody[0] && errBody[0].errorCode;
+            throw new Error(friendlyDeleteError(code || rawMsg, rawMsg));
+        }
+        await self.SfTemplates.fetchRemoteTemplates(true);
+        return { ok: true };
+    }
+
+    throw new Error('Unknown CRUD operation: ' + op);
 }
 
 /**
@@ -632,19 +935,31 @@ async function fetchProfilePhotoAsDataUrl(photoUrl) {
 async function downloadOneFile(msg) {
     const { url, filename, subfolder } = msg;
 
+    // Only download over https (blocks data:/javascript:/file:/chrome: schemes).
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch (e) { throw new Error('Invalid download URL'); }
+    if (parsedUrl.protocol !== 'https:') throw new Error('Invalid download URL');
+
     const cleanFolder = (subfolder || '')
         .trim()
         .replace(/^[/\\]+|[/\\]+$/g, '')
         .replace(/[<>:"|?*\x00-\x1F]/g, '_')
         .replace(/[/\\]{2,}/g, '/');
 
+    // Same character hygiene as the folder, plus no path separators at all —
+    // the filename must stay a single path component.
+    const cleanFile = (filename || '')
+        .trim()
+        .replace(/[<>:"|?*\x00-\x1F]/g, '_')
+        .replace(/[/\\]+/g, '_');
+
     const options = {
         url: url,
         conflictAction: 'uniquify'
     };
 
-    if (filename) {
-        options.filename = cleanFolder ? cleanFolder + '/' + filename : filename;
+    if (cleanFile) {
+        options.filename = cleanFolder ? cleanFolder + '/' + cleanFile : cleanFile;
     } else if (cleanFolder) {
         options.filename = cleanFolder + '/photograph';
     }

@@ -61,6 +61,9 @@ Cyfor.contextMenu = {
             // If menu is open, just close it — user can reopen
             this.hide();
         });
+        Cyfor.config.onChange.sfRemoteTemplates.push(() => {
+            this.hide();
+        });
 
         Cyfor.cleanup.register(() => this.hide());
     },
@@ -93,7 +96,13 @@ Cyfor.contextMenu = {
         );
 
         // Pin Forensic Strategy template to the top if this is a Forensic Strategy field
-        const sortedKeys = this._sortKeysForField(allKeys, container);
+        const fieldKeys = this._sortKeysForField(allKeys, container);
+
+        // User-pinned templates (★, set in the popup) float to the very top.
+        const pinnedSet = new Set((Cyfor.config.pinnedTemplates || []).filter(k => templates[k]));
+        const sortedKeys = pinnedSet.size
+            ? [...fieldKeys.filter(k => pinnedSet.has(k)), ...fieldKeys.filter(k => !pinnedSet.has(k))]
+            : fieldKeys;
 
         if (sortedKeys.length === 0) {
             const empty = document.createElement('div');
@@ -101,42 +110,154 @@ Cyfor.contextMenu = {
             empty.textContent = 'No templates loaded — open the extension popup to upload some.';
             menu.appendChild(empty);
         } else {
-            // Search
-            if (sortedKeys.length >= 4) {
-                const search = document.createElement('input');
-                search.type = 'text';
-                search.className = 'cyfor-ctx-menu-search';
-                search.placeholder = 'Search ' + sortedKeys.length + ' templates…';
-                search.setAttribute('aria-label', 'Search templates');
-                search.addEventListener('input', () => {
-                    const q = search.value.toLowerCase();
-                    menu.querySelectorAll('.cyfor-ctx-menu-item[data-template]').forEach(item => {
-                        const name = (item.getAttribute('data-template') || '').toLowerCase();
-                        item.style.display = name.includes(q) ? '' : 'none';
+            // Recently used — shown above search (L-3)
+            const recentKeys = (Cyfor.config.recentTemplates || []).filter(k => templates[k]);
+            if (recentKeys.length > 0) {
+                const recentLabel = document.createElement('div');
+                recentLabel.className = 'cyfor-ctx-menu-section-label';
+                recentLabel.textContent = 'Recently used';
+                menu.appendChild(recentLabel);
+                for (const key of recentKeys) {
+                    const item = document.createElement('div');
+                    item.className = 'cyfor-ctx-menu-item cyfor-ctx-menu-item-recent';
+                    item.setAttribute('role', 'menuitem');
+                    item.setAttribute('tabindex', '0');
+                    item.setAttribute('data-template', key);
+                    item.setAttribute('data-category', this._categoryOf(key));
+                    const label = document.createElement('span');
+                    label.className = 'cyfor-ctx-menu-item-label';
+                    label.textContent = key;
+                    item.appendChild(label);
+                    item.addEventListener('mousedown', (e) => e.stopPropagation());
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        this._insertTemplate(container, key, templates[key]);
                     });
+                    item.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            this._insertTemplate(container, key, templates[key]);
+                        }
+                    });
+                    menu.appendChild(item);
+                }
+                const sep = document.createElement('div');
+                sep.className = 'cyfor-ctx-menu-separator';
+                menu.appendChild(sep);
+            }
+
+            // ── Filter controls: text search + category (L-4) ──
+            // Distinct categories come from the synced Salesforce templates.
+            const categories = [];
+            const seenCat = Object.create(null);
+            for (const k of sortedKeys) {
+                const c = this._categoryOf(k);
+                if (c && !seenCat[c]) { seenCat[c] = true; categories.push(c); }
+            }
+            categories.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+            let searchInput = null;
+            let categorySelect = null;
+
+            const applyFilter = () => {
+                const q = searchInput ? searchInput.value.trim() : '';
+                const qLow = q.toLowerCase();
+                const cat = categorySelect ? categorySelect.value : '';
+                menu.querySelectorAll('.cyfor-ctx-menu-item[data-template]').forEach(item => {
+                    const name = item.getAttribute('data-template') || '';
+                    const itemCat = item.getAttribute('data-category') || '';
+                    const matchesText = !qLow || name.toLowerCase().includes(qLow);
+                    const matchesCat = !cat || itemCat === cat;
+                    item.style.display = (matchesText && matchesCat) ? '' : 'none';
+                    const label = item.querySelector('.cyfor-ctx-menu-item-label');
+                    if (label) {
+                        if (q && matchesText) {
+                            const escaped = Cyfor.utils.escapeHtml(name);
+                            const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
+                            label.innerHTML = escaped.replace(re, '<mark>$1</mark>');
+                        } else {
+                            label.textContent = name;
+                        }
+                    }
                 });
-                search.addEventListener('keydown', (e) => {
+            };
+
+            if (sortedKeys.length >= 4) {
+                searchInput = document.createElement('input');
+                searchInput.type = 'text';
+                searchInput.className = 'cyfor-ctx-menu-search';
+                searchInput.placeholder = 'Search ' + sortedKeys.length + ' templates…';
+                searchInput.setAttribute('aria-label', 'Search templates');
+                searchInput.addEventListener('input', applyFilter);
+                searchInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape') {
                         e.stopPropagation();
                         this.hide();
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        const first = menu.querySelector('.cyfor-ctx-menu-item[role="menuitem"]:not([style*="display: none"])');
+                        if (first) first.focus();
                     }
                 });
-                // Stop propagation so document mousedown doesn't close the menu
-                search.addEventListener('mousedown', (e) => e.stopPropagation());
-                search.addEventListener('click', (e) => e.stopPropagation());
-                menu.appendChild(search);
+                searchInput.addEventListener('mousedown', (e) => e.stopPropagation());
+                searchInput.addEventListener('click', (e) => e.stopPropagation());
+                menu.appendChild(searchInput);
+            }
+
+            if (categories.length >= 2) {
+                categorySelect = document.createElement('select');
+                categorySelect.className = 'cyfor-ctx-menu-filter';
+                categorySelect.setAttribute('aria-label', 'Filter by category');
+                const optAll = document.createElement('option');
+                optAll.value = '';
+                optAll.textContent = 'All categories';
+                categorySelect.appendChild(optAll);
+                for (const c of categories) {
+                    const o = document.createElement('option');
+                    o.value = c;
+                    o.textContent = c;
+                    categorySelect.appendChild(o);
+                }
+                categorySelect.addEventListener('change', applyFilter);
+                categorySelect.addEventListener('mousedown', (e) => e.stopPropagation());
+                categorySelect.addEventListener('click', (e) => e.stopPropagation());
+                menu.appendChild(categorySelect);
             }
 
             // Items
             const list = document.createElement('div');
             list.className = 'cyfor-ctx-menu-list';
 
+            // Arrow key navigation (M-7)
+            list.addEventListener('keydown', (e) => {
+                const items = Array.from(list.querySelectorAll('[role="menuitem"]'))
+                    .filter(el => el.style.display !== 'none');
+                if (items.length === 0) return;
+                const idx = items.indexOf(document.activeElement);
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    items[(idx + 1) % items.length].focus();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    items[(idx - 1 + items.length) % items.length].focus();
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    items[0].focus();
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    items[items.length - 1].focus();
+                }
+            });
+
             for (const key of sortedKeys) {
                 const item = document.createElement('div');
                 item.className = 'cyfor-ctx-menu-item';
+                if (pinnedSet.has(key)) item.classList.add('cyfor-ctx-menu-item--pinned');
                 item.setAttribute('role', 'menuitem');
                 item.setAttribute('tabindex', '0');
                 item.setAttribute('data-template', key);
+                item.setAttribute('data-category', this._categoryOf(key));
                 item.title = 'Insert "' + key + '"';
 
                 // Mark built-in templates with a small badge
@@ -149,10 +270,20 @@ Cyfor.contextMenu = {
                 label.textContent = key;
                 item.appendChild(label);
 
+                const isRemote = !isBuiltIn &&
+                    Cyfor.config.sfRemoteTemplates &&
+                    Object.prototype.hasOwnProperty.call(Cyfor.config.sfRemoteTemplates, key) &&
+                    !Object.prototype.hasOwnProperty.call(Cyfor.config.userTemplates || {}, key);
+
                 if (isBuiltIn) {
                     const badge = document.createElement('span');
                     badge.className = 'cyfor-ctx-menu-item-badge';
                     badge.textContent = 'Built-in';
+                    item.appendChild(badge);
+                } else if (isRemote) {
+                    const badge = document.createElement('span');
+                    badge.className = 'cyfor-ctx-menu-item-badge cyfor-ctx-menu-item-badge--official';
+                    badge.textContent = 'Official';
                     item.appendChild(badge);
                 }
 
@@ -167,6 +298,23 @@ Cyfor.contextMenu = {
                         e.preventDefault();
                         this._insertTemplate(container, key, templates[key]);
                     }
+                });
+
+                // Hover preview (L-12). The pending timer lives on the instance
+                // (only one item is hovered at a time) so hide() can cancel it —
+                // a per-item closure timer kept firing after hover-then-click
+                // closed the menu, leaving a ghost preview anchored to a
+                // detached item.
+                item.addEventListener('mouseenter', () => {
+                    clearTimeout(this._previewTimer);
+                    this._previewTimer = setTimeout(() => {
+                        if (!item.isConnected || !this._menuEl) return;
+                        this._showItemPreview(item, key, templates[key]);
+                    }, 400);
+                });
+                item.addEventListener('mouseleave', () => {
+                    clearTimeout(this._previewTimer);
+                    this._hideItemPreview();
                 });
 
                 list.appendChild(item);
@@ -236,6 +384,17 @@ Cyfor.contextMenu = {
     },
 
     /**
+     * Category for a template (from the synced Salesforce metadata),
+     * or '' if it has none (built-in / locally uploaded templates).
+     */
+    _categoryOf(key) {
+        const r = Cyfor.config.sfRemoteTemplates;
+        const entry = r && r[key];
+        const cat = (entry && typeof entry === 'object') ? entry.category : null;
+        return (cat && String(cat).trim()) || '';
+    },
+
+    /**
      * If we're on a Forensic Strategy field, push the Forensic Strategy
      * template to the top of the menu so it's a one-click action.
      */
@@ -272,10 +431,71 @@ Cyfor.contextMenu = {
     },
 
     hide() {
+        this._hideItemPreview();
         if (this._menuEl && this._menuEl.parentNode) {
             this._menuEl.remove();
         }
         this._menuEl = null;
         this._activeContainer = null;
+    },
+
+    // Template preview overlay on hover (L-12)
+    _previewEl: null,
+    _previewTimer: null,
+
+    _showItemPreview(anchorItem, key, text) {
+        this._hideItemPreview();
+        if (!text) return;
+
+        const preview = document.createElement('div');
+        preview.className = 'cyfor-ctx-menu-preview';
+        preview.setAttribute('role', 'tooltip');
+
+        const title = document.createElement('div');
+        title.className = 'cyfor-ctx-menu-preview-title';
+        title.textContent = key;
+        preview.appendChild(title);
+
+        const content = document.createElement('pre');
+        content.className = 'cyfor-ctx-menu-preview-content';
+        content.textContent = text.length > 400 ? text.slice(0, 400) + '…' : text;
+        preview.appendChild(content);
+
+        // Position to the right of the menu item
+        preview.style.visibility = 'hidden';
+        document.body.appendChild(preview);
+
+        const itemRect = anchorItem.getBoundingClientRect();
+        const previewRect = preview.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const padding = 8;
+
+        let x = itemRect.right + 8;
+        let y = itemRect.top;
+
+        if (x + previewRect.width > vw - padding) {
+            x = itemRect.left - previewRect.width - 8;
+        }
+        if (y + previewRect.height > vh - padding) {
+            y = vh - previewRect.height - padding;
+        }
+        if (y < padding) y = padding;
+        if (x < padding) x = padding;
+
+        preview.style.left = x + 'px';
+        preview.style.top = y + 'px';
+        preview.style.visibility = '';
+
+        this._previewEl = preview;
+    },
+
+    _hideItemPreview() {
+        clearTimeout(this._previewTimer);
+        this._previewTimer = null;
+        if (this._previewEl && this._previewEl.parentNode) {
+            this._previewEl.remove();
+        }
+        this._previewEl = null;
     }
 };

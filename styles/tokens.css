@@ -1,0 +1,187 @@
+/* ==================================================
+   CYFOR Nucleus Enhancer — GRAPHITE design system
+   Single source of truth for the extension pages (popup + manager).
+   The injected in-page UI consumes the same values via styles/base.css.
+
+   Principles: zinc neutrals carry the structure; ONE indigo accent;
+   colour is reserved for meaning (actions, states, status). Hairlines
+   over boxes, restraint over decoration. Light and dark are both
+   first-class (html[data-theme], set by styles/theme.js).
+   ================================================== */
+
+/* Inter Variable — bundled; system stack as fallback. */
+@font-face {
+    font-family: 'Inter var';
+    src: url('fonts/InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    /* ── Type ─────────────────────────────────────── */
+    --font-sans: 'Inter var', Inter, -apple-system, 'Segoe UI Variable',
+        'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas,
+        'Liberation Mono', monospace;
+    --fs-11: 11px;  --fs-12: 12px;  --fs-13: 13px;  --fs-14: 14px;
+    --fs-16: 16px;  --fs-18: 18px;  --fs-22: 22px;
+
+    /* ── Space (4px grid) · radius · motion ───────── */
+    --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+    --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+    --r-1: 6px;  --r-2: 8px;  --r-3: 10px;  --r-4: 14px;  --r-pill: 999px;
+    --t-fast: 120ms cubic-bezier(.2, .6, .3, 1);
+    --t-base: 180ms cubic-bezier(.2, .6, .3, 1);
+
+    /* ── Surfaces & text (light) ──────────────────── */
+    --bg:        #fafafa;
+    --surface:   #ffffff;
+    --surface-2: #f4f4f5;
+    --text:      #18181b;
+    --text-2:    #52525b;
+    --text-3:    #71717a;
+    --line:      #e4e4e7;
+    --line-2:    #d4d4d8;
+
+    /* ── Accent (indigo — actions, active, focus) ─── */
+    --accent:        #4f46e5;
+    --accent-strong: #4338ca;
+    --accent-soft:   #eef2ff;
+    --on-accent:     #ffffff;
+    --ring:          rgba(79, 70, 229, .38);
+
+    /* ── Status (text ≥ AA on --surface; soft fills) ─ */
+    --ok:        #15803d;  --ok-soft:   #f0fdf4;  --ok-line:   #bbf7d0;
+    --warn:      #b45309;  --warn-soft: #fffbeb;  --warn-line: #fde68a;
+    --warn-bar:  #d97706;
+    --bad:       #b91c1c;  --bad-soft:  #fef2f2;  --bad-line:  #fecaca;
+    --info:      #4338ca;  --info-soft: #eef2ff;  --info-line: #c7d2fe;
+
+    /* ── Brand header band (popup) ────────────────── */
+    --header-bg: #4f46e5;
+    --header-fg: #ffffff;
+    --header-fg-dim: rgba(255, 255, 255, .68);
+
+    /* ── Elevation (barely there) ─────────────────── */
+    --shadow-sm: 0 1px 2px rgba(24, 24, 27, .05);
+    --shadow-md: 0 2px 8px rgba(24, 24, 27, .07), 0 1px 2px rgba(24, 24, 27, .05);
+    --shadow-lg: 0 12px 32px rgba(24, 24, 27, .12), 0 2px 8px rgba(24, 24, 27, .06);
+
+    /* ── Legacy aliases (older names still used across pages) ─ */
+    --surface-soft:   var(--bg);
+    --surface-muted:  var(--surface-2);
+    --border:         var(--line);
+    --border-strong:  var(--line-2);
+    --text-primary:   var(--text);
+    --text-secondary: var(--text-2);
+    --text-muted:     var(--text-3);
+    --cyfor-text-muted: var(--text-3);
+    --brand:          var(--accent);
+    --brand-strong:   var(--accent-strong);
+    --brand-dark:     var(--text);
+    --brand-tint:     var(--accent-soft);
+    --brand-tint-2:   #e0e7ff;
+    --brand-ring:     var(--ring);
+    --on-brand:       var(--on-accent);
+    --brand-grad:     var(--accent);     /* gradients retired — resolves flat */
+    --navy:           var(--surface);    /* sidebar is a light surface now */
+    --navy-soft:      var(--surface-2);
+    --navy-line:      var(--line);
+    --on-navy:        var(--text);
+    --on-navy-muted:  var(--text-3);
+    --success-bg:     var(--ok-soft);    --success-text:  var(--ok);
+    --success-border: var(--ok-line);
+    --danger-bg:      var(--bad-soft);   --danger-text:   var(--bad);
+    --danger-border:  var(--bad-line);
+    --warn-bg:        var(--warn-soft);  --warn-text:     var(--warn);
+    --warn-border:    var(--warn-line);
+    --info-bg:        var(--info-soft);  --info-text:     var(--info);
+    --info-border:    var(--info-line);
+    --radius-sm:      var(--r-1);
+    --radius:         var(--r-2);
+    --radius-lg:      var(--r-4);
+    --radius-pill:    var(--r-pill);
+    --shadow:         var(--shadow-sm);
+}
+
+/* ── Dark ─────────────────────────────────────────── */
+:root[data-theme="dark"] {
+    --bg:        #09090b;
+    --surface:   #131316;
+    --surface-2: #1c1c21;
+    --text:      #f4f4f5;
+    --text-2:    #a1a1aa;
+    --text-3:    #7c7c87;
+    --line:      #26262b;
+    --line-2:    #3f3f46;
+
+    --accent:        #818cf8;
+    --accent-strong: #a5b4fc;
+    --accent-soft:   rgba(129, 140, 248, .14);
+    --on-accent:     #14143a;
+    --ring:          rgba(129, 140, 248, .45);
+
+    --header-bg: #312e81;
+    --header-fg: #f4f4f5;
+    --header-fg-dim: rgba(244, 244, 245, .62);
+
+    --ok:   #4ade80;  --ok-soft:   rgba(74, 222, 128, .12);  --ok-line:   rgba(74, 222, 128, .35);
+    --warn: #fbbf24;  --warn-soft: rgba(251, 191, 36, .12);  --warn-line: rgba(251, 191, 36, .35);
+    --warn-bar: #fbbf24;
+    --bad:  #f87171;  --bad-soft:  rgba(248, 113, 113, .12); --bad-line:  rgba(248, 113, 113, .35);
+    --info: #a5b4fc;  --info-soft: rgba(129, 140, 248, .14); --info-line: rgba(129, 140, 248, .35);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+    --shadow-md: 0 2px 10px rgba(0, 0, 0, .55);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, .65);
+
+    --brand-tint-2: rgba(129, 140, 248, .22);
+}
+
+/* No-JS / pre-script first paint: follow the OS until theme.js sets data-theme. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --bg:        #09090b;
+        --surface:   #131316;
+        --surface-2: #1c1c21;
+        --text:      #f4f4f5;
+        --text-2:    #a1a1aa;
+        --text-3:    #7c7c87;
+        --line:      #26262b;
+        --line-2:    #3f3f46;
+        --accent:        #818cf8;
+        --accent-strong: #a5b4fc;
+        --accent-soft:   rgba(129, 140, 248, .14);
+        --on-accent:     #14143a;
+        --ring:          rgba(129, 140, 248, .45);
+        --header-bg: #312e81;
+        --header-fg: #f4f4f5;
+        --header-fg-dim: rgba(244, 244, 245, .62);
+        --ok:   #4ade80;  --ok-soft:   rgba(74, 222, 128, .12);  --ok-line:   rgba(74, 222, 128, .35);
+        --warn: #fbbf24;  --warn-soft: rgba(251, 191, 36, .12);  --warn-line: rgba(251, 191, 36, .35);
+        --warn-bar: #fbbf24;
+        --bad:  #f87171;  --bad-soft:  rgba(248, 113, 113, .12); --bad-line:  rgba(248, 113, 113, .35);
+        --info: #a5b4fc;  --info-soft: rgba(129, 140, 248, .14); --info-line: rgba(129, 140, 248, .35);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+        --shadow-md: 0 2px 10px rgba(0, 0, 0, .55);
+        --shadow-lg: 0 16px 40px rgba(0, 0, 0, .65);
+        --brand-tint-2: rgba(129, 140, 248, .22);
+    }
+}
+
+/* ── Shared utilities ─────────────────────────────── */
+@keyframes cyfor-spin { to { transform: rotate(360deg); } }
+.cyfor-spinner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: cyfor-spin .7s linear infinite;
+    vertical-align: -2px;
+    margin-right: 6px;
+}
+
+::selection { background: var(--accent-soft); }

@@ -3,6 +3,22 @@
 // Centralises all settings, storage sync, and lifecycle cleanup.
 // ==================================================
 
+Cyfor.constants = {
+    OBSERVER_THROTTLE_MS: 300,
+    COLUMN_SCAN_DEBOUNCE_MS: 400,
+    SCRAPE_DEBOUNCE_MS: 1000,
+    CONTEXT_CHECK_INTERVAL_MS: 10000,
+    EDITOR_ACTIVATE_TIMEOUT_MS: 2400,
+    UNDO_STACK_MAX: 20,
+    DOWNLOAD_MAX_PASSES: 200,
+    DOWNLOAD_SCROLL_WAIT_MS: 500,
+    DOWNLOAD_MENU_RENDER_MS: 100,
+    DOWNLOAD_FILE_GAP_MS: 150,
+    DOWNLOAD_ROW_SCROLL_MS: 50,
+    DOWNLOAD_EMPTY_PASS_LIMIT: 5,
+    DOWNLOAD_SCROLL_THRESHOLD_PX: 5
+};
+
 Cyfor.config = {
     enableDate: true,
     enableNav: true,
@@ -10,9 +26,11 @@ Cyfor.config = {
     enableAutoInsert: false,
     enableContextMenu: true,
     tableColumnPrefs: {}, // Context-aware column ordering map
-    templates: {},        // merged (built-ins + user)
+    templates: {},        // merged (built-ins + remote + user)
     userTemplates: {},    // raw user-uploaded only
-    processMap: {}
+    sfRemoteTemplates: {},// Salesforce-managed templates { name: { content, category } }
+    processMap: {},
+    recentTemplates: []   // MRU top 3 (L-3)
 };
 
 /**
@@ -101,8 +119,6 @@ Cyfor.cleanup = {
         if (Cyfor.observer) {
             try { Cyfor.observer.disconnect(); } catch (e) {}
         }
-
-        console.log('[CYFOR] Cleanup complete');
     }
 };
 
@@ -116,7 +132,8 @@ Cyfor.config.load = function (onReady) {
         'enableDate', 'enableNav', 'enableFormatNotes',
         'enableAutoInsert', 'enableContextMenu',
         'tableColumnPrefs',
-        'nucleusTemplates', 'processMap'
+        'nucleusTemplates', 'processMap', 'recentTemplates',
+        'sfRemoteTemplates', 'sfOAuthUser'
     ];
 
     chrome.storage.local.get(keys, function (result) {
@@ -133,11 +150,26 @@ Cyfor.config.load = function (onReady) {
         Cyfor.config.enableContextMenu = r.enableContextMenu !== false;
         Cyfor.config.tableColumnPrefs  = r.tableColumnPrefs || {};
         Cyfor.config.userTemplates     = r.nucleusTemplates || {};
-        Cyfor.config.templates         = Cyfor.getMergedTemplates(Cyfor.config.userTemplates);
+        Cyfor.config.sfRemoteTemplates = r.sfRemoteTemplates || {};
+        Cyfor.config.templates         = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
         Cyfor.config.processMap        = r.processMap || {};
+        Cyfor.config.recentTemplates   = r.recentTemplates || [];
+        Cyfor.config.sfUser            = r.sfOAuthUser || null; // {{examiner}}/{{teamName}} variables
+
+        // Write merged templates to storage so popup can read them without duplicating built-ins
+        chrome.storage.local.set({ mergedTemplates: Cyfor.config.templates });
 
         if (typeof onReady === 'function') onReady(Cyfor.config);
     });
+
+    // Pinned templates live in SYNC storage (shared across the user's devices).
+    Cyfor.config.pinnedTemplates = Cyfor.config.pinnedTemplates || [];
+    try {
+        chrome.storage.sync.get(['pinnedTemplates'], function (res) {
+            if (chrome.runtime.lastError) return;
+            Cyfor.config.pinnedTemplates = (res && res.pinnedTemplates) || [];
+        });
+    } catch (e) { /* ignore */ }
 };
 
 /**
@@ -151,7 +183,9 @@ Cyfor.config.onChange = {
     enableContextMenu: [],
     tableColumnPrefs: [],
     nucleusTemplates: [],
-    processMap: []
+    processMap: [],
+    recentTemplates: [],
+    sfRemoteTemplates: []
 };
 
 Cyfor.config.startListening = function () {
@@ -165,11 +199,21 @@ Cyfor.config.startListening = function () {
         enableContextMenu: 'enableContextMenu',
         tableColumnPrefs: 'tableColumnPrefs',
         nucleusTemplates: 'userTemplates',
-        processMap: 'processMap'
+        processMap: 'processMap',
+        recentTemplates: 'recentTemplates',
+        sfRemoteTemplates: 'sfRemoteTemplates'
     };
 
     var handler = function (changes, namespace) {
+        // Pins live in sync storage; everything else below is local.
+        if (namespace === 'sync') {
+            if (changes.pinnedTemplates) {
+                Cyfor.config.pinnedTemplates = changes.pinnedTemplates.newValue || [];
+            }
+            return;
+        }
         if (namespace !== 'local') return;
+        if (changes.sfOAuthUser) Cyfor.config.sfUser = changes.sfOAuthUser.newValue || null;
 
         var entries = Object.entries(storageToConfig);
         for (var i = 0; i < entries.length; i++) {
@@ -182,7 +226,12 @@ Cyfor.config.startListening = function () {
 
             if (storageKey === 'nucleusTemplates') {
                 Cyfor.config.userTemplates = newValue || {};
-                Cyfor.config.templates = Cyfor.getMergedTemplates(Cyfor.config.userTemplates);
+                Cyfor.config.templates = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
+                chrome.storage.local.set({ mergedTemplates: Cyfor.config.templates });
+            } else if (storageKey === 'sfRemoteTemplates') {
+                Cyfor.config.sfRemoteTemplates = newValue || {};
+                Cyfor.config.templates = Cyfor.getMergedTemplates(Cyfor.config.userTemplates, Cyfor.config.sfRemoteTemplates);
+                chrome.storage.local.set({ mergedTemplates: Cyfor.config.templates });
             } else if (storageKey === 'processMap') {
                 Cyfor.config.processMap = newValue || {};
             } else {
