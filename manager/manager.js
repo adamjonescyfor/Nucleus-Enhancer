@@ -19,6 +19,7 @@ var bulkSelected       = new Set(); // template names ticked for bulk actions (a
 var multiTeamEnabled   = false;  // true when the Salesforce multi-select team field exists
 var editorTeamCodes    = [];     // team codes ticked in the editor's multi-team picker
 var contentMaxLen      = 0;      // real max length of the Content field (from describe)
+var canDelete          = true;   // current user's Salesforce DELETE permission on the template object
 var acksAvailable      = false;  // read-acknowledgement feature live? (NucleusTemplateAck__c exists)
 var myAcks             = {};     // "templateId|version" the current user has acknowledged
 var changesAvailable   = false;  // suggest-edits feature live? (NucleusTemplateChangeRequest__c exists)
@@ -176,6 +177,10 @@ function loadTemplates() {
         allTemplates  = response.templates || {};
         multiTeamEnabled = !!(response.fields && response.fields.teamsMulti);
         contentMaxLen    = (response.fields && response.fields.contentMaxLength) || 0;
+        // Honour the user's REAL Salesforce delete permission, not just the IsAdmin
+        // flag — so when delete is removed from the permission set (e.g. at go-live)
+        // the button disappears instead of erroring on click.
+        canDelete        = !(response.fields && response.fields.deletable === false);
         applyTeamControlMode();
         bulkSelected.clear(); // stale names mustn't survive a reload
         statusOptions = (response.statusOptions && response.statusOptions.length)
@@ -1022,19 +1027,22 @@ function renderTemplateList() {
             cloneBtn.setAttribute('aria-label', 'Clone ' + name + ' as a draft');
             cloneBtn.title = 'Create a new draft template from a copy of this one';
 
-            var delBtn = document.createElement('button');
-            delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
-            delBtn.textContent = 'Delete';
-            delBtn.setAttribute('aria-label', 'Delete ' + name);
+            var delBtn = null;
+            if (canDelete) {
+                delBtn = document.createElement('button');
+                delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
+                delBtn.textContent = 'Delete';
+                delBtn.setAttribute('aria-label', 'Delete ' + name);
+            }
 
             actionsWrap.appendChild(editBtn);
             actionsWrap.appendChild(cloneBtn);
             actionsWrap.appendChild(histBtn);
-            actionsWrap.appendChild(delBtn);
+            if (delBtn) actionsWrap.appendChild(delBtn);
             (function (n) {
                 editBtn.addEventListener('click',  function () { openEditEditor(n); });
                 cloneBtn.addEventListener('click', function () { openCloneEditor(n); });
-                delBtn.addEventListener('click',   function () { confirmDelete(n); });
+                if (delBtn) delBtn.addEventListener('click', function () { confirmDelete(n); });
                 histBtn.addEventListener('click',  function () { openHistory(n); });
             }(name));
         }
@@ -1060,6 +1068,8 @@ function updateBulkBar() {
     if (!bar) return;
     if (readOnly || bulkSelected.size === 0) { bar.style.display = 'none'; return; }
     bar.style.display = '';
+    var bulkDel = document.getElementById('btn-bulk-delete');
+    if (bulkDel) bulkDel.style.display = canDelete ? '' : 'none'; // hide when the user can't delete
     document.getElementById('mgr-bulk-count').textContent = bulkSelected.size + ' selected';
 }
 
@@ -1148,6 +1158,7 @@ function bulkApply(kind) {
 }
 
 function bulkDelete() {
+    if (!canDelete) return; // no Salesforce delete permission — UI is hidden, guard anyway
     var names = Array.from(bulkSelected).filter(function (n) { return allTemplates[n]; });
     if (!names.length) return;
 
@@ -1379,11 +1390,10 @@ function openNewEditor() {
     document.getElementById('mgr-version-bump').style.display  = 'none';
 
     var hintEl = document.getElementById('mgr-change-reason-hint');
-    if (hintEl) hintEl.textContent = '(describe the purpose of this template)';
-    // A new template always needs a reason — make sure the asterisk shows even if
-    // a previous metadata-only edit had hidden it.
+    if (hintEl) hintEl.textContent = '(optional — describe the purpose of this template for the audit trail)';
+    // Reason is optional — clear any "new version" note carried over from a prior edit.
     var newReq = document.getElementById('mgr-change-reason-req');
-    if (newReq) newReq.style.display = '';
+    if (newReq) newReq.textContent = '';
 
     syncCustomSelect('mgr-status');
     syncCustomSelect('mgr-scope');
@@ -1427,11 +1437,12 @@ function openEditEditor(name) {
     // Pre-select the template's current team(s) (none = Global).
     setEditorTeams(t.teamId, t.teamName, t.teamCodes);
 
-    // The reason hint is CONSTANT (it states the rule once); only the asterisk and
-    // the version preview change as you edit — updateEditorVersionUI() keeps those live.
+    // The reason hint is CONSTANT (it states the rule once); only the version preview
+    // and its "new version" note change as you edit — updateEditorVersionUI() keeps
+    // those live.
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
     var editHint = document.getElementById('mgr-change-reason-hint');
-    if (editHint) editHint.textContent = '(required only when you change the content — status, team & date edits don’t create a new version)';
+    if (editHint) editHint.textContent = '(optional — recorded for the audit trail; changing the content also saves a new version)';
     updateEditorVersionUI();
 
     syncCustomSelect('mgr-status');
@@ -1693,10 +1704,10 @@ function updateEditorVersionUI() {
     var versionDisp = document.getElementById('mgr-version-display');
     var reasonReq   = document.getElementById('mgr-change-reason-req');
 
-    // The hint text stays constant (set in openEditEditor). Only the required
-    // asterisk and the version preview reflect whether the content has changed.
+    // The hint text stays constant (set in openEditEditor). Only the version preview
+    // and its "new version" note reflect whether the content has changed.
     bumpWrap.style.display = changed ? '' : 'none';
-    if (reasonReq) reasonReq.style.display = changed ? '' : 'none';
+    if (reasonReq) reasonReq.textContent = changed ? '(a new version will be saved)' : '';
 
     if (changed) {
         var bumpInput = document.querySelector('input[name="version-bump"]:checked');
@@ -1787,8 +1798,9 @@ function saveTemplate() {
     var teamId       = (document.getElementById('mgr-scope') || {}).value;   // '' = Global
     var teamCodes    = multiTeamEnabled ? collectMultiTeamCodes() : null;    // [] = Global
 
-    if (!name)                    { setEditorStatus('Name is required.', 'error'); return; }
-    if (!getContentText().trim()) { setEditorStatus('Content is required.', 'error'); return; }
+    // Name is the only required field — Salesforce forces a record Name; everything
+    // else is optional, so a save never fails on a blank field.
+    if (!name) { setEditorStatus('Name is required.', 'error'); return; }
     if (contentMaxLen && content.length > contentMaxLen) {
         setEditorStatus('Content is too long: ' + content.length.toLocaleString() + ' / '
             + contentMaxLen.toLocaleString() + ' characters (formatting counts too). '
@@ -1801,17 +1813,11 @@ function saveTemplate() {
     if (effRaw && !effectiveDate) { setEditorStatus('Effective Date must be a real date in DD/MM/YYYY format.', 'error'); return; }
     if (revRaw && !reviewDueDate) { setEditorStatus('Review Due Date must be a real date in DD/MM/YYYY format.', 'error'); return; }
 
-    // A reason (and version bump) is only required when CONTENT changes — that's
-    // what the Salesforce Flow snapshots. Metadata-only edits (status/team/dates)
-    // save without a bump or reason. A brand-new template always needs a reason.
+    // A content change still bumps the version (the Salesforce Flow snapshots it),
+    // and the reason is recorded for the audit trail when supplied — but nothing here
+    // is mandatory, so a save never fails on a missing optional field.
     var isEdit         = !!currentEditId;
     var contentChanged = isEdit ? (content !== editorOriginalContent) : true;
-    if (!changeReason && (!isEdit || contentChanged)) {
-        setEditorStatus(isEdit
-            ? 'Reason is required when the content changes.'
-            : 'Reason is required for the audit trail.', 'error');
-        return;
-    }
 
     var saveBtn = document.getElementById('btn-editor-save');
     saveBtn.disabled    = true;
@@ -1974,6 +1980,7 @@ function mgrAlert(message, title) {
 }
 
 function confirmDelete(name) {
+    if (!canDelete) return; // no Salesforce delete permission — UI is hidden, guard anyway
     var t = allTemplates[name];
     if (!t || !t.id) return;
 

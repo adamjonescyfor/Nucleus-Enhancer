@@ -109,10 +109,11 @@ CASES = [
  ("Manager","Bulk ops",M,"Admin; rows selected","Use bulk bar (set status / move team / delete)","Applies sequentially with progress; failures reported; no version snapshot for metadata-only"),
  # ── Manager edit / version ──
  ("Manager edit","Create template",H,"Admin","New Template → fill → Save to Salesforce","Saved; appears in list; effective/review dates British; v1.0"),
- ("Manager edit","Edit content → version bump",H,"Existing template","Change CONTENT, pick minor/major, give reason, save","Version bumps; reason required; new history snapshot"),
+ ("Manager edit","Edit content → version bump",H,"Existing template","Change CONTENT, pick minor/major, optionally add a reason, save","Version bumps; new history snapshot; reason recorded if given (everything except Name is optional — a blank reason/content still saves)"),
  ("Manager edit","Metadata-only edit",M,"Existing template","Change only status/team/date, save","No version bump; no reason required; no new snapshot"),
  ("Manager edit","Clone as draft",M,"Existing template","Clone","Opens new editor, status Draft, name '(Copy)', reason prefilled"),
  ("Manager edit","Delete with history",M,"Template with versions","Delete → confirm","Child versions removed first, then template; clear messaging"),
+ ("Manager edit","Delete hidden without permission",M,"Admin whose Salesforce DELETE permission has been removed (e.g. at go-live)","Open Manager templates list + bulk bar","No Delete buttons appear (row or bulk) — gated on the real Salesforce permission, not just the IsAdmin flag; reload + sync after the permission change"),
  ("Manager edit","Status lifecycle",M,"Editing","Set Draft/Active/Under Review/Superseded/Retired","Only Active reaches analysts; others hidden from insert menus"),
  # ── Manager rich-text editor ──
  ("RTE editor","Default font/size",M,"New template editor","Click into body","Default presents as Salesforce Sans 13 (system fallback locally); font box shows 'Salesforce Sans'"),
