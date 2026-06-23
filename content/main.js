@@ -36,6 +36,7 @@ Cyfor.main = {
         Cyfor.contextMenu.init();
         Cyfor.downloads.init();
         Cyfor.columns.init(); // Init context-aware column reordering
+        Cyfor.caseAlias.init(); // Init case project/alias annotation
     },
 
     _startObserver: function () {
@@ -136,6 +137,10 @@ Cyfor.main = {
         // Fully load an Exhibit-Process list (lazy rows) so navigation counts are
         // complete — no-op for non-EP lists and already-loaded tables.
         if (Cyfor.config.enableNav) Cyfor.navigation.maybePreload();
+
+        // Annotate Forensic Case links with their project/alias where Salesforce
+        // doesn't already show it (Task pages, Recently Viewed, etc.).
+        if (Cyfor.config.enableCaseAlias) Cyfor.caseAlias.scan();
     },
 
     _onNavigate: function () {
@@ -148,6 +153,8 @@ Cyfor.main = {
         }
 
         Cyfor.downloads._processed = new WeakSet();
+
+        if (Cyfor.config.enableCaseAlias) Cyfor.caseAlias.onNavigate();
 
         if (Cyfor.contextMenu) Cyfor.contextMenu.hide();
     },

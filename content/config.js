@@ -25,6 +25,7 @@ Cyfor.config = {
     enableFormatNotes: true,
     enableAutoInsert: false,
     enableContextMenu: true,
+    enableCaseAlias: true, // Show Forensic Case project/alias where SF doesn't
     tableColumnPrefs: {}, // Context-aware column ordering map
     templates: {},        // merged (built-ins + remote + user)
     userTemplates: {},    // raw user-uploaded only
@@ -130,7 +131,7 @@ Cyfor.config.load = function (onReady) {
 
     var keys = [
         'enableDate', 'enableNav', 'enableFormatNotes',
-        'enableAutoInsert', 'enableContextMenu',
+        'enableAutoInsert', 'enableContextMenu', 'enableCaseAlias',
         'tableColumnPrefs',
         'nucleusTemplates', 'processMap', 'recentTemplates',
         'sfRemoteTemplates', 'sfOAuthUser'
@@ -148,6 +149,7 @@ Cyfor.config.load = function (onReady) {
         Cyfor.config.enableFormatNotes = r.enableFormatNotes !== false;
         Cyfor.config.enableAutoInsert  = r.enableAutoInsert === true;
         Cyfor.config.enableContextMenu = r.enableContextMenu !== false;
+        Cyfor.config.enableCaseAlias   = r.enableCaseAlias !== false;
         Cyfor.config.tableColumnPrefs  = r.tableColumnPrefs || {};
         Cyfor.config.userTemplates     = r.nucleusTemplates || {};
         Cyfor.config.sfRemoteTemplates = r.sfRemoteTemplates || {};
@@ -181,6 +183,7 @@ Cyfor.config.onChange = {
     enableFormatNotes: [],
     enableAutoInsert: [],
     enableContextMenu: [],
+    enableCaseAlias: [],
     tableColumnPrefs: [],
     nucleusTemplates: [],
     processMap: [],
@@ -197,6 +200,7 @@ Cyfor.config.startListening = function () {
         enableFormatNotes: 'enableFormatNotes',
         enableAutoInsert: 'enableAutoInsert',
         enableContextMenu: 'enableContextMenu',
+        enableCaseAlias: 'enableCaseAlias',
         tableColumnPrefs: 'tableColumnPrefs',
         nucleusTemplates: 'userTemplates',
         processMap: 'processMap',

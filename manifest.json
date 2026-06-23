@@ -93,6 +93,7 @@
                 "content/templates.js",
                 "content/context-menu.js",
                 "content/downloads.js",
+                "content/case-alias.js",
                 "content/main.js"
             ],
             "css": [

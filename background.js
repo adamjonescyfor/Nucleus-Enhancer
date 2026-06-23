@@ -15,7 +15,7 @@ try {
     importScripts(
         'background/sf-utils.js', 'background/sf-oauth.js', 'background/sf-templates.js',
         'background/sf-team.js', 'background/sf-versions.js', 'background/sf-usage.js',
-        'background/sf-acks.js', 'background/sf-changes.js',
+        'background/sf-acks.js', 'background/sf-changes.js', 'background/sf-cases.js',
         'report/case-report-fetch.js',
         // MG22A/MG22B report generation — OWNED BY MITUL (feature hidden via the
         // MG22_ENABLED flag in content/case-report.js). These modules stay loaded
@@ -607,6 +607,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             self.SfChanges.resolve(message.requestId, message.status, message.adminNote)
                 .then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
         })();
+        return true;
+    }
+
+    // Fetch the "Project" (case alias) for a set of Forensic Case ids — for the
+    // content script to surface the alias where Salesforce doesn't. Read-only.
+    if (message.action === 'caseAlias.fetch') {
+        if (!self.SfCases) { sendResponse({ ok: true, available: false, projects: {} }); return true; }
+        self.SfCases.fetchProjects(message.ids || [])
+            .then(sendResponse).catch(() => sendResponse({ ok: true, available: false, projects: {} }));
         return true;
     }
 

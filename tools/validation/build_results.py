@@ -89,6 +89,10 @@ CASES = [
  ("Navigation","Counter + bounds",L,"Navigating","Observe counter; reach list ends","Counter '3 / 12' fades ~3s; buttons disable at start/end"),
  ("Navigation","Large list loads fully",H,"Case with >21 processes","Open it; click the first process","Count shows the FULL total (e.g. 1/42), not 1/21; list briefly dims then settles at the top; stepping covers all"),
  ("Navigation","Revisit uses cache",L,"A case opened before (count unchanged)","Re-open the same case; click a process","Instant, no dim (served from cache); count still correct. Add a process then revisit → it reloads"),
+ # ── Case project / alias ──
+ ("Case alias","Shown where SF doesn't",M,"A forensic case that has a Project/alias","Open a Task related to it; open the Recently Viewed cases list","The project alias appears next to the case (e.g. 'CY-26-0542 · Tioga'); cases with no alias show nothing"),
+ ("Case alias","Not duplicated",L,"A list that already has a Project column (Examiner Team / All)","Open it","No extra alias added — the existing Project column is left alone"),
+ ("Case alias","Live toggle",L,"Aliases showing on a page","Turn 'Show Case Project / Alias' off, then on — WITHOUT refreshing","Off = aliases vanish immediately; On = they reappear immediately. No page refresh needed. (If the org has no Project field, the feature is silently inert)"),
  # ── Photo download ──
  ("Photo download","Download All",M,"Uploaded Documents section with photos","Click 'Download All' → Start","Files download; progress toasts; success count; button resets"),
  ("Photo download","No photos / errors",L,"Section with no photos","Click Download All","Clear warning 'No photographs found'; no crash"),
