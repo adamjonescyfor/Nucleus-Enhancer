@@ -79,7 +79,8 @@ document.addEventListener('DOMContentLoaded', function () {
         enableContextMenu: document.getElementById('opt-context-menu'),
         enableNav:         document.getElementById('opt-nav'),
         enableFormatNotes: document.getElementById('opt-format-notes'),
-        enableAutoInsert:  document.getElementById('opt-auto-insert')
+        enableAutoInsert:  document.getElementById('opt-auto-insert'),
+        enableCaseAlias:   document.getElementById('opt-case-alias')
     };
 
     els = {
@@ -126,7 +127,7 @@ function loadSettings(settingsStore) {
     // Toggle settings come from settingsStore (local or sync)
     // Template/auth data always comes from local (content script only writes there)
     settingsStore.get(
-        ['enableDate', 'enableContextMenu', 'enableNav', 'enableFormatNotes', 'enableAutoInsert'],
+        ['enableDate', 'enableContextMenu', 'enableNav', 'enableFormatNotes', 'enableAutoInsert', 'enableCaseAlias'],
         function (toggleResult) {
             var t = toggleResult || {};
             toggles.enableDate.checked        = t.enableDate !== false;
@@ -134,6 +135,7 @@ function loadSettings(settingsStore) {
             toggles.enableNav.checked         = t.enableNav !== false;
             toggles.enableFormatNotes.checked = t.enableFormatNotes !== false;
             toggles.enableAutoInsert.checked  = t.enableAutoInsert === true;
+            toggles.enableCaseAlias.checked   = t.enableCaseAlias !== false;
         }
     );
 

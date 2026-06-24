@@ -123,23 +123,45 @@ async function listPending() {
     } catch (e) { return { ok: false, error: e.message }; }
 }
 
+// The current user's bare 18-char User Id. Authoritative source is a live userinfo
+// call (`user_id`); `sub` is an identity URL (".../00D…/005…") whose last segment is
+// the id; the stored sfOAuthUser.id is the last-resort fallback. CreatedById needs the
+// bare id — the stored value can be the URL form, which matches nothing.
+async function currentUserId(c) {
+    try {
+        var res = await fetch(c.base + '/services/oauth2/userinfo', { headers: authHeaders(c.token) });
+        if (res.ok) {
+            var d = await res.json();
+            if (d.user_id) return String(d.user_id);
+            if (d.sub)     return String(d.sub).split('/').filter(Boolean).pop();
+        }
+    } catch (e) { /* fall back to stored */ }
+    var stored = await chrome.storage.local.get('sfOAuthUser');
+    var sid = String((stored.sfOAuthUser || {}).id || '');
+    if (sid.indexOf('/') !== -1) sid = sid.split('/').filter(Boolean).pop();
+    return sid;
+}
+
 // Member: their own requests + current status.
 async function listMine() {
-    var c; try { c = await ctx(); } catch (e) { return { ok: true, available: false, requests: [] }; }
+    var c; try { c = await ctx(); } catch (e) { return { ok: false, error: e.message }; }
     var map = await resolveFields(c);
     if (!map) return { ok: true, available: false, requests: [] };
-    var stored = await chrome.storage.local.get('sfOAuthUser');
-    var uid = (stored.sfOAuthUser || {}).id;
-    if (!uid) return { ok: true, available: true, requests: [] };
+    var uid = await currentUserId(c);
+    if (!uid) return { ok: false, error: 'Could not determine your Salesforce user — reconnect from the popup.' };
     var esc = self.SfUtils.soqlEscape;
     var soql = 'SELECT ' + selectFields(map).join(', ') + ' FROM ' + CR_OBJ
              + " WHERE CreatedById = '" + esc(uid) + "' ORDER BY CreatedDate DESC LIMIT 200";
     try {
         var res = await fetch(c.base + '/query?q=' + encodeURIComponent(soql), { headers: authHeaders(c.token) });
-        if (!res.ok) return { ok: true, available: true, requests: [] };
+        if (!res.ok) {
+            var msg = 'Could not load your suggestions (' + res.status + ')';
+            try { var eb = await res.json(); if (Array.isArray(eb) && eb[0] && eb[0].message) msg = eb[0].message; } catch (ig) {}
+            return { ok: false, error: msg };
+        }
         var data = await res.json();
         return { ok: true, available: true, requests: (data.records || []).map(function (r) { return mapRow(r, map); }) };
-    } catch (e) { return { ok: true, available: true, requests: [] }; }
+    } catch (e) { return { ok: false, error: e.message }; }
 }
 
 // Admin: mark a request Approved / Rejected (the template update itself is the

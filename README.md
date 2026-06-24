@@ -43,6 +43,7 @@ Faster casework, consistent reporting, and centrally‑managed templates — rig
 | ⭐ | **Pins, recents & variables** | Pin favourites (☆ in the popup → ★ first in every menu); recently‑used float to the top; templates auto‑fill `{{date}}`, `{{time}}`, `{{dateTime}}`, `{{examiner}}`, `{{teamName}}`, `{{caseRef}}`. |
 | 🕓 | **Right‑click quick‑fill** | Right‑click any date or time field for *now*; **Completed By / Sealed By / Conducted By / Assigned Staff** for *you*; **Exhibit Type** to auto‑pick from the exhibit name (SIM / memory / USB / drive); and a **Forensic Case** lookup to grab the latest case. |
 | 🧭 | **Record navigation** | **Alt+← / Alt+→** (or the on‑page arrows) move between Exhibit Process records in list order. |
+| 🏷️ | **Case project / alias** | A forensic case's **project (alias)** is shown next to it where Salesforce doesn't — Task pages, **Recently Viewed**, and any list without a Project column. |
 | 📝 | **Notes formatting** | Notes columns in list views are expanded into readable, structured blocks automatically. |
 | ↔️ | **Column presets** | Drag column names in the popup to reorder list‑view tables; save layouts as presets per table. |
 | 📷 | **Photograph download** | A **Download All Photographs** button appears on Uploaded Documents sections and grabs everything in one go. Ensure that your browser settings do not ask you choose the location for each download before running this or you may be stuck doing this for each and every picture until it has completed. |

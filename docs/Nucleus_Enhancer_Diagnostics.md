@@ -52,6 +52,7 @@ Then **refresh the Salesforce tab**. Either way you'll also see live prefixed li
 | `[Cyfor:rightclick]` | page | Which field the right-click resolved to, whether the zoom-proof `downField` fallback was used, and the exhibit-type marker→type decision. |
 | `[Cyfor:templates]` | page | Template menu populated (count, whether it's the Forensic Strategy field). |
 | `[Cyfor:nav]` | page | Record navigation: `list from cache`/`from click` + count, `preload start`/`done` (lazy-load of big lists), and `navigate` target. If a position count looks wrong, check the list size here. |
+| `[Cyfor:cases]` | page + SW | Case project/alias: how many aliases were asked for vs found. If aliases don't appear, check the org has a "Project" field readable by the user. |
 | `[Cyfor:usage]` | page + SW | Local record route (`flush`/`defer`) and the org-write outcome. |
 | `[Cyfor:sync]` | SW | Team-scoped sync result: template count, the user's team code, whether the multi-team field was detected, and the Content field's max length. |
 | `[Cyfor:crud]` | SW | Each create/update: name, multi-team mode, the team codes written, status. |

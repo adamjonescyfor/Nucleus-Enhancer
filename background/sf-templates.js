@@ -44,11 +44,13 @@ async function resolveTemplateFields(base, token, obj) {
         obj: obj, content: 'Content__c', category: 'Category__c', active: 'IsActive__c',
         team: 'Team__c', teamRel: 'Team__r', teamsMulti: null, contentMaxLength: null,
         versionLabel: null, status: null, changeReason: null,
-        effectiveDate: null, reviewDueDate: null, documentId: null, requiresAck: null
+        effectiveDate: null, reviewDueDate: null, documentId: null, requiresAck: null,
+        deletable: true // current user's object-level delete permission (default open if describe fails)
     };
     try {
         var d = await self.SfUtils.describeObject(base, token, obj);
         var fields = d.fields || [];
+        map.deletable = d.deletable !== false; // Salesforce reports this per-user on the describe
         var resolved = self.SfUtils.resolveFields(fields, TEMPLATE_CONCEPTS);
         Object.keys(resolved).forEach(function (k) { if (resolved[k]) map[k] = resolved[k]; });
         var teamRef = self.SfUtils.findReferenceField(fields, 'NucleusTeam__c');

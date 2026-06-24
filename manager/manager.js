@@ -15,10 +15,12 @@ var statusOptions      = [];     // status picklist values (from describe) or de
 var currentVersions    = [];     // archived versions for the template open in History
 var currentHistoryTemplate = null; // the live template whose History is open
 var readOnly           = false;  // non-admin "View Templates" mode (no create/edit/delete)
+var reviewingChangeRequest = false; // editor opened via "Review & update" — forces a decision + reason
 var bulkSelected       = new Set(); // template names ticked for bulk actions (admins)
 var multiTeamEnabled   = false;  // true when the Salesforce multi-select team field exists
 var editorTeamCodes    = [];     // team codes ticked in the editor's multi-team picker
 var contentMaxLen      = 0;      // real max length of the Content field (from describe)
+var canDelete          = true;   // current user's Salesforce DELETE permission on the template object
 var acksAvailable      = false;  // read-acknowledgement feature live? (NucleusTemplateAck__c exists)
 var myAcks             = {};     // "templateId|version" the current user has acknowledged
 var changesAvailable   = false;  // suggest-edits feature live? (NucleusTemplateChangeRequest__c exists)
@@ -130,6 +132,7 @@ var VIEW_META = {
     usage:     { panel: 'mgr-usage-panel',    title: 'Usage',     sub: 'Which templates are being inserted, and where.' },
     acks:      { panel: 'mgr-acks-panel',     title: 'Acknowledgements', sub: 'Who has read & understood each controlled template — and who is outstanding.' },
     changes:   { panel: 'mgr-changes-panel',  title: 'Suggestions', sub: 'Edit suggestions from analysts, awaiting your review.' },
+    mine:      { panel: 'mgr-mine-panel',     title: 'My suggestions', sub: 'The edit suggestions you’ve submitted, and where each one stands.' },
     settings:  { panel: 'mgr-settings-panel', title: 'About',     sub: 'Who you’re signed in as, the Salesforce connection, and how this works.' }
 };
 
@@ -146,6 +149,7 @@ function setView(view) {
     if (view === 'reviews')  renderReviews();
     if (view === 'acks')     renderAckMatrix();
     if (view === 'changes')  renderChangeRequests();
+    if (view === 'mine')     renderMySuggestions();
     showState(view === 'templates' ? 'list' : view);
 }
 
@@ -176,6 +180,10 @@ function loadTemplates() {
         allTemplates  = response.templates || {};
         multiTeamEnabled = !!(response.fields && response.fields.teamsMulti);
         contentMaxLen    = (response.fields && response.fields.contentMaxLength) || 0;
+        // Honour the user's REAL Salesforce delete permission, not just the IsAdmin
+        // flag — so when delete is removed from the permission set (e.g. at go-live)
+        // the button disappears instead of erroring on click.
+        canDelete        = !(response.fields && response.fields.deletable === false);
         applyTeamControlMode();
         bulkSelected.clear(); // stale names mustn't survive a reload
         statusOptions = (response.statusOptions && response.statusOptions.length)
@@ -422,6 +430,29 @@ function isControlledDoc(t) {
     return !!(t && t.requiresAck && (t.status || 'Active').toLowerCase() === 'active' && t.id && t.versionLabel);
 }
 
+// Map a team CODE (or name) to its display NAME — never show the raw underscore
+// code. Uses the loaded teams list; falls back to a prettified code for read-only
+// viewers who don't have the full list (e.g. "digital_forensics" → "Digital Forensics").
+function prettyTeam(codeOrName) {
+    if (!codeOrName) return '';
+    var hit = (allTeams || []).filter(function (tm) {
+        return tm.teamCode === codeOrName || tm.name === codeOrName;
+    })[0];
+    if (hit && hit.name) return hit.name;
+    return String(codeOrName).replace(/[_-]+/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+}
+
+// True when an Active template is past its Review Due date (so the list can flag it
+// as "Overdue"). Superseded/Retired templates are out of the review cycle.
+function isOverdueTemplate(t) {
+    if (!t || !t.reviewDueDate) return false;
+    var s = (t.status || '').toLowerCase();
+    if (s === 'superseded' || s === 'retired') return false;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var due = new Date(t.reviewDueDate + 'T00:00:00');
+    return !isNaN(due.getTime()) && due < today;
+}
+
 // The current user's team codes (multi-team aware).
 function myTeamCodes() {
     return (currentUser.teams && currentUser.teams.length)
@@ -507,6 +538,7 @@ function loadChanges(cb) {
     if (readOnly) {
         chrome.runtime.sendMessage({ action: 'changes.status' }, function (r) {
             changesAvailable = !chrome.runtime.lastError && !!(r && r.available);
+            updateChangesNav(); // surfaces "My suggestions" for members
             if (cb) cb();
         });
     } else {
@@ -527,6 +559,9 @@ function loadChanges(cb) {
 function updateChangesNav() {
     var nav = document.querySelector('.mgr-nav-item[data-view="changes"]');
     if (nav) nav.style.display = (changesAvailable && !readOnly) ? '' : 'none';
+    // "My suggestions" is for everyone who can suggest (members especially).
+    var mineNav = document.querySelector('.mgr-nav-item[data-view="mine"]');
+    if (mineNav) mineNav.style.display = changesAvailable ? '' : 'none';
     var badge = document.getElementById('mgr-nav-changes-badge');
     if (badge) {
         if (changesAvailable && !readOnly && pendingChanges.length) {
@@ -538,10 +573,133 @@ function updateChangesNav() {
 
 // Member: propose an edit to a template (self-contained modal — a textarea
 // prefilled with the current content + a reason). Submits a Pending request.
+// A compact rich-text field (toolbar + contenteditable) — the same formatting
+// controls as the main template editor, so a member suggesting an edit can use bold,
+// bullet/numbered lists, indent, alignment, etc. Returns helpers to read it back.
+function buildSuggestEditor(initialHtml) {
+    var wrap = document.createElement('div');
+    wrap.className = 'mgr-rte';
+
+    var toolbar = document.createElement('div');
+    toolbar.className = 'mgr-rte-toolbar';
+    toolbar.setAttribute('role', 'toolbar');
+    toolbar.setAttribute('aria-label', 'Formatting');
+
+    var editor = document.createElement('div');
+    editor.className = 'mgr-rte-editor mgr-rte-editor--compact';
+    editor.contentEditable = 'true';
+    editor.setAttribute('role', 'textbox');
+    editor.setAttribute('aria-multiline', 'true');
+    editor.setAttribute('aria-label', 'Requested change');
+    editor.setAttribute('data-placeholder', 'Describe the change you’d like — what should change and why. Quote the current wording and your proposed wording if it helps.');
+    editor.spellcheck = true;
+
+    function sep() { var s = document.createElement('span'); s.className = 'mgr-rte-sep'; return s; }
+    function alignIco(d) {
+        return '<svg class="mgr-rte-ico" viewBox="0 0 16 16" aria-hidden="true">'
+             + '<path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="' + d + '"/></svg>';
+    }
+
+    // Preserve the selection — selects/colour inputs steal focus before the command runs.
+    var savedRange = null;
+    function saveSel() {
+        var s = window.getSelection();
+        if (s && s.rangeCount && editor.contains(s.anchorNode)) savedRange = s.getRangeAt(0).cloneRange();
+    }
+    function exec(cmd, val) {
+        editor.focus();
+        if (savedRange) { var s = window.getSelection(); s.removeAllRanges(); s.addRange(savedRange); }
+        try { document.execCommand(cmd, false, val); } catch (e) { /* ignore */ }
+        saveSel();
+    }
+    editor.addEventListener('keyup', saveSel);
+    editor.addEventListener('mouseup', saveSel);
+    toolbar.addEventListener('mousedown', saveSel, true);
+
+    // Font family
+    var font = document.createElement('select');
+    font.className = 'mgr-rte-select'; font.title = 'Font'; font.setAttribute('aria-label', 'Font');
+    ['Font', 'Salesforce Sans', 'Arial', 'Calibri', 'Courier New', 'Georgia', 'Tahoma', 'Times New Roman', 'Verdana']
+        .forEach(function (f, i) { var o = document.createElement('option'); o.value = i ? f : ''; o.textContent = f; font.appendChild(o); });
+    font.addEventListener('change', function () { if (font.value) exec('fontName', font.value); font.selectedIndex = 0; });
+    toolbar.appendChild(font);
+
+    // Font size (exact px via the size-7 sentinel, matching the main editor)
+    var size = document.createElement('select');
+    size.className = 'mgr-rte-select'; size.title = 'Font size'; size.setAttribute('aria-label', 'Font size');
+    [['', 'Size'], ['8px', '8'], ['10px', '10'], ['11px', '11'], ['12px', '12'], ['13px', '13'], ['14px', '14'], ['16px', '16'], ['18px', '18'], ['24px', '24'], ['36px', '36']]
+        .forEach(function (p) { var o = document.createElement('option'); o.value = p[0]; o.textContent = p[1]; size.appendChild(o); });
+    size.addEventListener('change', function () {
+        if (size.value) {
+            exec('fontSize', '7');
+            editor.querySelectorAll('font[size="7"]').forEach(function (ff) { ff.removeAttribute('size'); ff.style.fontSize = size.value; });
+        }
+        size.selectedIndex = 0;
+    });
+    toolbar.appendChild(size);
+
+    // Text colour
+    var colorLabel = document.createElement('label');
+    colorLabel.className = 'mgr-rte-color'; colorLabel.title = 'Text colour';
+    colorLabel.innerHTML = '<span class="mgr-rte-color-a">A</span><span class="mgr-rte-color-bar"></span>';
+    var color = document.createElement('input'); color.type = 'color'; color.value = '#000000';
+    var bar = colorLabel.querySelector('.mgr-rte-color-bar');
+    color.addEventListener('input', function () { exec('foreColor', color.value); if (bar) bar.style.background = color.value; });
+    colorLabel.appendChild(color);
+    toolbar.appendChild(colorLabel);
+    toolbar.appendChild(sep());
+
+    var items = [
+        ['bold', '<b>B</b>', 'Bold'], ['italic', '<i>I</i>', 'Italic'],
+        ['underline', '<u>U</u>', 'Underline'], ['strikeThrough', '<s>S</s>', 'Strikethrough'], 'sep',
+        ['insertUnorderedList', '&#8226;&#8801;', 'Bulleted list'], ['insertOrderedList', '1.&#8801;', 'Numbered list'],
+        ['outdent', '&#8676;', 'Decrease indent'], ['indent', '&#8677;', 'Increase indent'], 'sep',
+        ['justifyLeft',  alignIco('M2 4h12M2 8h8M2 12h11'),  'Align left'],
+        ['justifyCenter', alignIco('M2 4h12M4 8h8M3 12h10'), 'Align centre'],
+        ['justifyRight', alignIco('M2 4h12M6 8h8M3 12h11'),  'Align right'],
+        ['justifyFull',  alignIco('M2 4h12M2 8h12M2 12h12'), 'Justify'], 'sep',
+        ['removeFormat', '&#10005;', 'Clear formatting']
+    ];
+    items.forEach(function (b) {
+        if (b === 'sep') { toolbar.appendChild(sep()); return; }
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'mgr-rte-btn'; btn.title = b[2]; btn.innerHTML = b[1];
+        btn.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the selection
+        btn.addEventListener('click', function () { exec(b[0]); });
+        toolbar.appendChild(btn);
+    });
+
+    // Insert link
+    var linkBtn = document.createElement('button');
+    linkBtn.type = 'button'; linkBtn.className = 'mgr-rte-btn'; linkBtn.title = 'Insert link'; linkBtn.textContent = '🔗';
+    linkBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    linkBtn.addEventListener('click', function () {
+        var url = window.prompt('Link URL:', 'https://');
+        if (!url) return;
+        url = url.trim();
+        if (!/^(https?:|mailto:|tel:)/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+        if (!savedRange || savedRange.collapsed) exec('insertHTML', '<a href="' + url.replace(/"/g, '%22') + '">' + url.replace(/[<>]/g, '') + '</a>');
+        else exec('createLink', url);
+    });
+    toolbar.appendChild(linkBtn);
+
+    wrap.appendChild(toolbar);
+
+    try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { /* ignore */ }
+    editor.innerHTML = window.CyforSanitize ? CyforSanitize.html(initialHtml || '') : (initialHtml || '');
+    wrap.appendChild(editor);
+
+    return {
+        wrap:    wrap,
+        focus:   function () { editor.focus(); },
+        getHtml: function () { return window.CyforSanitize ? CyforSanitize.html(editor.innerHTML) : editor.innerHTML; },
+        getText: function () { return (editor.textContent || '').trim(); }
+    };
+}
+
 function openSuggestEditModal(name) {
     var t = allTemplates[name];
     if (!t) return;
-    var current = window.CyforSanitize ? CyforSanitize.toText(t.content || '') : (t.content || '');
 
     var backdrop = document.createElement('div');
     backdrop.className = 'mgr-modal-backdrop';
@@ -552,28 +710,30 @@ function openSuggestEditModal(name) {
 
     var h = document.createElement('h3');
     h.className = 'mgr-modal-title';
-    h.textContent = 'Suggest an edit — ' + name;
+    h.textContent = 'Request a change — ' + name;
     dialog.appendChild(h);
 
     var p = document.createElement('p');
     p.className = 'mgr-modal-body';
-    p.textContent = 'Propose your change below. A template admin reviews it before anything goes live; they finalise the formatting on approval.';
+    p.textContent = 'Describe the change you’d like to this template and why. A template admin reviews your request and authors the controlled update — your suggestion isn’t applied automatically.';
     dialog.appendChild(p);
 
-    var ta = document.createElement('textarea');
-    ta.className = 'mgr-input mgr-suggest-content';
-    ta.value = current;
-    ta.setAttribute('aria-label', 'Proposed content');
-    dialog.appendChild(ta);
+    var dlabel = document.createElement('label');
+    dlabel.className = 'mgr-suggest-reason-label';
+    dlabel.innerHTML = 'What change would you like? <span class="mgr-required">*</span>';
+    dialog.appendChild(dlabel);
+    var rte = buildSuggestEditor('');
+    dialog.appendChild(rte.wrap);
 
     var rlabel = document.createElement('label');
     rlabel.className = 'mgr-suggest-reason-label';
-    rlabel.textContent = 'Reason for the change';
+    rlabel.innerHTML = 'Short summary / reason <span class="mgr-required">*</span>';
     dialog.appendChild(rlabel);
     var reason = document.createElement('input');
     reason.type = 'text';
     reason.className = 'mgr-input';
-    reason.setAttribute('aria-label', 'Reason for the change');
+    reason.setAttribute('aria-label', 'Short summary or reason');
+    reason.setAttribute('placeholder', 'e.g. “Add a line for the device IMEI” or “Change the Contacts wording”');
     dialog.appendChild(reason);
 
     var status = document.createElement('p');
@@ -586,14 +746,14 @@ function openSuggestEditModal(name) {
     var cancel = document.createElement('button');
     cancel.type = 'button'; cancel.className = 'mgr-btn mgr-btn-secondary'; cancel.textContent = 'Cancel';
     var submit = document.createElement('button');
-    submit.type = 'button'; submit.className = 'mgr-btn mgr-btn-primary'; submit.textContent = 'Send suggestion';
+    submit.type = 'button'; submit.className = 'mgr-btn mgr-btn-primary'; submit.textContent = 'Send request';
     actions.appendChild(cancel); actions.appendChild(submit);
     dialog.appendChild(actions);
 
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
     var lastFocus = document.activeElement;
-    ta.focus();
+    rte.focus();
 
     function close() {
         document.removeEventListener('keydown', onKey, true);
@@ -606,15 +766,16 @@ function openSuggestEditModal(name) {
     backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
 
     submit.addEventListener('click', function () {
-        var proposed = ta.value.trim();
-        if (!proposed) { status.textContent = 'Please enter your proposed content.'; return; }
+        var proposed = rte.getHtml();
+        if (!rte.getText())        { status.textContent = 'Please describe the change you’d like.'; return; }
+        if (!reason.value.trim())  { status.textContent = 'Please add a short summary / reason.'; reason.focus(); return; }
         submit.disabled = true; status.textContent = 'Sending…';
         chrome.runtime.sendMessage(
             { action: 'changes.submit', templateId: t.id, proposedContent: proposed, reason: reason.value.trim() },
             function (r) {
                 if (!chrome.runtime.lastError && r && r.ok) {
                     close();
-                    mgrModal({ title: 'Suggestion sent', body: 'Thanks — a template admin will review your suggested edit to “' + name + '”.', confirmLabel: 'Close', alert: true });
+                    mgrModal({ title: 'Request sent', body: 'Thanks — a template admin will review your change request for “' + name + '”.', confirmLabel: 'Close', alert: true });
                 } else {
                     submit.disabled = false;
                     status.textContent = (r && r.error && r.error !== 'NOT_AVAILABLE') ? r.error : 'Could not send the suggestion.';
@@ -624,52 +785,15 @@ function openSuggestEditModal(name) {
     });
 }
 
-// Self-contained diff modal (proposed vs current) — reuses the diff engine + the
-// existing .mgr-diff-line styling, DOM-built so it's XSS-safe.
-function showChangeDiff(name, req) {
-    var t = allTemplates[name];
-    if (!t) return;
-    var fromC = window.CyforSanitize ? CyforSanitize.toText(t.content || '')   : (t.content   || '');
-    var toC   = window.CyforSanitize ? CyforSanitize.toText(req.proposed || '') : (req.proposed || '');
-    var diff  = computeDiff((fromC || '').split('\n'), (toC || '').split('\n'));
-    var added = 0, removed = 0;
-    diff.forEach(function (d) { if (d.type === 'added') added++; else if (d.type === 'removed') removed++; });
-
-    var backdrop = document.createElement('div');
-    backdrop.className = 'mgr-modal-backdrop';
-    var dialog = document.createElement('div');
-    dialog.className = 'mgr-modal mgr-modal--wide';
-    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
-
-    var h = document.createElement('h3'); h.className = 'mgr-modal-title';
-    h.textContent = 'Suggested changes — ' + name; dialog.appendChild(h);
-    var sub = document.createElement('p'); sub.className = 'mgr-modal-body';
-    sub.textContent = 'Current v' + (t.versionLabel || '') + ' → suggested  ·  +' + added + ' / −' + removed;
-    dialog.appendChild(sub);
-
-    var content = document.createElement('div');
-    content.className = 'mgr-diff-content';
-    diff.forEach(function (e) {
-        var row = document.createElement('div');
-        row.className = 'mgr-diff-line mgr-diff-line--' + e.type;
-        var g = document.createElement('span'); g.className = 'mgr-diff-line-gutter';
-        g.textContent = e.type === 'added' ? '+' : e.type === 'removed' ? '–' : ' ';
-        var tx = document.createElement('span'); tx.className = 'mgr-diff-line-text'; tx.textContent = e.line;
-        row.appendChild(g); row.appendChild(tx); content.appendChild(row);
+// View a change request's full description (rich text) in a modal.
+function showRequestText(name, req) {
+    mgrModal({
+        title:   'Change request — ' + name,
+        body:    req.reason ? '“' + req.reason + '”' : '',
+        preHtml: req.proposed || '<p>(no detail provided)</p>',
+        confirmLabel: 'Close',
+        alert:   true
     });
-    dialog.appendChild(content);
-
-    var actions = document.createElement('div'); actions.className = 'mgr-modal-actions';
-    var closeB = document.createElement('button'); closeB.type = 'button'; closeB.className = 'mgr-btn mgr-btn-primary'; closeB.textContent = 'Close';
-    actions.appendChild(closeB); dialog.appendChild(actions);
-
-    backdrop.appendChild(dialog); document.body.appendChild(backdrop);
-    var lastFocus = document.activeElement; closeB.focus();
-    function done() { document.removeEventListener('keydown', onKey, true); backdrop.remove(); if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} } }
-    function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); done(); } }
-    document.addEventListener('keydown', onKey, true);
-    closeB.addEventListener('click', done);
-    backdrop.addEventListener('click', function (e) { if (e.target === backdrop) done(); });
 }
 
 // Admin: the Change Requests view — pending suggestions with diff + Apply/Reject.
@@ -709,43 +833,111 @@ function renderChangeRequests() {
                 card.appendChild(reason);
             }
 
+            var desc = document.createElement('div');
+            desc.className = 'mgr-suggest-row-desc mgr-modal-rich';
+            desc.innerHTML = window.CyforSanitize ? CyforSanitize.html(req.proposed || '') : '';
+            card.appendChild(desc);
+
             var btns = document.createElement('div');
             btns.className = 'mgr-change-actions';
-            var diffBtn  = document.createElement('button'); diffBtn.className  = 'mgr-btn mgr-btn-secondary mgr-btn-sm'; diffBtn.textContent  = 'View diff';
-            var applyBtn = document.createElement('button'); applyBtn.className = 'mgr-btn mgr-btn-primary mgr-btn-sm';   applyBtn.textContent = 'Apply…';
+            var viewBtn  = document.createElement('button'); viewBtn.className  = 'mgr-btn mgr-btn-secondary mgr-btn-sm'; viewBtn.textContent  = 'View request';
+            var applyBtn = document.createElement('button'); applyBtn.className = 'mgr-btn mgr-btn-primary mgr-btn-sm';   applyBtn.textContent = 'Review & update';
             var rejBtn   = document.createElement('button'); rejBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm'; rejBtn.textContent   = 'Reject';
             var hasTpl = !!allTemplates[name];
-            if (!hasTpl) { diffBtn.disabled = true; applyBtn.disabled = true; }
-            btns.appendChild(diffBtn); btns.appendChild(applyBtn); btns.appendChild(rejBtn);
+            if (!hasTpl) { applyBtn.disabled = true; }
+            btns.appendChild(viewBtn); btns.appendChild(applyBtn); btns.appendChild(rejBtn);
             card.appendChild(btns);
             box.appendChild(card);
 
-            diffBtn.addEventListener('click', function () { showChangeDiff(name, req); });
+            viewBtn.addEventListener('click', function () { showRequestText(name, req); });
             applyBtn.addEventListener('click', function () { applyChangeRequest(req, name); });
             rejBtn.addEventListener('click', function () { rejectChangeRequest(req, name); });
         });
     });
 }
 
-// Apply: mark Approved, then open the editor prefilled with the proposal so the
-// admin finalises formatting and Saves through the normal versioned update path.
+// Review & update: open the editor on the template and surface the open change
+// requests as REFERENCE alongside it. The admin authors the controlled update by hand
+// using the requests, and marks each Approve/Reject. Saving records the decisions;
+// nothing is auto-applied, so two requests can never conflict or overwrite each other.
 function applyChangeRequest(req, name) {
     if (!allTemplates[name]) { mgrModal({ title: 'Template not found', body: 'That template no longer exists.', confirmLabel: 'Close', alert: true }); return; }
-    chrome.runtime.sendMessage({ action: 'changes.resolve', requestId: req.id, status: 'Approved' }, function (r) {
-        if (chrome.runtime.lastError || !r || !r.ok) {
-            mgrModal({ title: 'Could not apply', body: (r && r.error) || 'Please try again.', confirmLabel: 'Close', alert: true });
-            return;
+    openEditEditor(name);                                   // loads the CURRENT content + renders the panel (clears the flag)
+    renderEditorSuggestions(allTemplates[name].id, req.id); // highlight the one you clicked
+    reviewingChangeRequest = true;                          // now require a decision + reason on save
+    setEditorStatus('Edit the content to incorporate the request(s), mark each Approve/Reject, add a Reason, then Save. Cancel changes nothing.', 'info');
+}
+
+// Build the in-editor change-requests panel: each open request shown as REFERENCE
+// (its description + reason + who/when), with an Approve/Reject decision. The admin
+// authors the new version by hand using these; nothing is auto-applied. On Save the
+// dispositions are recorded together (see saveTemplate).
+function renderEditorSuggestions(templateId, focusId) {
+    var section = document.getElementById('mgr-editor-suggestions');
+    var list    = document.getElementById('mgr-editor-suggestions-list');
+    if (!section || !list) return;
+    list.innerHTML = '';
+
+    var mine = (changesAvailable && templateId)
+        ? pendingChanges.filter(function (r) { return r.templateId === templateId; })
+        : [];
+    if (!mine.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    mine.forEach(function (req) {
+        var row = document.createElement('div');
+        row.className = 'mgr-suggest-row';
+        row.setAttribute('data-req-id', req.id);
+        row.setAttribute('data-disposition', '');
+
+        // Head: author + Approve/Reject decision
+        var head = document.createElement('div');
+        head.className = 'mgr-suggest-row-head';
+        var who = document.createElement('span');
+        who.className = 'mgr-suggest-row-who';
+        who.textContent = (req.by || 'Someone') + (req.at ? ' · ' + formatStamp(req.at) : '');
+        head.appendChild(who);
+
+        var disp   = document.createElement('div'); disp.className = 'mgr-suggest-disp';
+        var appBtn = document.createElement('button');
+        appBtn.type = 'button'; appBtn.className = 'mgr-suggest-disp-btn mgr-suggest-disp-approve'; appBtn.textContent = 'Approve';
+        var rejBtn = document.createElement('button');
+        rejBtn.type = 'button'; rejBtn.className = 'mgr-suggest-disp-btn mgr-suggest-disp-reject'; rejBtn.textContent = 'Reject';
+        function setDisp(v) {
+            row.setAttribute('data-disposition', v);
+            appBtn.classList.toggle('is-on', v === 'approve');
+            rejBtn.classList.toggle('is-on', v === 'reject');
         }
-        openEditEditor(name);
-        setContentHtml(req.proposed || '');
-        var rc = document.getElementById('mgr-change-reason');
-        if (rc) rc.value = 'Applied suggestion from ' + (req.by || 'a colleague') + (req.reason ? ': ' + req.reason : '');
-        setEditorStatus('Suggestion applied to the editor — review the formatting, then Save to publish.', 'info');
+        appBtn.addEventListener('click', function () { setDisp(row.getAttribute('data-disposition') === 'approve' ? '' : 'approve'); });
+        rejBtn.addEventListener('click', function () { setDisp(row.getAttribute('data-disposition') === 'reject' ? '' : 'reject'); });
+        disp.appendChild(appBtn); disp.appendChild(rejBtn);
+        head.appendChild(disp);
+        row.appendChild(head);
+
+        if (req.reason) {
+            var reason = document.createElement('p');
+            reason.className = 'mgr-suggest-row-reason';
+            reason.textContent = '“' + req.reason + '”';
+            row.appendChild(reason);
+        }
+
+        // The request description, rendered read-only for reference.
+        var desc = document.createElement('div');
+        desc.className = 'mgr-suggest-row-desc mgr-modal-rich';
+        desc.innerHTML = window.CyforSanitize ? CyforSanitize.html(req.proposed || '') : '';
+        row.appendChild(desc);
+
+        list.appendChild(row);
     });
+
+    if (focusId) {
+        var f = list.querySelector('[data-req-id="' + focusId + '"]');
+        if (f) { f.classList.add('is-focused'); f.scrollIntoView({ block: 'nearest' }); }
+    }
 }
 
 function rejectChangeRequest(req, name) {
-    mgrModal({ title: 'Reject suggestion?', body: 'Dismiss the suggested edit to “' + name + '”? The person who sent it will see it marked rejected.', confirmLabel: 'Reject', cancelLabel: 'Cancel', danger: true })
+    mgrModal({ title: 'Reject suggestion?', body: 'Dismiss the suggested edit to “' + name + '”? It’ll show as Rejected in the sender’s “My suggestions” view.', confirmLabel: 'Reject', cancelLabel: 'Cancel', danger: true })
         .then(function (ok) {
             if (!ok) return;
             chrome.runtime.sendMessage({ action: 'changes.resolve', requestId: req.id, status: 'Rejected' }, function (r) {
@@ -753,6 +945,77 @@ function rejectChangeRequest(req, name) {
                 else mgrModal({ title: 'Could not reject', body: (r && r.error) || 'Please try again.', confirmLabel: 'Close', alert: true });
             });
         });
+}
+
+// Member (and anyone): your OWN submitted suggestions and their outcome — Pending,
+// Approved (rolled into the template), or Rejected, with any reviewer note. So a
+// suggester can see what happened without chasing an admin.
+function renderMySuggestions() {
+    var box = document.getElementById('mgr-mine-body');
+    if (!box) return;
+    box.innerHTML = '<p class="mgr-state-msg">Loading…</p>';
+    chrome.runtime.sendMessage({ action: 'changes.mine' }, function (r) {
+        if (chrome.runtime.lastError || !r || !r.ok) {
+            box.innerHTML = '<p class="mgr-state-msg">' + escHtml((r && r.error) || 'Could not load your suggestions.') + '</p>';
+            return;
+        }
+        if (!r.available) { box.innerHTML = '<p class="mgr-state-msg">Suggestions aren’t set up in Salesforce yet.</p>'; return; }
+        var reqs = r.requests || [];
+        if (!reqs.length) { box.innerHTML = '<p class="mgr-state-msg">You haven’t suggested any edits yet.</p>'; return; }
+
+        box.innerHTML = '';
+        reqs.forEach(function (req) {
+          try {
+            var name = templateNameById(req.templateId) || '(unknown template)';
+            var card = document.createElement('div');
+            card.className = 'mgr-change-card';
+
+            var head = document.createElement('div');
+            head.className = 'mgr-change-head';
+            var title = document.createElement('strong'); title.textContent = name; head.appendChild(title);
+            var st = String(req.status || 'Pending');
+            var badge = document.createElement('span');
+            badge.className = 'mgr-sug-badge mgr-sug-badge--' + st.toLowerCase().replace(/\s+/g, '-');
+            badge.textContent = st;
+            head.appendChild(badge);
+            card.appendChild(head);
+
+            if (req.at) {
+                var meta = document.createElement('p'); meta.className = 'mgr-change-meta';
+                meta.textContent = 'Submitted ' + formatStamp(req.at);
+                card.appendChild(meta);
+            }
+            if (req.reason) {
+                var reason = document.createElement('p'); reason.className = 'mgr-change-reason';
+                reason.textContent = '“' + req.reason + '”';
+                card.appendChild(reason);
+            }
+            if (req.adminNote) {
+                var note = document.createElement('p'); note.className = 'mgr-change-reason';
+                note.textContent = 'Reviewer note: ' + req.adminNote;
+                card.appendChild(note);
+            }
+
+            var mdesc = document.createElement('div');
+            mdesc.className = 'mgr-suggest-row-desc mgr-modal-rich';
+            mdesc.innerHTML = window.CyforSanitize ? CyforSanitize.html(req.proposed || '') : '';
+            card.appendChild(mdesc);
+
+            {
+                var btns = document.createElement('div'); btns.className = 'mgr-change-actions';
+                var viewBtn = document.createElement('button');
+                viewBtn.type = 'button'; viewBtn.className = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
+                viewBtn.textContent = 'View request';
+                viewBtn.addEventListener('click', function () { showRequestText(name, req); });
+                btns.appendChild(viewBtn);
+                card.appendChild(btns);
+            }
+
+            box.appendChild(card);
+          } catch (e) { /* one odd record must not blank the whole list */ }
+        });
+        if (!box.children.length) box.innerHTML = '<p class="mgr-state-msg">You haven’t suggested any edits yet.</p>';
+    });
 }
 
 // Admin matrix: who has acknowledged each controlled template's current version,
@@ -834,6 +1097,13 @@ function renderTemplateList() {
     var names = visibleTemplateNames();
     var teamCode = currentUser.teamCode || null;
 
+    // The user's own team display names, for highlighting their chips.
+    var myTeamNames = {};
+    (currentUser.teams && currentUser.teams.length
+        ? currentUser.teams.map(function (tm) { return tm.teamName || tm.teamCode; })
+        : [currentUser.teamName || currentUser.teamCode]
+    ).forEach(function (x) { if (x) myTeamNames[prettyTeam(x)] = true; });
+
     // Bulk-select column only exists for admins.
     var thCheck = document.getElementById('mgr-th-check');
     if (thCheck) thCheck.style.display = readOnly ? 'none' : '';
@@ -910,11 +1180,15 @@ function renderTemplateList() {
         nameTd.textContent = name;
         if (acksAvailable && isControlledDoc(t) && templateInMyScope(t)) {
             var acked = !!myAcks[ackKey(t)];
-            var chip  = document.createElement('span');
+            var chip  = document.createElement('button');
+            chip.type        = 'button';
             chip.className   = 'mgr-ack-chip ' + (acked ? 'mgr-ack-chip--done' : 'mgr-ack-chip--due');
             chip.textContent = acked ? '✓ Acknowledged' : 'Acknowledge';
-            chip.title       = (acked ? 'You have acknowledged v' : 'Read & acknowledge v') + t.versionLabel;
-            nameTd.appendChild(document.createTextNode(' '));
+            chip.title       = acked ? 'You have acknowledged v' + t.versionLabel + ' — click to view'
+                                     : 'Read & acknowledge v' + t.versionLabel;
+            // Clickable for everyone (admins included): opens the read-&-confirm viewer.
+            (function (n) { chip.addEventListener('click', function (e) { e.stopPropagation(); openViewModal(n); }); }(name));
+            nameTd.appendChild(document.createElement('br'));
             nameTd.appendChild(chip);
         }
         tr.appendChild(nameTd);
@@ -925,12 +1199,16 @@ function renderTemplateList() {
         verTd.textContent = t.versionLabel ? 'v' + t.versionLabel : '—';
         tr.appendChild(verTd);
 
-        // Status
+        // Status — an Active template past its Review Due date shows as "Overdue".
         var statTd    = document.createElement('td');
         var statBadge = document.createElement('span');
-        var statusVal = (t.status || 'Active').toLowerCase().replace(/\s+/g, '-');
+        var baseStatus  = t.status || 'Active';
+        var overdue     = isOverdueTemplate(t);
+        var shownStatus = (overdue && baseStatus.toLowerCase() === 'active') ? 'Overdue' : baseStatus;
+        var statusVal   = shownStatus.toLowerCase().replace(/\s+/g, '-');
         statBadge.className   = 'mgr-status-badge mgr-status-badge--' + statusVal;
-        statBadge.textContent = t.status || 'Active';
+        statBadge.textContent = shownStatus;
+        if (shownStatus === 'Overdue') statBadge.title = 'Review overdue — was due ' + formatDate(t.reviewDueDate);
         statTd.appendChild(statBadge);
         tr.appendChild(statTd);
 
@@ -939,19 +1217,31 @@ function renderTemplateList() {
         catTd.textContent = t.category || '—';
         tr.appendChild(catTd);
 
-        // Scope — show the actual team name (or Global); highlight the user's own.
-        // Read-only entries come from the team-scoped sync, which carries teamCode
-        // (not teamName/teamId) — fall back accordingly.
-        var scopeTd = document.createElement('td');
-        var badge   = document.createElement('span');
-        var hasMulti = t.teamCodes && t.teamCodes.length;
-        var teamVal = hasMulti ? t.teamCodes.join(', ') : (t.teamName || t.teamCode || null);
-        var scoped  = hasMulti || t.teamId || t.teamCode;
-        badge.className   = scoped ? 'mgr-scope-badge mgr-scope-badge--team' : 'mgr-scope-badge';
-        if (isMyTeam) badge.className += ' mgr-scope-badge--own';
-        badge.textContent = teamVal || 'Global';
-        if (hasMulti) badge.title = t.teamCodes.join(', ');
-        scopeTd.appendChild(badge);
+        // Scope — one chip per team, always the real team NAME (never the raw
+        // underscore code); Global when unscoped. Read-only sync entries carry only a
+        // teamCode, so prettyTeam() maps it to the name.
+        var scopeTd  = document.createElement('td');
+        var scopeBox = document.createElement('div');
+        scopeBox.className = 'mgr-scope-cell';
+        var chipSources = (t.teamCodes && t.teamCodes.length)
+            ? t.teamCodes
+            : (t.teamName ? [t.teamName] : (t.teamCode ? [t.teamCode] : []));
+        if (!chipSources.length) {
+            var gb = document.createElement('span');
+            gb.className   = 'mgr-scope-badge';
+            gb.textContent = 'Global';
+            scopeBox.appendChild(gb);
+        } else {
+            chipSources.forEach(function (src) {
+                var label = prettyTeam(src);
+                var chip  = document.createElement('span');
+                chip.className   = 'mgr-scope-badge mgr-scope-badge--team'
+                                 + (myTeamNames[label] ? ' mgr-scope-badge--own' : '');
+                chip.textContent = label;
+                scopeBox.appendChild(chip);
+            });
+        }
+        scopeTd.appendChild(scopeBox);
         tr.appendChild(scopeTd);
 
         // Review Due
@@ -999,8 +1289,8 @@ function renderTemplateList() {
             if (changesAvailable) {
                 suggestBtn = document.createElement('button');
                 suggestBtn.className   = 'mgr-btn mgr-btn-secondary mgr-btn-sm';
-                suggestBtn.textContent = 'Suggest edit';
-                suggestBtn.setAttribute('aria-label', 'Suggest an edit to ' + name);
+                suggestBtn.textContent = 'Request change';
+                suggestBtn.setAttribute('aria-label', 'Request a change to ' + name);
                 actionsWrap.appendChild(suggestBtn);
             }
             (function (n) {
@@ -1022,19 +1312,22 @@ function renderTemplateList() {
             cloneBtn.setAttribute('aria-label', 'Clone ' + name + ' as a draft');
             cloneBtn.title = 'Create a new draft template from a copy of this one';
 
-            var delBtn = document.createElement('button');
-            delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
-            delBtn.textContent = 'Delete';
-            delBtn.setAttribute('aria-label', 'Delete ' + name);
+            var delBtn = null;
+            if (canDelete) {
+                delBtn = document.createElement('button');
+                delBtn.className   = 'mgr-btn mgr-btn-danger mgr-btn-sm';
+                delBtn.textContent = 'Delete';
+                delBtn.setAttribute('aria-label', 'Delete ' + name);
+            }
 
             actionsWrap.appendChild(editBtn);
             actionsWrap.appendChild(cloneBtn);
             actionsWrap.appendChild(histBtn);
-            actionsWrap.appendChild(delBtn);
+            if (delBtn) actionsWrap.appendChild(delBtn);
             (function (n) {
                 editBtn.addEventListener('click',  function () { openEditEditor(n); });
                 cloneBtn.addEventListener('click', function () { openCloneEditor(n); });
-                delBtn.addEventListener('click',   function () { confirmDelete(n); });
+                if (delBtn) delBtn.addEventListener('click', function () { confirmDelete(n); });
                 histBtn.addEventListener('click',  function () { openHistory(n); });
             }(name));
         }
@@ -1060,6 +1353,8 @@ function updateBulkBar() {
     if (!bar) return;
     if (readOnly || bulkSelected.size === 0) { bar.style.display = 'none'; return; }
     bar.style.display = '';
+    var bulkDel = document.getElementById('btn-bulk-delete');
+    if (bulkDel) bulkDel.style.display = canDelete ? '' : 'none'; // hide when the user can't delete
     document.getElementById('mgr-bulk-count').textContent = bulkSelected.size + ' selected';
 }
 
@@ -1148,6 +1443,7 @@ function bulkApply(kind) {
 }
 
 function bulkDelete() {
+    if (!canDelete) return; // no Salesforce delete permission — UI is hidden, guard anyway
     var names = Array.from(bulkSelected).filter(function (n) { return allTemplates[n]; });
     if (!names.length) return;
 
@@ -1353,12 +1649,15 @@ function renderSettings() {
 function openNewEditor() {
     currentEditId      = null;
     currentEditVersion = null;
+    reviewingChangeRequest = false;
 
     document.getElementById('mgr-editor-heading').textContent = 'New Template';
     document.getElementById('mgr-name').value          = '';
     document.getElementById('mgr-category').value      = '';
     document.getElementById('mgr-change-reason').value = '';
     setContentHtml('');
+    renderEditorSuggestions(null); // a brand-new template has no pending suggestions
+    var newAck = document.getElementById('mgr-requires-ack'); if (newAck) newAck.checked = false;
     document.getElementById('mgr-status').value        = 'Active';
     document.getElementById('mgr-effective-date').value = isoToBritish(today());
     document.getElementById('mgr-review-date').value   = isoToBritish(addMonths(today(), REVIEW_PERIOD_MONTHS));
@@ -1395,6 +1694,7 @@ function openNewEditor() {
 function openEditEditor(name) {
     var t = allTemplates[name];
     if (!t) return;
+    reviewingChangeRequest = false; // a plain edit isn't a review (applyChangeRequest re-sets it true)
 
     currentEditId      = t.id;
     currentEditVersion = t.versionLabel || '1.0';
@@ -1404,7 +1704,9 @@ function openEditEditor(name) {
     document.getElementById('mgr-category').value      = t.category      || '';
     setContentHtml(t.content || '');
     editorOriginalContent = getContentHtml();   // normalised baseline for change detection
+    renderEditorSuggestions(t.id, null);        // show any pending suggestions for this template
     document.getElementById('mgr-change-reason').value = '';
+    var editAck = document.getElementById('mgr-requires-ack'); if (editAck) editAck.checked = !!t.requiresAck;
     ensureStatusOption(t.status);
     document.getElementById('mgr-status').value        = t.status        || 'Active';
     // A new version becomes effective today; pre-fill so the controlled-document
@@ -1710,7 +2012,8 @@ function updateEditorVersionUI() {
 function closeEditor() {
     currentEditId      = null;
     currentEditVersion = null;
-    setView('templates');
+    reviewingChangeRequest = false;
+    setView('templates'); // cancelling leaves any requests Pending (nothing resolved yet)
 }
 
 // Read-only template viewer (non-admin mode) — content + meta in a modal.
@@ -1766,6 +2069,7 @@ function openCloneEditor(name) {
     document.getElementById('mgr-name').value          = newName;
     document.getElementById('mgr-category').value      = t.category || '';
     setContentHtml(t.content || '');
+    var cloneAck = document.getElementById('mgr-requires-ack'); if (cloneAck) cloneAck.checked = !!t.requiresAck;
     document.getElementById('mgr-change-reason').value =
         'Cloned from "' + name + '"' + (t.versionLabel ? ' v' + t.versionLabel : '');
     // Drafts stay out of analysts' sync until an admin activates them.
@@ -1786,6 +2090,8 @@ function saveTemplate() {
     var revRaw       = (document.getElementById('mgr-review-date').value    || '').trim();
     var teamId       = (document.getElementById('mgr-scope') || {}).value;   // '' = Global
     var teamCodes    = multiTeamEnabled ? collectMultiTeamCodes() : null;    // [] = Global
+    var ackEl        = document.getElementById('mgr-requires-ack');
+    var requiresAck  = !!(ackEl && ackEl.checked);
 
     if (!name)                    { setEditorStatus('Name is required.', 'error'); return; }
     if (!getContentText().trim()) { setEditorStatus('Content is required.', 'error'); return; }
@@ -1801,15 +2107,25 @@ function saveTemplate() {
     if (effRaw && !effectiveDate) { setEditorStatus('Effective Date must be a real date in DD/MM/YYYY format.', 'error'); return; }
     if (revRaw && !reviewDueDate) { setEditorStatus('Review Due Date must be a real date in DD/MM/YYYY format.', 'error'); return; }
 
-    // A reason (and version bump) is only required when CONTENT changes — that's
-    // what the Salesforce Flow snapshots. Metadata-only edits (status/team/dates)
-    // save without a bump or reason. A brand-new template always needs a reason.
+    // When reviewing change requests, every one shown must be decided before saving.
+    if (reviewingChangeRequest) {
+        var undecided = Array.prototype.some.call(
+            document.querySelectorAll('#mgr-editor-suggestions .mgr-suggest-row'),
+            function (row) { return !row.getAttribute('data-disposition'); });
+        if (undecided) { setEditorStatus('Approve or Reject each change request before saving.', 'error'); return; }
+    }
+
+    // A reason is required when the CONTENT changes (the Salesforce Flow snapshots it),
+    // when actioning a change request, or for a brand-new template. Metadata-only edits
+    // (status/team/dates) with no request decisions save without a bump or reason.
     var isEdit         = !!currentEditId;
     var contentChanged = isEdit ? (content !== editorOriginalContent) : true;
-    if (!changeReason && (!isEdit || contentChanged)) {
-        setEditorStatus(isEdit
-            ? 'Reason is required when the content changes.'
-            : 'Reason is required for the audit trail.', 'error');
+    var actionedReq    = !!document.querySelector('#mgr-editor-suggestions .mgr-suggest-row[data-disposition="approve"], #mgr-editor-suggestions .mgr-suggest-row[data-disposition="reject"]');
+    if (!changeReason && (!isEdit || contentChanged || actionedReq)) {
+        setEditorStatus(actionedReq
+            ? 'A reason is required when you action a change request (for the audit trail).'
+            : (isEdit ? 'Reason is required when the content changes.'
+                      : 'Reason is required for the audit trail.'), 'error');
         return;
     }
 
@@ -1840,6 +2156,7 @@ function saveTemplate() {
             changeReason: contentChanged ? changeReason : '',
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate,
+            requiresAck:  requiresAck,
             teamId:       teamId
         };
     } else {
@@ -1854,7 +2171,8 @@ function saveTemplate() {
             changeReason: changeReason,
             teamId:       teamId,
             effectiveDate: effectiveDate,
-            reviewDueDate: reviewDueDate
+            reviewDueDate: reviewDueDate,
+            requiresAck:  requiresAck
         };
     }
     // In multi-team mode the picklist codes are the source of truth (the background
@@ -1875,6 +2193,21 @@ function saveTemplate() {
             setEditorStatus('Error: ' + err, 'error');
             return;
         }
+
+        // Apply each suggestion's disposition from the reconcile panel — Approved or
+        // Rejected together against this one new version. Untouched ones stay Pending.
+        // Only runs after the save actually succeeded (cancelling resolves nothing).
+        var dispRows = document.querySelectorAll('#mgr-editor-suggestions .mgr-suggest-row');
+        var resolved = 0;
+        Array.prototype.forEach.call(dispRows, function (row) {
+            var id   = row.getAttribute('data-req-id');
+            var disp = row.getAttribute('data-disposition');
+            if (!id || !disp) return;
+            resolved++;
+            chrome.runtime.sendMessage({ action: 'changes.resolve', requestId: id,
+                status: disp === 'reject' ? 'Rejected' : 'Approved' }, function () {});
+        });
+        if (resolved) loadChanges(); // refresh the pending list + nav badge
 
         loadTemplates();
     });
@@ -1974,6 +2307,7 @@ function mgrAlert(message, title) {
 }
 
 function confirmDelete(name) {
+    if (!canDelete) return; // no Salesforce delete permission — UI is hidden, guard anyway
     var t = allTemplates[name];
     if (!t || !t.id) return;
 
@@ -2618,7 +2952,8 @@ function showState(state) {
         'history':       'mgr-history-panel',
         'usage':         'mgr-usage-panel',
         'acks':          'mgr-acks-panel',
-        'changes':       'mgr-changes-panel'
+        'changes':       'mgr-changes-panel',
+        'mine':          'mgr-mine-panel'
     };
     Object.keys(panels).forEach(function (key) {
         var el = document.getElementById(panels[key]);
@@ -2628,7 +2963,7 @@ function showState(state) {
     // Topbar title/subtitle: derive from the nav view; editor/history set their own.
     var meta = { 'list': VIEW_META.templates, 'reviews': VIEW_META.reviews,
                  'usage': VIEW_META.usage, 'acks': VIEW_META.acks, 'changes': VIEW_META.changes,
-                 'settings': VIEW_META.settings }[state];
+                 'mine': VIEW_META.mine, 'settings': VIEW_META.settings }[state];
     var titleEl = document.getElementById('mgr-view-title');
     var subEl   = document.getElementById('mgr-view-sub');
     if (meta && titleEl) {

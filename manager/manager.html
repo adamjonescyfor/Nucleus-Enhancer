@@ -39,6 +39,9 @@
                 <span class="mgr-nav-ico" aria-hidden="true">✎</span> Suggestions
                 <span class="mgr-nav-badge" id="mgr-nav-changes-badge" style="display:none">0</span>
             </button>
+            <button type="button" class="mgr-nav-item" data-view="mine" style="display:none">
+                <span class="mgr-nav-ico" aria-hidden="true">✐</span> My suggestions
+            </button>
             <button type="button" class="mgr-nav-item" data-view="settings">
                 <span class="mgr-nav-ico" aria-hidden="true">ⓘ</span> About
             </button>
@@ -188,13 +191,25 @@
             <div id="mgr-changes-panel" style="display:none">
                 <div class="mgr-panel-head">
                     <p class="mgr-list-desc">
-                        Edit suggestions from analysts. <strong>View diff</strong> compares a
-                        suggestion against the current version; <strong>Apply</strong> opens it in
-                        the editor for you to finalise and Save (a normal versioned update);
+                        Change requests from analysts. <strong>View request</strong> shows the full
+                        detail; <strong>Review &amp; update</strong> opens the template editor with the
+                        request alongside, for you to author the controlled update and approve it;
                         <strong>Reject</strong> dismisses it.
                     </p>
                 </div>
                 <div id="mgr-changes-body"></div>
+            </div>
+
+            <!-- ── My suggestions view (the submitter's own change requests) ── -->
+            <div id="mgr-mine-panel" style="display:none">
+                <div class="mgr-panel-head">
+                    <p class="mgr-list-desc">
+                        The edit suggestions you’ve submitted, and where each one stands —
+                        <strong>Pending</strong> review, <strong>Approved</strong> (rolled into the
+                        template), or <strong>Rejected</strong>. Any note from the reviewer shows here.
+                    </p>
+                </div>
+                <div id="mgr-mine-body"></div>
             </div>
 
             <!-- ── Settings view ───────────────────────────────────────────── -->
@@ -226,6 +241,12 @@
             <!-- ── Editor (overlay view) ───────────────────────────────────── -->
             <div id="mgr-editor-panel" class="mgr-editor-card" style="display:none">
                 <h2 class="mgr-editor-heading" id="mgr-editor-heading">New Template</h2>
+
+                <section class="mgr-form-section mgr-suggest-collect" id="mgr-editor-suggestions" style="display:none">
+                    <h4 class="mgr-form-section-title">Change requests for this template</h4>
+                    <p class="mgr-suggest-collect-hint">Analysts’ requested changes, for reference. Edit the template content below to incorporate the ones you accept, mark each <strong>Approve</strong> or <strong>Reject</strong>, add a <strong>Reason</strong>, then Save. Nothing is applied automatically — you author the controlled update.</p>
+                    <div id="mgr-editor-suggestions-list"></div>
+                </section>
 
                 <section class="mgr-form-section">
                     <h4 class="mgr-form-section-title">Identity &amp; status</h4>
@@ -278,6 +299,16 @@
                         <div class="mgr-field mgr-field--third">
                             <label class="mgr-label" for="mgr-review-date">Review Due Date</label>
                             <input type="text" id="mgr-review-date" class="mgr-input" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="mgr-field-row">
+                        <div class="mgr-field mgr-field--third">
+                            <label class="mgr-checkbox-row" for="mgr-requires-ack">
+                                <input type="checkbox" id="mgr-requires-ack">
+                                <span>Requires acknowledgement
+                                    <small class="mgr-label-hint">— staff must read &amp; confirm each version</small>
+                                </span>
+                            </label>
                         </div>
                     </div>
                     <div class="mgr-field-row">
