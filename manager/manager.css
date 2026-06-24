@@ -603,6 +603,12 @@ body {
     border-color: var(--line);
 }
 
+.mgr-status-badge--overdue {
+    background: var(--bad-soft);
+    color: var(--bad);
+    border-color: var(--bad-line);
+}
+
 /* Scope badges */
 .mgr-scope-badge {
     display: inline-block;
@@ -627,6 +633,25 @@ body {
     background: var(--accent);
     color: var(--on-accent);
 }
+
+/* One chip per team — wrap neatly instead of one long underscore-joined string. */
+.mgr-scope-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+/* Inline checkbox row (e.g. "Requires acknowledgement"). */
+.mgr-checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text);
+    line-height: 1.4;
+}
+.mgr-checkbox-row input { margin-top: 2px; flex: none; }
 
 /* Review-due cells */
 .mgr-review-ok      { color: var(--text-2); font-variant-numeric: tabular-nums; }
@@ -1014,6 +1039,9 @@ body {
 .mgr-rte-editor a  { color: var(--accent); }
 .mgr-rte-editor img { max-width: 100%; height: auto; }
 
+/* Suggest-edit dialog uses a shorter editor so the whole modal fits on screen. */
+.mgr-rte-editor--compact { min-height: 150px; max-height: 34vh; }
+
 /* Version display + bump */
 .mgr-version-wrap {
     display: flex;
@@ -1251,6 +1279,10 @@ body {
     max-width: 440px;
     width: 100%;
     padding: 20px 22px;
+    /* Never grow past the viewport — scroll inside instead of clipping the action
+       buttons off-screen (which trapped you in the suggest-edit dialog). */
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
 }
 
 .mgr-modal-title {
@@ -1374,17 +1406,23 @@ body {
     font-size: 13px;
 }
 .mgr-ack-chip {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 1px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 5px;
+    padding: 2px 10px;
     border-radius: 999px;
     font-size: 11px;
     font-weight: 600;
-    vertical-align: middle;
     white-space: nowrap;
+    font-family: inherit;
+    cursor: pointer;
+    transition: filter .12s ease;
 }
+.mgr-ack-chip:hover  { filter: brightness(1.06); }
+.mgr-ack-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mgr-ack-chip--due  { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
-.mgr-ack-chip--done { color: var(--ok);   background: var(--ok-soft);   border: 1px solid var(--ok-line); }
+.mgr-ack-chip--done { color: var(--ok);   background: var(--ok-soft);   border: 1px solid var(--ok-line); cursor: default; }
 .mgr-ack-table th, .mgr-ack-table td { vertical-align: top; }
 .mgr-ack-out { color: var(--bad); font-weight: 600; }
 .mgr-ack-ok  { color: var(--ok);  font-weight: 600; }
@@ -1404,6 +1442,45 @@ body {
     color: var(--cyfor-text-muted, var(--text));
     margin-bottom: 4px;
 }
+
+/* In-editor "collect pending suggestions into one update" panel */
+.mgr-suggest-collect { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-3); padding: 14px 16px; }
+.mgr-suggest-collect-hint { margin: 0 0 10px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.5; }
+.mgr-suggest-row { border: 1px solid var(--line); border-radius: var(--r-2); padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+.mgr-suggest-row:last-child { margin-bottom: 0; }
+.mgr-suggest-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.mgr-suggest-row-who { font-size: var(--fs-12); font-weight: 600; color: var(--text); }
+.mgr-suggest-row-approve { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-12); color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.mgr-suggest-row-reason { margin: 6px 0; font-size: var(--fs-12); font-style: italic; color: var(--text-2); }
+.mgr-suggest-row.is-focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--ring); }
+.mgr-suggest-row-actions { display: flex; gap: 8px; }
+
+/* Approve / Reject disposition toggle */
+.mgr-suggest-disp { display: inline-flex; gap: 0; border: 1px solid var(--line-2); border-radius: var(--r-pill); overflow: hidden; }
+.mgr-suggest-disp-btn { font: inherit; font-size: 11px; font-weight: 600; padding: 3px 12px; border: 0; background: transparent; color: var(--text-2); cursor: pointer; }
+.mgr-suggest-disp-btn + .mgr-suggest-disp-btn { border-left: 1px solid var(--line-2); }
+.mgr-suggest-disp-approve.is-on { background: var(--ok-soft); color: var(--ok); }
+.mgr-suggest-disp-reject.is-on  { background: var(--bad-soft); color: var(--bad); }
+.mgr-suggest-disp-btn:hover:not(.is-on) { background: var(--surface-2); }
+
+/* Change-request description (read-only reference) inside a row/card */
+.mgr-suggest-row-desc {
+    margin: 6px 0 2px;
+    max-height: 200px;
+    overflow: auto;
+    padding: 8px 10px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-2);
+    background: var(--surface);
+    font-size: var(--fs-13);
+}
+.mgr-suggest-row-desc:empty { display: none; }
+
+/* "My suggestions" outcome badges */
+.mgr-sug-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+.mgr-sug-badge--pending  { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
+.mgr-sug-badge--approved { color: var(--ok);   background: var(--ok-soft);   border-color: var(--ok-line); }
+.mgr-sug-badge--rejected { color: var(--bad);  background: var(--bad-soft);  border-color: var(--bad-line); }
 .mgr-change-card {
     border: 1px solid var(--cyfor-border, var(--surface));
     border-radius: 10px;

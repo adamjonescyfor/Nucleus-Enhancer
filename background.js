@@ -587,7 +587,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     if (message.action === 'changes.mine') {      // the user's own suggestions
         if (!self.SfChanges) { sendResponse({ ok: true, available: false, requests: [] }); return true; }
-        self.SfChanges.listMine().then(sendResponse).catch(() => sendResponse({ ok: true, available: false, requests: [] }));
+        self.SfChanges.listMine().then(sendResponse).catch((e) => sendResponse({ ok: false, error: (e && e.message) || 'Failed to load your suggestions' }));
         return true;
     }
     if (message.action === 'changes.listPending') {  // admins only
@@ -854,6 +854,7 @@ async function sfTemplateCrud(op, payload) {
         if (map.versionLabel)  createBody[map.versionLabel]  = payload.versionLabel || '1.0';
         if (map.status)        createBody[map.status]        = payload.status || 'Active';
         if (map.changeReason)  createBody[map.changeReason]  = payload.changeReason || 'Initial version';
+        if (map.requiresAck)   createBody[map.requiresAck]   = !!payload.requiresAck;
         if (map.documentId && payload.documentId)   createBody[map.documentId]    = payload.documentId;
         // UKAS dates are always populated (never blank): default effective=today,
         // review=effective + review period.
@@ -891,6 +892,7 @@ async function sfTemplateCrud(op, payload) {
         // Only write a change reason when one was supplied (content edits). A
         // metadata-only edit sends no reason and must not blank the existing one.
         if (map.changeReason && payload.changeReason) updateBody[map.changeReason] = payload.changeReason;
+        if (map.requiresAck) updateBody[map.requiresAck] = !!payload.requiresAck;
         // A new version becomes effective when it's saved; default to today and
         // recompute the review date so neither field is ever left blank.
         var updateEffective = payload.effectiveDate || todayIso();

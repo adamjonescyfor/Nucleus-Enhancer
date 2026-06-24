@@ -46,11 +46,17 @@ Cyfor.caseAlias = {
         var links = Cyfor.utils.querySelectorAllDeep(sel);
         if (!links.length) return;
 
+        // The record THIS page is showing (a case's own record page). Skip links that
+        // point to it — otherwise we'd annotate the breadcrumb and every related-list
+        // quick link (Files, Case Expenses, …), which all reference the current case.
+        var currentId = this._caseId(location.href);
+
         var toFetch = [], seen = {};
         for (var i = 0; i < links.length; i++) {
             var a = links[i];
             var id = this._caseId(a.getAttribute('href'));
             if (!id) continue;
+            if (currentId && id === currentId) continue;                       // the page's own record
             if (this._keyPrefix && id.slice(0, 3) !== this._keyPrefix) continue; // not a Forensic Case
             var cached = this._cache[id];
             if (cached !== undefined) {
@@ -90,18 +96,21 @@ Cyfor.caseAlias = {
         }
     },
 
-    // True if the project is already displayed elsewhere in the link's row (a
-    // "Project" column, as on Examiner Team / All). The case-name cell — which holds
-    // the link and our own annotation — is excluded, so we never match ourselves.
-    // Works regardless of how Lightning structures the column headers.
+    // True if the project is already displayed as its own column in the link's row (a
+    // dedicated "Project" column, as on Examiner Team / All). We match a cell whose
+    // WHOLE value is the project — not a substring — so a task Subject like
+    // "Rathlin - data copy" (which merely contains the alias) doesn't suppress it.
+    // The case-name cell (link + our own annotation) is excluded so we never match
+    // ourselves. Works regardless of how Lightning structures the column headers.
     _shownInRow(link, project) {
         var row = link.closest && link.closest('tr');
         if (!row) return false;                    // not a list row (e.g. a Task page) — always show
         var nameCell = link.closest('td, th');
+        var want = (project || '').replace(/\s+/g, ' ').trim();
         var cells = row.children;
         for (var i = 0; i < cells.length; i++) {
             if (cells[i] === nameCell) continue;   // skip the name cell (link + our span live here)
-            if ((cells[i].textContent || '').indexOf(project) !== -1) return true;
+            if ((cells[i].textContent || '').replace(/\s+/g, ' ').trim() === want) return true;
         }
         return false;
     },

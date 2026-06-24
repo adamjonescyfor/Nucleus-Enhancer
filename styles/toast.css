@@ -8,7 +8,10 @@
    ================================================== */
 #cyfor-toast-container {
     position: fixed;
-    bottom: 24px;
+    /* Top-centre (like Salesforce's own toasts) — keeps it clear of Lightning's
+       docked Save/Cancel bar, which sits across the bottom of edit forms. */
+    top: 56px;
+    bottom: auto;
     left: 50%;
     transform: translateX(-50%);
     z-index: var(--cyfor-z-toast);
@@ -38,9 +41,9 @@
     align-items: center;
     gap: 10px;
 
-    /* Entry animation state */
+    /* Entry animation state — slides down from above (top-anchored container) */
     opacity: 0;
-    transform: translateY(16px) scale(0.95);
+    transform: translateY(-16px) scale(0.95);
     transition:
         opacity var(--cyfor-transition-smooth),
         transform var(--cyfor-transition-smooth);
@@ -60,7 +63,7 @@
 /* Dismissing state */
 .cyfor-toast.dismissing {
     opacity: 0;
-    transform: translateY(12px) scale(0.96);
+    transform: translateY(-12px) scale(0.96);
     pointer-events: none;
 }
 
