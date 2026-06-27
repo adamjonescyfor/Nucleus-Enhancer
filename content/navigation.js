@@ -120,6 +120,24 @@ Cyfor.navigation = {
         return null;
     },
 
+    /** The per-staff admin case ("NAME - ADMINISTRATION") collects everything that
+     *  isn't case work — meetings, reviews, comms — so it has FAR more process entries
+     *  than any real case, too many to preload reliably. Detect it from the page/record
+     *  title and skip the full-list load (navigation still works on the visible rows). */
+    _isAdminCase() {
+        if (/\badministration\b/i.test(document.title || '')) return true;       // case record page
+        // A related-list "view all" page ("Processes · 300+ items") titles itself after
+        // the LIST, not the case — so read the parent case name from the breadcrumb.
+        try {
+            const crumbs = Cyfor.utils.querySelectorAllDeep(
+                '.slds-breadcrumb a, nav[aria-label="Breadcrumbs"] a');
+            for (const a of crumbs) {
+                if (/\badministration\b/i.test(a.textContent || '')) return true;
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    },
+
     /** A stable key for the list being shown (the parent record, or the list view). */
     _contextKey() {
         const rec = location.href.match(/\/lightning\/r\/[^/]+\/([a-zA-Z0-9]{15,18})\//);
@@ -160,6 +178,11 @@ Cyfor.navigation = {
      */
     _ensureList(table) {
         if (table.dataset.cyforNavLoaded) return;
+        if (this._isAdminCase()) {                 // too many entries to preload — skip it
+            table.dataset.cyforNavLoaded = '1';
+            Cyfor.log('nav', 'admin case — full-list preload skipped');
+            return;
+        }
         const key = this._contextKey();
         const cached = key ? this._listCache[key] : null;
         if (cached) {

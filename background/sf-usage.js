@@ -23,6 +23,12 @@ var USAGE_CONCEPTS = {
 // lifetime, and creating it in Salesforce gets picked up automatically.
 var resolvedMap = null;
 var unavailable = false;
+// Latched for the SERVICE-WORKER lifetime once a write is rejected for a STRUCTURAL
+// reason (the signed-in user has no Create on the object, or it's still "In Development")
+// — every later insert this session would fail identically, so we stop hammering it.
+// Transient errors (offline, 5xx) do NOT latch. Resets on SW restart, so fixing the
+// Salesforce permission "lights up" by itself without a reconnect.
+var cannotInsert = false;
 
 async function ctx() {
     var stored = await chrome.storage.local.get(['sfOAuthTokens', 'sfOAuthConfig']);
@@ -50,6 +56,12 @@ async function resolveUsageFields(c) {
 // write must not affect the user's insert in any way.
 async function pushUsage(entry) {
     try {
+        // Org-wide usage is logged by EVERY user (Create+Read is granted to all per
+        // docs/salesforce-usage-object.md) — that's the whole point of a cross-team
+        // adoption log. The write is fire-and-forget and can never affect the insert, so
+        // there is no per-user gating here. (The org-wide READ/listing stays admin-only.)
+        if (cannotInsert) return { ok: true, skipped: true };
+
         var c   = await ctx();
         var map = await resolveUsageFields(c);
         if (!map || !map.templateName) return { ok: true, skipped: true };
@@ -65,14 +77,19 @@ async function pushUsage(entry) {
             body:    JSON.stringify(body)
         });
         if (res.ok) { noteHealth(null); return { ok: true }; }
-        // Salesforce ACCEPTED the request but REJECTED the write (object read-only,
-        // "In Development", a validation rule, …). Capture a compact diagnostic so
-        // the manager can warn admins their org-wide log is silently dropping.
+        // Salesforce ACCEPTED the request but REJECTED the write (no Create permission,
+        // object read-only / "In Development", a validation rule, …). Capture a compact
+        // diagnostic so the manager can warn admins their org-wide log is silently
+        // dropping, and if the cause is STRUCTURAL (perms / not-insertable) latch
+        // cannotInsert so we don't retry a write that can't succeed this session.
         var code = '', message = '';
         try {
             var eb = await res.json();
             if (Array.isArray(eb) && eb[0]) { code = eb[0].errorCode || ''; message = eb[0].message || ''; }
         } catch (ignore) { /* non-JSON error body */ }
+        if (res.status === 403 || /INSUFFICIENT_ACCESS|CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|NOT_INSERTABLE/i.test(code)) {
+            cannotInsert = true;
+        }
         noteHealth({ status: res.status, code: code, message: message, ts: Date.now() });
         return { ok: true, rejected: true };
     } catch (e) {
