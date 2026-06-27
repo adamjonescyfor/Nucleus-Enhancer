@@ -275,7 +275,7 @@ COLS = ["co_id","co_area","co_feat","co_pri","co_pre","co_steps","co_exp","co_re
 # ── Sheet: Test Cases ──
 def sheet_cases():
     rows = []
-    rows.append(row([cell("CYFOR Nucleus Enhancer — Validation Results (v3.0.0)", "ce_title", colspan=11)]))
+    rows.append(row([cell("CYFOR Nucleus Enhancer — Validation Results (v1.0.0)", "ce_title", colspan=11)]))
     rows.append(row([cell(h, "ce_head") for h in HEADERS]))
     area = None
     counters = {}
