@@ -1498,7 +1498,15 @@ function reviewSnapshot() {
         var status = (t.status || '').toLowerCase();
         if (status === 'active') active++;
         if (status === 'draft') drafts++;
-        if (t.teamId) teams[t.teamId] = true;
+        // Count DISTINCT teams the templates are assigned to. Use the multi-team codes
+        // when present (a template can target several teams), else the single team —
+        // counting t.teamId alone collapsed everything to one (it's undefined for these
+        // records, so every template shared the single `undefined` key → always "1").
+        var tcodes = (t.teamCodes && t.teamCodes.length) ? t.teamCodes
+                   : (t.teamCode ? [t.teamCode]
+                   : (t.teamName ? [t.teamName]
+                   : (t.teamId ? [t.teamId] : [])));
+        tcodes.forEach(function (c) { teams[c] = true; });
         if (!t.reviewDueDate || status === 'superseded' || status === 'retired') return;
         var due = new Date(t.reviewDueDate + 'T00:00:00');
         if (isNaN(due.getTime())) return;
@@ -1526,12 +1534,14 @@ function renderStats() {
         { label: 'Active',    value: s.active,           tone: 'ok' },
         { label: 'Due ≤30d',  value: s.due30.length,     tone: s.due30.length ? 'warn' : '' },
         { label: 'Overdue',   value: s.overdue.length,   tone: s.overdue.length ? 'bad' : '' },
-        { label: 'Teams',     value: s.teamCount,        tone: '' }
+        { label: 'Teams',     value: s.teamCount,        tone: '',
+          title: 'Distinct teams your templates are assigned to (multi-team templates count once per team; Global templates aren’t a team).' }
     ];
     el.innerHTML = '';
     cards.forEach(function (c) {
         var card = document.createElement('div');
         card.className = 'mgr-stat' + (c.tone ? ' mgr-stat--' + c.tone : '');
+        if (c.title) card.title = c.title;
         var v = document.createElement('div'); v.className = 'mgr-stat-value'; v.textContent = c.value;
         var l = document.createElement('div'); l.className = 'mgr-stat-label'; l.textContent = c.label;
         card.appendChild(v); card.appendChild(l);

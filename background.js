@@ -619,6 +619,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // Fetch a single case's "Case Background" text by id — for the right-click that fills
+    // a Generated Material's Encryption Password from the password noted there. Read-only.
+    if (message.action === 'caseBackground.fetch') {
+        if (!self.SfCases || !self.SfCases.fetchCaseBackground) { sendResponse({ ok: true, text: '' }); return true; }
+        self.SfCases.fetchCaseBackground(message.caseId || '')
+            .then(sendResponse).catch(() => sendResponse({ ok: true, text: '' }));
+        return true;
+    }
+
     // Create a new template in Salesforce
     if (message.action === 'sfTemplates.create') {
         sfTemplateCrud('create', message.payload)
