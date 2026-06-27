@@ -68,6 +68,12 @@ CASES = [
  ("Right-click","Forensic Case lookup",M,"Forensic Case lookup field","Right-click","Opens lookup, picks latest real case; toast 'Forensic case set to …' (no glued date)"),
  ("Right-click","Zoom 100% reliability",H,"Browser at 100%","Right-click date & exhibit-type fields a few times","Works first time every time (re: the zoom root-cause)"),
  ("Right-click","Selectivity",M,"A non-target field","Right-click a plain text field","No quick-fill fires; native menu as normal"),
+ # ── Generated Material right-click ──
+ ("Generated Material","Exhibit Type from MG22 name",H,"New/Edit Generated Material whose Name contains MG22a or MG22B","Right-click the Exhibit Type picklist","Auto-selects 'MG22a SFR' / 'MG22B SFR' to match the name (case-insensitive); toast. Option labels are adjustable in content/datetime.js if your org words them differently"),
+ ("Generated Material","Status QA cycle",M,"Generated Material Status field","Right-click the Status field repeatedly","Steps Awaiting QA → QA Complete → Complete Awaiting Return → Returned, one per right-click, toast each step. The Exhibit/Process cycle (Awaiting Start→In Progress→Completed) is unaffected"),
+ ("Generated Material","Encryption Password from Case Background",H,"Generated Material with an Encryption Password field; the parent case's Case Background holds a password (e.g. 'Password: xxxx', 'Password-xxxx' or 'Password xxxx')","Right-click the Encryption Password field","Fills the password parsed from the case background; toast 'Encryption password set from case background'. 'No password found…' if there is none"),
+ ("Generated Material","Password — New from a case",M,"Create a Generated Material via a case's related-list 'New' (URL carries the case in backgroundContext)","Right-click Encryption Password","Resolves the parent case from the URL-encoded backgroundContext and fills the password — works even though the case page isn't directly visible / on another tab"),
+ ("Generated Material","Password — selectivity",L,"Case Background prose merely mentions the word 'password', not a labelled value","Right-click Encryption Password","Does NOT grab a stray word — the parser is line-anchored to a 'Password:' / 'Password ' line; leaves the field for manual entry"),
  # ── Template menu + insertion + variables + undo ──
  ("Templates","Button opens menu",H,"Notes/Forensic Strategy field","Click 📄 (single click, even unfocused)","Menu opens first click; title shows count"),
  ("Templates","Alt+T",M,"Active editor","Press Alt+T","Template menu opens on the first visible editor"),
@@ -91,6 +97,7 @@ CASES = [
  ("Navigation","Revisit uses cache",L,"A case opened before (count unchanged)","Re-open the same case; click a process","Instant, no dim (served from cache); count still correct. Add a process then revisit → it reloads"),
  # ── Case project / alias ──
  ("Case alias","Shown where SF doesn't",M,"A forensic case that has a Project/alias","Open a Task related to it; open the Recently Viewed cases list","The project alias appears next to the case (e.g. 'CY-26-0542 · Tioga'); cases with no alias show nothing"),
+ ("Case alias","Tasks split-view team lists",H,"A Tasks list filtered by team (e.g. Examiner Team Leicester / Manchester) with CY cases that have an alias","Open the list and look at the Related To column","EVERY CY case shows its alias next to the number IMMEDIATELY (e.g. 'CY-26-0734 · Albarola'), with no clicking in/out and no refresh; LP/DC/DP cases with no alias stay blank. (These are legacy-Aura data-recordid links rendered in zero-width force-lookup cells — the alias must still be matched AND visible)"),
  ("Case alias","Not duplicated",L,"A list that already has a Project column (Examiner Team / All)","Open it","No extra alias added — the existing Project column is left alone"),
  ("Case alias","Live toggle",L,"Aliases showing on a page","Turn 'Show Case Project / Alias' off, then on — WITHOUT refreshing","Off = aliases vanish immediately; On = they reappear immediately. No page refresh needed. (If the org has no Project field, the feature is silently inert)"),
  # ── Photo download ──
@@ -103,6 +110,7 @@ CASES = [
  ("Case report","Sanitisation",H,"Report generated","Open the HTML; check content","Commercially-sensitive content stripped; case data correct; Save-as-PDF view works"),
  # ── Manager views / list ──
  ("Manager","Views present",M,"Admin, manager open","Click Templates / Reviews / Usage / About","Each view loads; correct subtitle; 'At a glance' tiles (Active/Due ≤30/Overdue/Teams)"),
+ ("Manager","Teams tile count",L,"Templates spanning several teams (DF, eDiscovery, Quality…)","Templates view → read the 'Teams' tile and hover it","Counts the DISTINCT teams the templates cover (multi-team aware) — not '1'; the tooltip explains it counts distinct assigned teams (Global isn't a team)"),
  ("Manager","List columns & badges",M,"Templates view","Inspect the table","Headers Doc ID/Name/Version/Status/Category/Scope/Review Due/Actions; status & scope badges correct; own team highlighted"),
  ("Manager","Search & sort",M,"Several templates","Use filter; click sortable headers","Filters by name/category/team; sort indicators work"),
  ("Manager","Review Due formatting",M,"Templates with review dates","Inspect Review Due","British DD/MM/YYYY; overdue red, ≤30d amber, with tooltips"),
@@ -141,6 +149,7 @@ CASES = [
  ("Usage","Record link capture",M,"Insert in a record page vs a list pop-up","Compare entries","Record page inserts carry a record link; list pop-up inserts don't (as documented)"),
  ("Usage","Filters + sort",L,"Several entries","Use search + template/user filters + sortable headers","Filter and sort work; British formats preserved"),
  ("Usage","Org-wide (if object exists)",L,"Usage object deployed","Admin → Usage","Switches to org-wide; warning banner if writes rejected (object 'In Development')"),
+ ("Usage","Org-wide records EVERY user",H,"Usage object deployed; standard-user perm set has Create + FLS-Edit on the fields; admin perm set has 'View All'","A STANDARD (non-admin) user inserts a template, then an admin opens Manager → Usage","The standard user's insertion appears in the admin's org-wide log — not just admins' own activity (the previous admin-only write gate was removed). If Salesforce rejects the write the admin sees the banner; logging resumes automatically once perms/Deployment Status are fixed (no rebuild)"),
  # ── Read-only mode ──
  ("Read-only","Non-admin viewer",H,"Ordinary member login","Open Manager","Read-only: no New/Edit/Delete, no Reviews tab; View + History only; correct subtitle"),
  ("Read-only","Scope correctness",H,"Member of team DF","Browse templates","Sees DF active templates + Global only; nothing from other teams"),
@@ -165,6 +174,7 @@ CASES = [
  ("Acknowledgements","Re-ack on new version",M,"Already acknowledged a controlled template","Admin publishes a new version; re-sync","Shows outstanding again — the old acknowledgement no longer matches the current version"),
  ("Acknowledgements","Admin matrix",M,"Admin; some acknowledgements recorded","Manager → Acknowledgements tab","Per controlled template: acked/total + %, status, and the OUTSTANDING members' names — scoped to the template's assigned team(s)"),
  ("Acknowledgements","Outstanding nudge",L,"Outstanding controlled templates for you","Trigger a background sync (SF tab open)","At most one browser notification per day; clicking it opens the manager"),
+ ("Acknowledgements","Not-yet-enabled message",L,"Ack object not deployed / In Development, or the user lacks Create on it","Click 'I have read & understood vX'","Friendly, actionable message that acknowledgements aren't switched on yet (a template admin must finish setup) — NOT a raw 'entity type cannot be inserted' error"),
  # ── Suggest-an-edit (change-requests) ──
  ("Suggestions","Member suggests an edit",M,"Member (read-only viewer)","Click 'Suggest edit' on a template; change the text + add a reason; Send","Confirmation shown; a NucleusTemplateChangeRequest__c (Pending) is created by you. Template itself is unchanged"),
  ("Suggestions","Admin sees pending",M,"Admin; a suggestion exists","Open the manager","'Suggestions' tab appears with a count badge; the suggestion is listed with submitter + reason"),
@@ -177,6 +187,7 @@ CASES = [
  ("UX","British spelling",L,"UI text","Scan labels (e.g. 'centre')","British spellings; consistent terminology"),
  ("UX","Copy accuracy",M,"All toasts/labels","Cross-check against actions","Wording matches behaviour; no stale strings"),
  ("UX","Empty states",L,"No data conditions","View empty list/usage/reviews","Helpful empty-state messages, not blank panels"),
+ ("UX","Toast clears Save/Cancel",M,"Trigger a toast inside a modal with a Save/Cancel bar (e.g. right-click a date in 'New Process')","Watch where the toast appears","Toast sits near the bottom but ABOVE the Save/Cancel buttons — never covering them, whether a floating modal footer or the inline docked footer"),
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

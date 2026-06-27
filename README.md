@@ -42,6 +42,7 @@ Faster casework, consistent reporting, and centrally‑managed templates — rig
 | ☁️ | **Official templates** | Your team's approved templates (badged **Official**) sync down automatically — they can't be overridden by personal uploads. You can still load your own `.txt` templates alongside. |
 | ⭐ | **Pins, recents & variables** | Pin favourites (☆ in the popup → ★ first in every menu); recently‑used float to the top; templates auto‑fill `{{date}}`, `{{time}}`, `{{dateTime}}`, `{{examiner}}`, `{{teamName}}`, `{{caseRef}}`. |
 | 🕓 | **Right‑click quick‑fill** | Right‑click any date or time field for *now*; **Completed By / Sealed By / Conducted By / Assigned Staff** for *you*; **Exhibit Type** to auto‑pick from the exhibit name (SIM / memory / USB / drive); and a **Forensic Case** lookup to grab the latest case. |
+| 🔐 | **Generated Material quick‑fill** | On a Generated Material, right‑click the **Status** to step the QA workflow (Awaiting QA → QA Complete → Complete Awaiting Return → Returned), the **Exhibit Type** to auto‑match an *MG22a / MG22B* name, and the **Encryption Password** to pull the password straight from the case's **Case Background** field. |
 | 🧭 | **Record navigation** | **Alt+← / Alt+→** (or the on‑page arrows) move between Exhibit Process records in list order. |
 | 🏷️ | **Case project / alias** | A forensic case's **project (alias)** is shown next to it where Salesforce doesn't — Task pages, **Recently Viewed**, and any list without a Project column. |
 | 📝 | **Notes formatting** | Notes columns in list views are expanded into readable, structured blocks automatically. |
@@ -73,7 +74,7 @@ Everything lives in **Salesforce** — the manager is just a faster window onto 
 - **Version control** — minor/major bumps **only when content changes** (status/team/date edits don't create a version), a status lifecycle (Draft → Active → Under Review → Superseded → Retired), effective & review‑due dates, and a change reason for the audit trail.
 - **History & diff** — browse snapshots, compare any two versions side‑by‑side, filter, export to CSV.
 - **Reviews** — everything overdue or due within 30/60 days, surfaced on the dashboard and sidebar.
-- **Usage** — an **org‑wide** insertion log (which templates are used, by whom, and where), backed by a per‑device local log.
+- **Usage** — an **org‑wide** insertion log (which templates are used, by whom, and where) that records **every connected user's** insertions, backed by a per‑device local log. (Requires Create + field‑level security on `NucleusTemplateUsage__c` for ordinary users, and "View All" for admins — see the [admin guide](docs/salesforce-admin-guide.md).)
 - **Read‑acknowledgement (QMS)** — flag templates as **controlled documents**; analysts sign off "read & understood" per version, an **Acknowledgements** matrix shows who's outstanding per team, and a new version re‑opens the requirement. Built for UKAS / ISO 17025 evidence.
 - **Suggestions** — analysts can propose edits; you review each in a **Suggestions** tab with a side‑by‑side **diff**, then **Apply** (opens it in the editor prefilled, so you finalise formatting and Save a normal versioned update) or **Reject**.
 
@@ -160,7 +161,7 @@ Security was a first‑class concern throughout — built in **defence‑in‑de
 
 The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
-**Recently shipped:** bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix) · **suggest‑an‑edit** (analysts propose template changes; admins review with a diff and Apply/Reject).
+**Recently shipped:** **Generated Material right‑click quick‑fill** (status QA cycle · MG22a/MG22B exhibit type · encryption password from Case Background) · org‑wide usage now records **every** user's insertions · case alias on the team‑filtered **Tasks** lists · bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix) · **suggest‑an‑edit** (analysts propose template changes; admins review with a diff and Apply/Reject).
 
 **Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · `manager.js` modularisation (internal code tidy‑up, no user‑facing change).
 
