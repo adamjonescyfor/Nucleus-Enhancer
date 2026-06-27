@@ -6,7 +6,7 @@
 
 Faster casework, consistent reporting, and centrally‑managed templates — right inside Nucleus.
 
-![Version](https://img.shields.io/badge/version-3.0.0-0e9aa7?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.0-0e9aa7?style=for-the-badge)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-0b2a3a?style=for-the-badge)
 ![Chrome](https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![Salesforce](https://img.shields.io/badge/Salesforce-OAuth%202.0-00A1E0?style=for-the-badge&logo=salesforce&logoColor=white)
