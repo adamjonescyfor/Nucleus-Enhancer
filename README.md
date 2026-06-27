@@ -71,7 +71,7 @@ Everything lives in **Salesforce** — the manager is just a faster window onto 
 **Template admins** get the full dashboard:
 - **Create / edit / clone / delete** any team's templates and **assign** them to a team, **several teams**, or **Global**. *Clone* copies an existing template into a new **Draft**.
 - **Rich‑text editing** — a full formatting toolbar (fonts, sizes, colour, bold/italic/underline, lists, indent, alignment, links, images), paste straight from Word, a live readout of the formatting at the cursor, and a character counter against Salesforce's field limit. Templates carry their formatting through into the Notes box on insert.
-- **Version control** — minor/major bumps **only when content changes** (status/team/date edits don't create a version), a status lifecycle (Draft → Active → Under Review → Superseded → Retired), effective & review‑due dates, and a change reason for the audit trail.
+- **Version control** — minor/major bumps when the **content changes or the template is renamed** (status/team/date edits don't create a version), a status lifecycle (Draft → Active → Under Review → Superseded → Retired), effective & review‑due dates, and a change reason for the audit trail.
 - **History & diff** — browse snapshots, compare any two versions side‑by‑side, filter, export to CSV.
 - **Reviews** — everything overdue or due within 30/60 days, surfaced on the dashboard and sidebar.
 - **Usage** — an **org‑wide** insertion log (which templates are used, by whom, and where) that records **every connected user's** insertions, backed by a per‑device local log. (Requires Create + field‑level security on `NucleusTemplateUsage__c` for ordinary users, and "View All" for admins — see the [admin guide](docs/salesforce-admin-guide.md).)

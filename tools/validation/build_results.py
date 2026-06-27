@@ -119,6 +119,7 @@ CASES = [
  ("Manager edit","Create template",H,"Admin","New Template → fill → Save to Salesforce","Saved; appears in list; effective/review dates British; v1.0"),
  ("Manager edit","Edit content → version bump",H,"Existing template","Change CONTENT, pick minor/major, give reason, save","Version bumps; reason required; new history snapshot"),
  ("Manager edit","Metadata-only edit",M,"Existing template","Change only status/team/date, save","No version bump; no reason required; no new snapshot"),
+ ("Manager edit","Rename → version bump",M,"Existing template","Change ONLY the Name; pick minor/major; give a reason; save","Treated like a content change — version bumps, reason required, a new history snapshot is created. Status/team/date-only edits still don’t bump."),
  ("Manager edit","Clone as draft",M,"Existing template","Clone","Opens new editor, status Draft, name '(Copy)', reason prefilled"),
  ("Manager edit","Delete with history",M,"Template with versions","Delete → confirm","Child versions removed first, then template; clear messaging"),
  ("Manager edit","Delete hidden without permission",M,"Admin whose Salesforce DELETE permission has been removed (e.g. at go-live)","Open Manager templates list + bulk bar","No Delete buttons appear (row or bulk) — gated on the real Salesforce permission, not just the IsAdmin flag; reload + sync after the permission change"),

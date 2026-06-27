@@ -45,8 +45,8 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-editor-save').addEventListener('click', saveTemplate);
     document.getElementById('btn-editor-cancel').addEventListener('click', closeEditor);
 
-    // Only a CONTENT change creates a new version (matching the Salesforce Flow).
-    // Re-evaluate the version/reason UI live as the body or bump option changes.
+    // A CONTENT change or a RENAME creates a new version (matching the Salesforce Flow).
+    // Re-evaluate the version/reason UI live as the body, name or bump option changes.
     var contentEl = document.getElementById('mgr-content');
     if (contentEl) contentEl.addEventListener('input', function () { updateEditorVersionUI(); updateContentCount(); });
     var nameEl = document.getElementById('mgr-name');
@@ -1747,7 +1747,7 @@ function openEditEditor(name) {
     // the version preview change as you edit — updateEditorVersionUI() keeps those live.
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
     var editHint = document.getElementById('mgr-change-reason-hint');
-    if (editHint) editHint.textContent = '(required only when you change the content — status, team & date edits don’t create a new version)';
+    if (editHint) editHint.textContent = '(required when you change the content or rename the template — status, team & date edits don’t create a new version)';
     updateEditorVersionUI();
 
     syncCustomSelect('mgr-status');
@@ -2011,16 +2011,17 @@ function updateEditorVersionUI() {
     if (!currentEditId) return;
     var changed     = getContentHtml() !== editorOriginalContent;
     var nameChanged = ((document.getElementById('mgr-name').value || '').trim() !== editorOriginalName);
+    var bump        = changed || nameChanged;   // a rename is a versioned change too
     var bumpWrap    = document.getElementById('mgr-version-bump');
     var versionDisp = document.getElementById('mgr-version-display');
     var reasonReq   = document.getElementById('mgr-change-reason-req');
 
-    // The version bump is for CONTENT changes only; a reason is ALSO required for a
-    // rename (audit trail), but a rename alone doesn't bump the version number.
-    bumpWrap.style.display = changed ? '' : 'none';
-    if (reasonReq) reasonReq.style.display = (changed || nameChanged) ? '' : 'none';
+    // A content change OR a rename creates a new version (minor/major choice) and needs
+    // a reason. Metadata-only edits (status/team/dates) stay version- and reason-free.
+    bumpWrap.style.display = bump ? '' : 'none';
+    if (reasonReq) reasonReq.style.display = bump ? '' : 'none';
 
-    if (changed) {
+    if (bump) {
         var bumpInput = document.querySelector('input[name="version-bump"]:checked');
         var newV = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
         versionDisp.textContent = 'v' + currentEditVersion + ' → v' + newV;
@@ -2159,10 +2160,11 @@ function saveTemplate() {
     var action, payload;
 
     if (currentEditId) {
-        // Bump the version ONLY when content changed; a metadata-only edit keeps
-        // the current version (so the Flow doesn't snapshot and history stays clean).
+        // Bump the version when the content changed OR the template was renamed; a
+        // metadata-only edit (status/team/dates) keeps the current version so the Flow
+        // doesn't snapshot and history stays clean.
         var newVersion = currentEditVersion;
-        if (contentChanged) {
+        if (contentChanged || nameChanged) {
             var bumpInput = document.querySelector('input[name="version-bump"]:checked');
             newVersion = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
         }
