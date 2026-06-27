@@ -20,8 +20,8 @@ Who/when come from the standard **Created By / Created Date** — no custom user
 
 ## Permissions
 
-- **All extension users:** Create + Read. **No Edit, no Delete** (it's an audit log).
-- Template admins additionally need Read on all records ("View All" on the object) so the manager's org-wide Usage view shows everyone's insertions.
+- **All extension users:** Create + Read on the object, **plus editable field-level security** on `Template_Name__c`, `Record_Id__c`, `Record_URL__c`. **No Edit, no Delete** (it's an audit log). ⚠️ Object Create *without* FLS-edit on the fields makes the describe report `createable: false` and every insert fails with `CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY` — the log silently records nothing for that user. The extension writes a record for **every** connected user, so grant this to all analysts, not just admins.
+- Template admins additionally need Read on all records ("View All" on the object) so the manager's org-wide Usage view shows everyone's insertions (with the default Private OWD, an admin without View All only sees rows they created themselves — the "I can only see mine" symptom).
 
 ## How it behaves in the extension
 
