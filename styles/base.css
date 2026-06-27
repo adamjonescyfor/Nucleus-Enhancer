@@ -178,11 +178,21 @@
    doesn't already show the Project column. Muted so it reads as a secondary
    annotation, not part of the (blue) record link. */
 .cyfor-case-alias {
+    display: inline-block;       /* lives inside the <a>: size to own content, escape the
+                                    zero-width cell chain, and don't inherit link underline */
     margin-left: 6px;
-    color: #6b7280;
-    font-size: 0.92em;
+    color: #6b7280 !important;   /* muted, not the link's blue */
+    /* MUST be rem, not em: the polymorphic "Related To" lookup cell sets font-size:0 on
+       its container, so an em-based size resolves to 0 and the alias renders invisible
+       (zero width) even though its text is in the DOM. rem is relative to the root, which
+       is never 0. line-height/font are pinned for the same reason. */
+    font-size: 0.78rem !important;
+    line-height: normal !important;
     font-weight: 400;
     white-space: nowrap;
+    text-decoration: none;
+    vertical-align: baseline;
+    flex: 0 0 auto;              /* belt-and-braces if it ever sits in a flex row */
 }
 .cyfor-case-alias::before {
     content: "\00b7\00a0";   /* "· " */
