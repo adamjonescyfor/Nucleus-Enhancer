@@ -39,6 +39,41 @@ Cyfor.toast = {
         return this._container;
     },
 
+    // Lift the toast clear of whatever Save/Cancel bar is on screen. A Lightning modal
+    // footer FLOATS above the viewport bottom, so a fixed CSS offset can't reliably clear
+    // it — we measure the bar and park the toast just above it. No bar → CSS default.
+    _positionContainer() {
+        if (!this._container) return;
+        const bar = this._findActionBar();
+        if (bar) {
+            const r = bar.getBoundingClientRect();
+            if (r.height && r.top > 0) {
+                this._container.style.bottom = Math.max(16, (window.innerHeight - r.top) + 12) + 'px';
+                return;
+            }
+        }
+        this._container.style.bottom = ''; // revert to the stylesheet default (bottom: 84px)
+    },
+
+    // The on-screen Save/Cancel bar: a modal footer, or the inline docked edit-actions
+    // footer. Returns the lowest VISIBLE one — the bar the toast actually has to clear.
+    _findActionBar() {
+        const sel = '.slds-modal__footer, .slds-docked-form-footer, .forceRecordEditActions,'
+                  + ' records-record-edit-actions, runtime_platform_actions-action-renderer';
+        let bars = [];
+        try { bars = Cyfor.utils.querySelectorAllDeep(sel, document.body, 12); } catch (e) { return null; }
+        const visible = (el) => {
+            const r = el.getBoundingClientRect();
+            if (r.height <= 4 || r.top <= 0 || r.top >= window.innerHeight) return false;
+            const cs = getComputedStyle(el);
+            return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+        };
+        bars = bars.filter(visible);
+        if (!bars.length) return null;
+        bars.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+        return bars[bars.length - 1]; // lowest visible bar
+    },
+
     /**
      * Show a toast notification.
      *
@@ -121,6 +156,7 @@ Cyfor.toast = {
 
         container.appendChild(toast);
         this._activeToast = toast;
+        this._positionContainer(); // sit clear of any on-screen Save/Cancel bar
 
         // Animate in — double rAF ensures the initial state is painted first
         requestAnimationFrame(() => {

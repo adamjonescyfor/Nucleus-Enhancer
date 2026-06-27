@@ -225,11 +225,10 @@ Cyfor.templates = {
                 const item = document.createElement('div');
                 item.className = 'cyfor-template-item cyfor-template-item-recent';
                 if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
-                item.textContent = key;
+                this._fillItem(item, key);
                 item.title = `Insert "${key}"`;
                 item.setAttribute('role', 'menuitem');
                 item.setAttribute('tabindex', '0');
-                item.setAttribute('data-template-key', key);
                 item.addEventListener('mousedown', (e) => e.stopPropagation());
                 item.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -257,7 +256,7 @@ Cyfor.templates = {
             const search = document.createElement('input');
             search.type = 'text';
             search.className = 'cyfor-template-search';
-            search.placeholder = `Search ${keys.length} templates\u2026`;
+            search.placeholder = `Search ${keys.length} templates or categories\u2026`;
             search.setAttribute('contenteditable', 'false');
             search.setAttribute('role', 'searchbox');
 
@@ -266,15 +265,20 @@ Cyfor.templates = {
                 const qLow = q.toLowerCase();
                 menu.querySelectorAll('.cyfor-template-item[role="menuitem"]').forEach(item => {
                     const name = item.getAttribute('data-template-key') || '';
-                    const matches = name.toLowerCase().includes(qLow);
+                    const cat  = item.getAttribute('data-category') || '';
+                    // Match the name OR the category, so typing a category filters to it.
+                    const matches = !qLow || name.toLowerCase().includes(qLow) || cat.toLowerCase().includes(qLow);
                     item.style.display = matches ? '' : 'none';
-                    // Highlight match in item text (L-4)
-                    if (q && matches) {
-                        const escaped = Cyfor.utils.escapeHtml(name);
-                        const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
-                        item.innerHTML = escaped.replace(re, '<mark>$1</mark>');
-                    } else {
-                        item.textContent = name;
+                    // Highlight the query within the NAME (leaves the category badge intact).
+                    const nameEl = item.querySelector('.cyfor-template-item-name');
+                    if (nameEl) {
+                        if (q && name.toLowerCase().includes(qLow)) {
+                            const escaped = Cyfor.utils.escapeHtml(name);
+                            const re = new RegExp('(' + Cyfor.utils.escapeRegex(q) + ')', 'gi');
+                            nameEl.innerHTML = escaped.replace(re, '<mark>$1</mark>');
+                        } else {
+                            nameEl.textContent = name;
+                        }
                     }
                 });
             });
@@ -350,11 +354,10 @@ Cyfor.templates = {
             item.className = 'cyfor-template-item';
             if (this._isOfficial(key)) item.classList.add('cyfor-template-item--official');
             if (pinnedSet.has(key)) item.classList.add('cyfor-template-item--pinned');
-            item.textContent = key;
+            this._fillItem(item, key);
             item.title = `Insert "${key}"`;
             item.setAttribute('role', 'menuitem');
             item.setAttribute('tabindex', '0');
-            item.setAttribute('data-template-key', key);
 
             item.addEventListener('mousedown', (e) => e.stopPropagation());
             item.addEventListener('click', (e) => {
@@ -382,6 +385,34 @@ Cyfor.templates = {
         const preferred = keys.filter(k => /forensic\s*strategy/i.test(k));
         const rest = keys.filter(k => !/forensic\s*strategy/i.test(k));
         return [...preferred, ...rest];
+    },
+
+    // The category for a template — only official/synced templates carry one
+    // (Cyfor.config.sfRemoteTemplates is { name: { content, category } }); user uploads
+    // have none.
+    _categoryOf(key) {
+        const t = Cyfor.config.sfRemoteTemplates && Cyfor.config.sfRemoteTemplates[key];
+        return (t && t.category) ? String(t.category) : '';
+    },
+
+    // Fill a menu item with the template name + (if any) a muted category badge, plus the
+    // data attributes the search reads. Keeps name and category in separate spans so the
+    // search can highlight the name without wiping the badge.
+    _fillItem(item, key) {
+        item.textContent = '';
+        item.setAttribute('data-template-key', key);
+        const nameEl = document.createElement('span');
+        nameEl.className = 'cyfor-template-item-name';
+        nameEl.textContent = key;
+        item.appendChild(nameEl);
+        const cat = this._categoryOf(key);
+        if (cat) {
+            item.setAttribute('data-category', cat);
+            const catEl = document.createElement('span');
+            catEl.className = 'cyfor-template-item-cat';
+            catEl.textContent = cat;
+            item.appendChild(catEl);
+        }
     },
 
     /**
@@ -645,6 +676,14 @@ Cyfor.templates = {
                     const btn = document.querySelector('.cyfor-template-btn');
                     if (btn) btn.click();
                     sendResponse({ ok: !!btn });
+                    return true;
+                }
+                if (msg.action === 'undo-insertion') {
+                    // Alt+Z is a registered Chrome command, so the key is consumed by the
+                    // command and the keydown in undo.js never fires — the undo has to be
+                    // driven from this relayed message.
+                    if (Cyfor.undo) Cyfor.undo.undo();
+                    sendResponse({ ok: true });
                     return true;
                 }
             };

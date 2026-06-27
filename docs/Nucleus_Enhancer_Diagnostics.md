@@ -84,14 +84,19 @@ chrome.storage.sync.get(null, console.log);
 ```
 
 ### Force a fresh template sync
+Run in the **service-worker** console — call the module directly. (Do **not** use
+`chrome.runtime.sendMessage` here: from the worker it targets *other* contexts, not the
+worker's own listener, so it throws `Could not establish connection. Receiving end does
+not exist.` — harmless, but it does nothing. `sendMessage` only works from the popup or a
+content script.)
 ```js
-chrome.runtime.sendMessage({ action: 'sfTemplates.sync', forceRefresh: true }, console.log);
+self.SfTemplates.fetchRemoteTemplates(true).then(console.log);
 ```
 
 ### Re-check the admin/all-teams dataset (what the manager loads)
 ```js
-chrome.runtime.sendMessage({ action: 'sfTemplates.listAll' },
-  r => console.log(r.ok, 'fields:', r.fields, 'count:', Object.keys(r.templates||{}).length));
+self.SfTemplates.fetchAllTemplatesForAdmin()
+  .then(r => console.log(r.ok, 'fields:', r.fields, 'count:', Object.keys(r.templates||{}).length));
 ```
 `fields.teamsMulti` tells you whether the multi-team picklist was found; `fields.contentMaxLength` is the Content field's real limit.
 

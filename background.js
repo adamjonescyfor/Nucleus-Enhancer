@@ -224,6 +224,19 @@ async function runBackgroundSync() {
     } catch (e) { /* retry next cycle */ }
 }
 
+// Only nudge during sensible working hours (LOCAL time): mid-morning or mid-afternoon —
+// never too early, too late, or over lunch. Outside the window we skip WITHOUT recording
+// the day, so the once-a-day nudge still fires later when the user is active in-window.
+// (The nudges are already activity-gated — they only run when a Salesforce tab triggers
+// a sync — so this just times the single daily nudge sensibly.)
+function inNotifyWindow() {
+    var now = new Date();
+    var t = now.getHours() + now.getMinutes() / 60;
+    if (t < 9.5 || t >= 16.5) return false;     // not before 09:30 or after 16:30
+    if (t >= 12.5 && t < 13.5) return false;    // not over lunch (12:30–13:30)
+    return true;
+}
+
 // After a successful sync, nudge TEMPLATE ADMINS (once per day) when edit
 // suggestions are awaiting review. Dormant until NucleusTemplateChangeRequest__c
 // exists. Non-fatal.
@@ -236,6 +249,7 @@ async function maybeNotifyChanges() {
 
         var res = await self.SfChanges.listPending();
         if (!res || !res.available || !res.requests || !res.requests.length) return;
+        if (!inNotifyWindow()) return; // hold for sensible working hours
 
         var today = new Date(); today.setHours(0, 0, 0, 0);
         var day   = today.toISOString().slice(0, 10);
@@ -277,6 +291,7 @@ async function maybeNotifyAcks(templates) {
         (mine.acks || []).forEach(function (k) { acked[k] = true; });
         var outstanding = controlled.filter(function (t) { return !acked[t.id + '|' + t.versionLabel]; });
         if (!outstanding.length) return;
+        if (!inNotifyWindow()) return; // hold for sensible working hours
 
         var today = new Date(); today.setHours(0, 0, 0, 0);
         var day   = today.toISOString().slice(0, 10);
@@ -316,6 +331,7 @@ async function maybeNotifyReviews(templates) {
             else if (due <= in30) due30++;
         });
         if (!overdue && !due30) return;
+        if (!inNotifyWindow()) return; // hold for sensible working hours
 
         var day = today.toISOString().slice(0, 10);
         if (stored.reviewNotifyDay === day) return; // at most one nudge per day
@@ -616,6 +632,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!self.SfCases) { sendResponse({ ok: true, available: false, projects: {} }); return true; }
         self.SfCases.fetchProjects(message.ids || [])
             .then(sendResponse).catch(() => sendResponse({ ok: true, available: false, projects: {} }));
+        return true;
+    }
+
+    // Fetch a single case's "Case Background" text by id — for the right-click that fills
+    // a Generated Material's Encryption Password from the password noted there. Read-only.
+    if (message.action === 'caseBackground.fetch') {
+        if (!self.SfCases || !self.SfCases.fetchCaseBackground) { sendResponse({ ok: true, text: '' }); return true; }
+        self.SfCases.fetchCaseBackground(message.caseId || '')
+            .then(sendResponse).catch(() => sendResponse({ ok: true, text: '' }));
         return true;
     }
 

@@ -131,7 +131,10 @@ Cyfor.undo = {
 Cyfor.undo.init = function () {
     // Alt+Z keyboard shortcut (direct, no background relay needed)
     const keyHandler = (e) => {
-        if (e.altKey && e.key.toLowerCase() === 'z') {
+        // e.code is layout-independent; e.key can be a non-'z' character when Alt is held.
+        // (Only fires if Alt+Z ISN'T bound as a Chrome command — when it is, the command
+        // relay in templates.js drives the undo instead.)
+        if (e.altKey && (e.code === 'KeyZ' || (e.key && e.key.toLowerCase() === 'z'))) {
             e.preventDefault();
             e.stopPropagation();
             Cyfor.undo.undo();

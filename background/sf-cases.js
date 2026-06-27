@@ -84,6 +84,48 @@ async function fetchProjects(ids) {
     }
 }
 
-self.SfCases = { fetchProjects: fetchProjects };
+// Resolve the "Case Background" field once (describe-discovered): exact "Case Background"
+// label first, then any field carrying "case background", then a plain "background".
+// null = not resolved yet; '' = genuinely none. Cached per SW lifetime on a SUCCESSFUL
+// describe only (a transient failure throws and is retried next call).
+var bgField = null;
+
+async function resolveCaseBackgroundField(c) {
+    if (bgField !== null) return bgField;
+    var d = await self.SfUtils.describeObject(c.base, c.token, CASE_OBJ);
+    var fields = d.fields || [];
+    var byLabel = function (re) { return fields.filter(function (f) { return re.test((f.label || '').trim()); })[0]; };
+    var byAny   = function (re) { return fields.filter(function (f) { return re.test((f.label || '') + ' ' + (f.name || '')); })[0]; };
+    var f = byLabel(/^case background$/i) || byAny(/case\s*background/i) || byAny(/\bbackground\b/i);
+    bgField = f ? f.name : '';
+    return bgField;
+}
+
+// caseId → { ok, text } with the case's Case Background value (HTML for a rich-text field
+// — the caller strips tags). Read-only; never throws to the caller.
+async function fetchCaseBackground(caseId) {
+    if (!self.SfUtils.isValidSfId(caseId)) return { ok: true, text: '' };
+    var c;
+    try { c = await ctx(); } catch (e) { return { ok: false, error: e.message }; }
+    var field;
+    try { field = await resolveCaseBackgroundField(c); } catch (e) { return { ok: false, error: e.message }; }
+    if (!field) return { ok: true, text: '' };
+
+    var soql = 'SELECT ' + field + ' FROM ' + CASE_OBJ
+             + " WHERE Id = '" + self.SfUtils.soqlEscape(caseId) + "' LIMIT 1";
+    try {
+        var res = await fetch(c.base + '/query?q=' + encodeURIComponent(soql),
+            { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/json' } });
+        if (!res.ok) return { ok: true, text: '' };
+        var data = await res.json();
+        var rec  = (data.records || [])[0];
+        if (self.dlog) self.dlog('cases', 'case background', { id: caseId, field: field, hit: !!rec });
+        return { ok: true, text: String((rec && rec[field]) || '') };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+self.SfCases = { fetchProjects: fetchProjects, fetchCaseBackground: fetchCaseBackground };
 
 }());

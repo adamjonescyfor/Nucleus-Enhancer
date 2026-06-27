@@ -16,7 +16,7 @@ Cyfor.notes = {
         if (Cyfor.config.enableFormatNotes) {
             this._startScanning();
         } else {
-            this._stopScanning();
+            this._unformatAll();   // toggle OFF: strip our formatting NOW (no page refresh)
         }
     },
 
@@ -26,6 +26,26 @@ Cyfor.notes = {
 
     _stopScanning() {
         // interval removed — formatAll is now triggered by _onDomChange
+    },
+
+    // Undo the formatting in place: restore each cell to the raw note text we captured,
+    // so turning the toggle off clears the formatting immediately instead of needing a
+    // page refresh. (Salesforce re-renders the native cell on its own afterwards.)
+    _unformatAll() {
+        try {
+            const notes = Cyfor.utils.querySelectorAllDeep('.cyfor-note');
+            for (const note of notes) {
+                const cell = note.parentElement;
+                if (!cell) { note.remove(); continue; }
+                const raw = cell.getAttribute('data-cyfor-raw');
+                if (raw != null) {
+                    cell.textContent = raw;            // back to the plain concatenated text
+                    cell.removeAttribute('data-cyfor-raw');
+                } else {
+                    note.remove();
+                }
+            }
+        } catch (e) { /* best-effort */ }
     },
 
     /**

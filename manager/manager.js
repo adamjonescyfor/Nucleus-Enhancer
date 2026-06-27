@@ -7,6 +7,7 @@
 var currentEditId      = null;   // null = creating new, string = updating existing
 var currentEditVersion = null;   // version label of the template being edited
 var editorOriginalContent = ''; // content as opened — used to tell content vs metadata-only edits
+var editorOriginalName    = ''; // name as opened — a rename also requires a reason (audit trail)
 var currentHistoryName = null;   // template name whose history is being viewed
 var allTemplates       = {};     // name → { id, content, category, teamId, teamName, ...fields }
 var currentUser        = {};     // sfOAuthUser
@@ -44,10 +45,12 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-editor-save').addEventListener('click', saveTemplate);
     document.getElementById('btn-editor-cancel').addEventListener('click', closeEditor);
 
-    // Only a CONTENT change creates a new version (matching the Salesforce Flow).
-    // Re-evaluate the version/reason UI live as the body or bump option changes.
+    // A CONTENT change or a RENAME creates a new version (matching the Salesforce Flow).
+    // Re-evaluate the version/reason UI live as the body, name or bump option changes.
     var contentEl = document.getElementById('mgr-content');
     if (contentEl) contentEl.addEventListener('input', function () { updateEditorVersionUI(); updateContentCount(); });
+    var nameEl = document.getElementById('mgr-name');
+    if (nameEl) nameEl.addEventListener('input', updateEditorVersionUI); // a rename needs a reason too
     setupContentToolbar();
     document.querySelectorAll('input[name="version-bump"]').forEach(function (r) {
         r.addEventListener('change', updateEditorVersionUI);
@@ -501,7 +504,7 @@ function renderAckBanner() {
     if (!n) { el.style.display = 'none'; return; }
     el.style.display = '';
     el.textContent = '⚠ ' + n + ' controlled template' + (n === 1 ? '' : 's')
-        + ' need your “read & understood” acknowledgement — open one to read and confirm.';
+        + ' need your “read & understood” acknowledgement — click the Acknowledge button on each to confirm.';
 }
 
 // Acknowledge a template's current version (after the user has opened/read it).
@@ -1498,7 +1501,15 @@ function reviewSnapshot() {
         var status = (t.status || '').toLowerCase();
         if (status === 'active') active++;
         if (status === 'draft') drafts++;
-        if (t.teamId) teams[t.teamId] = true;
+        // Count DISTINCT teams the templates are assigned to. Use the multi-team codes
+        // when present (a template can target several teams), else the single team —
+        // counting t.teamId alone collapsed everything to one (it's undefined for these
+        // records, so every template shared the single `undefined` key → always "1").
+        var tcodes = (t.teamCodes && t.teamCodes.length) ? t.teamCodes
+                   : (t.teamCode ? [t.teamCode]
+                   : (t.teamName ? [t.teamName]
+                   : (t.teamId ? [t.teamId] : [])));
+        tcodes.forEach(function (c) { teams[c] = true; });
         if (!t.reviewDueDate || status === 'superseded' || status === 'retired') return;
         var due = new Date(t.reviewDueDate + 'T00:00:00');
         if (isNaN(due.getTime())) return;
@@ -1526,12 +1537,14 @@ function renderStats() {
         { label: 'Active',    value: s.active,           tone: 'ok' },
         { label: 'Due ≤30d',  value: s.due30.length,     tone: s.due30.length ? 'warn' : '' },
         { label: 'Overdue',   value: s.overdue.length,   tone: s.overdue.length ? 'bad' : '' },
-        { label: 'Teams',     value: s.teamCount,        tone: '' }
+        { label: 'Teams',     value: s.teamCount,        tone: '',
+          title: 'Distinct teams your templates are assigned to (multi-team templates count once per team; Global templates aren’t a team).' }
     ];
     el.innerHTML = '';
     cards.forEach(function (c) {
         var card = document.createElement('div');
         card.className = 'mgr-stat' + (c.tone ? ' mgr-stat--' + c.tone : '');
+        if (c.title) card.title = c.title;
         var v = document.createElement('div'); v.className = 'mgr-stat-value'; v.textContent = c.value;
         var l = document.createElement('div'); l.className = 'mgr-stat-label'; l.textContent = c.label;
         card.appendChild(v); card.appendChild(l);
@@ -1704,6 +1717,7 @@ function openEditEditor(name) {
     document.getElementById('mgr-category').value      = t.category      || '';
     setContentHtml(t.content || '');
     editorOriginalContent = getContentHtml();   // normalised baseline for change detection
+    editorOriginalName    = name;               // baseline for rename detection
     renderEditorSuggestions(t.id, null);        // show any pending suggestions for this template
     document.getElementById('mgr-change-reason').value = '';
     var editAck = document.getElementById('mgr-requires-ack'); if (editAck) editAck.checked = !!t.requiresAck;
@@ -1733,7 +1747,7 @@ function openEditEditor(name) {
     // the version preview change as you edit — updateEditorVersionUI() keeps those live.
     document.getElementById('mgr-version-display').textContent = 'v' + currentEditVersion;
     var editHint = document.getElementById('mgr-change-reason-hint');
-    if (editHint) editHint.textContent = '(required only when you change the content — status, team & date edits don’t create a new version)';
+    if (editHint) editHint.textContent = '(required when you change the content or rename the template — status, team & date edits don’t create a new version)';
     updateEditorVersionUI();
 
     syncCustomSelect('mgr-status');
@@ -1931,7 +1945,12 @@ function setupContentToolbar() {
     var effectiveColor = function (node) {
         var el = nodeOf(node);
         while (el && el !== editor && editor.contains(el)) {
-            if (el.style && el.style.color) return rgbToHex(window.getComputedStyle(el).color) || '#000000';
+            // An explicit colour is either an inline style OR a <font color> attribute —
+            // execCommand('foreColor') emits the latter, so checking only style.color
+            // missed it and the swatch reset to black right after picking a colour.
+            if ((el.style && el.style.color) || (el.tagName === 'FONT' && el.getAttribute('color'))) {
+                return rgbToHex(window.getComputedStyle(el).color) || '#000000';
+            }
             el = el.parentElement;
         }
         return '#000000';
@@ -1991,16 +2010,18 @@ function setupContentToolbar() {
 function updateEditorVersionUI() {
     if (!currentEditId) return;
     var changed     = getContentHtml() !== editorOriginalContent;
+    var nameChanged = ((document.getElementById('mgr-name').value || '').trim() !== editorOriginalName);
+    var bump        = changed || nameChanged;   // a rename is a versioned change too
     var bumpWrap    = document.getElementById('mgr-version-bump');
     var versionDisp = document.getElementById('mgr-version-display');
     var reasonReq   = document.getElementById('mgr-change-reason-req');
 
-    // The hint text stays constant (set in openEditEditor). Only the required
-    // asterisk and the version preview reflect whether the content has changed.
-    bumpWrap.style.display = changed ? '' : 'none';
-    if (reasonReq) reasonReq.style.display = changed ? '' : 'none';
+    // A content change OR a rename creates a new version (minor/major choice) and needs
+    // a reason. Metadata-only edits (status/team/dates) stay version- and reason-free.
+    bumpWrap.style.display = bump ? '' : 'none';
+    if (reasonReq) reasonReq.style.display = bump ? '' : 'none';
 
-    if (changed) {
+    if (bump) {
         var bumpInput = document.querySelector('input[name="version-bump"]:checked');
         var newV = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
         versionDisp.textContent = 'v' + currentEditVersion + ' → v' + newV;
@@ -2120,12 +2141,14 @@ function saveTemplate() {
     // (status/team/dates) with no request decisions save without a bump or reason.
     var isEdit         = !!currentEditId;
     var contentChanged = isEdit ? (content !== editorOriginalContent) : true;
+    var nameChanged    = isEdit && (name !== editorOriginalName);
     var actionedReq    = !!document.querySelector('#mgr-editor-suggestions .mgr-suggest-row[data-disposition="approve"], #mgr-editor-suggestions .mgr-suggest-row[data-disposition="reject"]');
-    if (!changeReason && (!isEdit || contentChanged || actionedReq)) {
+    if (!changeReason && (!isEdit || contentChanged || nameChanged || actionedReq)) {
         setEditorStatus(actionedReq
             ? 'A reason is required when you action a change request (for the audit trail).'
-            : (isEdit ? 'Reason is required when the content changes.'
-                      : 'Reason is required for the audit trail.'), 'error');
+            : (!isEdit ? 'Reason is required for the audit trail.'
+                       : (contentChanged ? 'Reason is required when the content changes.'
+                                         : 'Reason is required when you rename a template (for the audit trail).')), 'error');
         return;
     }
 
@@ -2137,10 +2160,11 @@ function saveTemplate() {
     var action, payload;
 
     if (currentEditId) {
-        // Bump the version ONLY when content changed; a metadata-only edit keeps
-        // the current version (so the Flow doesn't snapshot and history stays clean).
+        // Bump the version when the content changed OR the template was renamed; a
+        // metadata-only edit (status/team/dates) keeps the current version so the Flow
+        // doesn't snapshot and history stays clean.
         var newVersion = currentEditVersion;
-        if (contentChanged) {
+        if (contentChanged || nameChanged) {
             var bumpInput = document.querySelector('input[name="version-bump"]:checked');
             newVersion = bumpVersion(currentEditVersion, bumpInput ? bumpInput.value : 'minor');
         }
@@ -2153,7 +2177,7 @@ function saveTemplate() {
             category:     category,
             versionLabel: newVersion,
             status:       status,
-            changeReason: contentChanged ? changeReason : '',
+            changeReason: (contentChanged || nameChanged) ? changeReason : '',
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate,
             requiresAck:  requiresAck,

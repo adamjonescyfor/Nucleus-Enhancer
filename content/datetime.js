@@ -47,6 +47,7 @@ Cyfor.datetime = {
                 if (this._maybeCycleStatus(e, el)) return;
                 if (this._maybeFillExhibitType(e, el)) return;
                 if (this._maybeFillForensicCase(e, el)) return;
+                if (this._maybeFillEncryptionPassword(e, el)) return;
                 this._maybeFillUserLookup(e, el);
                 return;
             }
@@ -107,6 +108,35 @@ Cyfor.datetime = {
         'completed':      'In Progress'
     },
 
+    // Generated Material has its OWN QA workflow on right-click. Any non-QA value (blank,
+    // draft, in progress…) starts it at "Awaiting QA"; from there it steps QA → return →
+    // returned, then stops (null = leave the native menu). Labels must match the picklist
+    // options exactly — adjust here if your org words them differently.
+    _gmNextStatus(current) {
+        switch ((current || '').toLowerCase().trim()) {
+            case 'awaiting qa':              return 'QA Complete';
+            case 'qa complete':              return 'Complete Awaiting Return';
+            case 'complete awaiting return': return 'Returned';
+            case 'returned':                 return null;   // terminal
+            default:                         return 'Awaiting QA';
+        }
+    },
+
+    // True if the form/modal around `el` is a Generated Material record (so the QA cycle
+    // applies), vs an exhibit/process (which uses _STATUS_CYCLE). Detected by a heading
+    // or a label unique to Generated Material — it carries an "Encryption Password" field.
+    _isGeneratedMaterialForm(el) {
+        const scope = (el.closest && el.closest('.slds-modal, [role="dialog"], .forceRecordLayout, .slds-form, form')) || document;
+        const title = scope.querySelector('.slds-modal__title, .slds-page-header__title, h1, h2');
+        if (title && /generated material/i.test(title.textContent || '')) return true;
+        const labels = scope.querySelectorAll('label, .slds-form-element__label, .test-id__field-label');
+        for (let i = 0; i < labels.length; i++) {
+            const t = (labels[i].textContent || '').toLowerCase();
+            if (t.indexOf('encryption password') !== -1 || t.indexOf('generated material') !== -1) return true;
+        }
+        return false;
+    },
+
     /**
      * Right-click on a "Status" picklist cycles its value (see _STATUS_CYCLE) by
      * opening Salesforce's own dropdown and clicking the target option — the
@@ -124,8 +154,10 @@ Cyfor.datetime = {
         if (!trigger || trigger.disabled) return false;
 
         const current = (trigger.tagName === 'INPUT' ? trigger.value : trigger.textContent || '').trim();
-        const target = this._STATUS_CYCLE[current.toLowerCase()];
-        if (!target) return false; // other statuses: leave the native menu alone
+        const target = this._isGeneratedMaterialForm(host)
+            ? this._gmNextStatus(current)
+            : this._STATUS_CYCLE[current.toLowerCase()];
+        if (!target) return false; // terminal / unrecognised: leave the native menu alone
 
         e.preventDefault();
         trigger.click(); // open the picklist dropdown
@@ -221,6 +253,153 @@ Cyfor.datetime = {
         Cyfor.cleanup.setTimeout(tryPick, 120); // give the listbox a beat to render
     },
 
+    // ── Encryption password (Generated Material) ─────────────────────────────────
+    // Right-click an "Encryption Password" field: pull the password out of the case's
+    // "Case Background" field (where examiners note the VHDX / BitLocker password) and
+    // drop it in. Leaves the native menu untouched if there's nothing usable to insert.
+    _maybeFillEncryptionPassword(e, el) {
+        const host = el.closest && el.closest('.slds-form-element');
+        if (!host) return false;
+        const l = host.querySelector('label, .slds-form-element__label');
+        if (((l && l.textContent) || '').trim().toLowerCase().indexOf('encryption password') === -1) return false;
+        const input = host.querySelector('input, textarea');
+        if (!input || input.disabled || input.readOnly) return false;
+
+        const self = this;
+        const caseId = this._currentCaseId(host);
+
+        // PRIMARY: authoritative SOQL by case id — deterministic, and immune to the
+        // lazy-rendered record-page tabs that made the DOM read flaky ("worked then
+        // randomly stopped"). The page read is only a fallback when there's no case id.
+        if (caseId) {
+            e.preventDefault();
+            chrome.runtime.sendMessage({ action: 'caseBackground.fetch', caseId: caseId }, function (r) {
+                if (Cyfor.utils.isContextInvalid()) return;
+                let pw = (r && r.ok) ? self._extractPassword(r.text || '') : '';
+                if (!pw) pw = self._extractPassword(self._findCaseBackground()); // page fallback
+                Cyfor.log('rightclick', 'encryption password', { caseId, found: !!pw });
+                if (pw) self._setEncryptionPassword(input, host, pw);
+                else Cyfor.toast.info('No password found in the case background', 2000);
+            });
+            return true;
+        }
+
+        // No case id resolvable — last resort: read the case background straight off the
+        // page if it happens to be loaded.
+        const domPw = this._extractPassword(this._findCaseBackground());
+        if (domPw) { e.preventDefault(); this._setEncryptionPassword(input, host, domPw); return true; }
+        Cyfor.log('rightclick', 'encryption password', { caseId: null, found: false });
+        return false;
+    },
+
+    _setEncryptionPassword(input, host, pw) {
+        // Re-find the input if a re-render detached it while the query was in flight.
+        if (!input || !input.isConnected) input = (host && host.isConnected) ? host.querySelector('input, textarea') : null;
+        if (!input) return;
+        Cyfor.utils.setFieldValue(input, pw);
+        Cyfor.utils.flashElement(input);
+        Cyfor.toast.success('Encryption password set from case background', 1800);
+    },
+
+    // The Forensic Case id in context: the case's own record page URL (a New modal opened
+    // from the case keeps the case URL), else the Forensic Case lookup on the form itself
+    // (legacy data-recordid special-link or a /lightning/r/ link). A wrong id simply
+    // returns no background from the query, so we don't need to validate the object here.
+    _currentCaseId(host) {
+        // Decode first: a "New" overlay carries the parent case in the URL-ENCODED
+        // backgroundContext param (…%2Flightning%2Fr%2FForensic_Case__c%2F<id>…), not the
+        // path — a raw match misses it. Prefer the explicitly-named case, then any record.
+        let url = location.href || '';
+        try { url = decodeURIComponent(url); } catch (e) { /* keep raw on malformed escapes */ }
+        const m = url.match(/\/lightning\/r\/Forensic_Case__c\/([a-zA-Z0-9]{15,18})/)
+               || url.match(/\/lightning\/r\/([a-zA-Z0-9]{15,18})(?:\/|$|\?)/);
+        if (m && m[1]) return m[1];
+        const scope = (host && host.closest('.slds-modal, [role="dialog"], form')) || document;
+        const groups = scope.querySelectorAll('.slds-form-element');
+        for (let i = 0; i < groups.length; i++) {
+            const lab = ((groups[i].querySelector('label, .slds-form-element__label') || {}).textContent || '').trim().toLowerCase();
+            if (lab.indexOf('case') === -1 || lab.indexOf('case type') !== -1 || lab.indexOf('record type') !== -1) continue;
+            const link = groups[i].querySelector('[data-recordid], a[href*="/lightning/r/"]');
+            if (!link) continue;
+            const rid = link.getAttribute('data-recordid');
+            if (rid && /^[a-zA-Z0-9]{15,18}$/.test(rid)) return rid;
+            const hm = (link.getAttribute('href') || '').match(/\/lightning\/r\/(?:[^/]+\/)?([a-zA-Z0-9]{15,18})/);
+            if (hm && hm[1]) return hm[1];
+        }
+        return null;
+    },
+
+    // Read the case's "Case Background" text from the page — the case record page stays
+    // in the DOM even behind a Generated Material modal, so a document-wide search finds
+    // it. Find the LABEL first (shadow-piercing), then read the value beside it. The value
+    // must be read with _deepText: a rich-text field keeps its rendered value inside
+    // lightning-formatted-rich-text's shadow root, where plain .textContent reads empty.
+    _findCaseBackground() {
+        const labels = Cyfor.utils.querySelectorAllDeep(
+            '.slds-form-element__label, .test-id__field-label, label', document.body, 14);
+        for (let i = 0; i < labels.length; i++) {
+            if (((labels[i].textContent || '').trim().toLowerCase().indexOf('case background')) === -1) continue;
+            const group = labels[i].closest('.slds-form-element, records-record-layout-item') || labels[i].parentElement;
+            if (!group) continue;
+            const inp = group.querySelector('textarea, input');
+            if (inp && (inp.value || '').trim()) return inp.value;
+            const ctrl = group.querySelector('.slds-form-element__control') || group;
+            const txt = this._deepText(ctrl);
+            if (txt && txt.trim()) return txt;
+        }
+        return '';
+    },
+
+    // textContent that also reaches into shadow roots — lightning-formatted-rich-text
+    // renders its value in its shadow root, invisible to a plain .textContent read.
+    _deepText(root) {
+        if (!root) return '';
+        const direct = (root.textContent || '');
+        if (direct.trim()) return direct;
+        const nodes = Cyfor.utils.querySelectorAllDeep(
+            'p, span, div, li, lightning-formatted-text, lightning-formatted-rich-text', root, 8);
+        return nodes.map((n) => n.textContent || '').join('\n');
+    },
+
+    // Pull a password out of free-text case background. Handles "Password: X",
+    // "Password - X", "Password=X", "Pwd: X" etc. (however people separate it), trims
+    // trailing sentence punctuation, and falls back to the whole field when it's just a
+    // lone token (some examiners note only the password, with no label).
+    _extractPassword(text) {
+        if (!text) return '';
+        const lines = String(text)
+            .replace(/<\s*(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr)[^>]*>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/[\u00a0\u202f]/g, ' ')
+            .split(/\r?\n/);
+        // Never return the label word itself, or obvious "no value" words.
+        const tokenOf = (s) => {
+            const v = (s || '').trim().split(/\s+/)[0].replace(/[.,;:]+$/, '');
+            return /^(?:passwords?|passcodes?|pass|pwd|unknown|none|n\/?a|tbc|tbd|pending|required|protected)$/i.test(v) ? '' : v;
+        };
+        const KEYWORD = /^[\s>\-*]*(?:passwords?|passcodes?|pass\s*word|pwd)\b/i;
+        for (let i = 0; i < lines.length; i++) {
+            if (!KEYWORD.test(lines[i])) continue;
+            // Value on the SAME line, after an optional connector/separator.
+            const m = lines[i].match(/^[\s>\-*]*(?:passwords?|passcodes?|pass\s*word|pwd)\b\s*(?:is\b\s*)?[:\-=]?\s*(.+)$/i);
+            if (m && m[1]) { const v = tokenOf(m[1]); if (v) return v; }
+            // Otherwise the value is on the NEXT non-empty line ("Password:\n<value>").
+            for (let j = i + 1; j < lines.length; j++) {
+                if (!lines[j].trim()) continue;
+                const v = tokenOf(lines[j]);
+                if (v) return v;
+                break;
+            }
+        }
+        // No "Password" label anywhere — if the whole field is a lone token use it (but
+        // never the literal word "password").
+        const lone = String(text).replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+        if (lone && !/\s/.test(lone) && lone.length >= 4 && lone.length <= 64
+            && !/^(?:passwords?|passcodes?|pass|pwd)$/i.test(lone)) return lone;
+        return '';
+    },
+
     // Right-click in an "Exhibit Type" picklist: read the exhibit name/reference on
     // the SAME form and, if a token carries a known marker (e.g. "LM/01-SIM",
     // "…-SD"), auto-select the matching type WITHOUT the user typing anything.
@@ -231,7 +410,12 @@ Cyfor.datetime = {
         { marker: 'mem', search: 'Mem',  type: 'Memory Card' },
         { marker: 'sd',  search: 'Mem',  type: 'Memory Card' },  // SD card = memory card
         { marker: 'usb', search: 'USB',  type: 'USB Drive' },
-        { marker: 'hdd', search: 'Hard', type: 'Hard Drive' }
+        { marker: 'hdd', search: 'Hard', type: 'Hard Drive' },
+        // Generated Material: an MG22A / MG22B anywhere in the record name → that exhibit
+        // type. `contains` (not token-start) so it matches however the name is written.
+        // `search` surfaces both options; `type` is the EXACT option label to click.
+        { marker: 'mg22a', search: 'MG22', type: 'MG22a SFR', contains: true },
+        { marker: 'mg22b', search: 'MG22', type: 'MG22B SFR', contains: true }
     ],
 
     // True if any "/-_ space"-delimited token of the name starts with the marker,
@@ -239,6 +423,12 @@ Cyfor.datetime = {
     _nameHasMarker(name, marker) {
         return String(name || '').toLowerCase().split(/[^a-z0-9]+/)
             .some((t) => t.indexOf(marker) === 0);
+    },
+
+    // Plain substring match — for markers (MG22A/MG22B) that should hit wherever they
+    // appear in the name, not only at a token boundary.
+    _nameContains(name, marker) {
+        return String(name || '').toLowerCase().indexOf(marker) !== -1;
     },
 
     // Find the exhibit name/reference field on the same form and return its value.
@@ -346,7 +536,8 @@ Cyfor.datetime = {
 
         const name = this._findExhibitName(f.host);
         if (!name) return false;
-        const hit = this._EXHIBIT_TYPE_MARKERS.find((m) => this._nameHasMarker(name, m.marker));
+        const hit = this._EXHIBIT_TYPE_MARKERS.find((m) =>
+            m.contains ? this._nameContains(name, m.marker) : this._nameHasMarker(name, m.marker));
         Cyfor.log('rightclick', 'exhibit-type marker', { name, marker: hit && hit.marker, type: hit && hit.type });
         if (!hit) return false;
 

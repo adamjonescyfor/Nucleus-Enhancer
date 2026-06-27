@@ -130,9 +130,17 @@ async function acknowledge(templateId, versionLabel) {
             body:    JSON.stringify(body)
         });
         if (res.ok) { if (self.dlog) self.dlog('acks', 'acknowledged', { template: templateId, version: version }); return { ok: true }; }
-        var message = 'Acknowledgement could not be saved (' + res.status + ')';
-        try { var eb = await res.json(); if (Array.isArray(eb) && eb[0] && eb[0].message) message = eb[0].message; } catch (ignore) {}
-        return { ok: false, error: message };
+        // Distinguish a STRUCTURAL rejection (object still "In Development"/read-only, or
+        // the user has no Create) from a genuine save error. Salesforce's raw text for the
+        // former — "entity type cannot be inserted" — is meaningless to an analyst, so give
+        // an actionable message and tag it notReady (it's a setup gap, not their fault).
+        var code = '', raw = '';
+        try { var eb = await res.json(); if (Array.isArray(eb) && eb[0]) { code = eb[0].errorCode || ''; raw = eb[0].message || ''; } } catch (ignore) {}
+        if (res.status === 403 || /CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|INSUFFICIENT_ACCESS|NOT_INSERTABLE/i.test(code)) {
+            return { ok: false, notReady: true,
+                error: 'Acknowledgements aren’t switched on in Salesforce yet — a template admin needs to finish the setup. Nothing’s lost; try again once it’s enabled.' };
+        }
+        return { ok: false, error: raw || ('Acknowledgement could not be saved (' + res.status + ')') };
     } catch (e) {
         return { ok: false, error: e.message };
     }

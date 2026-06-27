@@ -16,6 +16,7 @@ var currentTableColumns = [];
 // Names of official (Salesforce-synced) templates — i.e. merged entries that
 // are not user uploads. (Historically called "built-in"; built-ins are gone.)
 var builtinTemplateKeys = [];
+var officialCategories  = {};   // name → category, so Quick Insert can show categories
 
 // Popup-side mirror of content/builtin-templates.js `Cyfor.getMergedTemplates`.
 // It can't call that function directly (it lives in the content-script world and
@@ -141,7 +142,7 @@ function loadSettings(settingsStore) {
 
     // Template data always from local storage
     chrome.storage.local.get(
-        ['nucleusTemplates', 'mergedTemplates', 'processMap'],
+        ['nucleusTemplates', 'mergedTemplates', 'processMap', 'sfRemoteTemplates'],
         function (result) {
             var r = result || {};
 
@@ -149,6 +150,11 @@ function loadSettings(settingsStore) {
             currentMergedTemplates = r.mergedTemplates || {};
             builtinTemplateKeys    = Object.keys(currentMergedTemplates).filter(function (k) {
                 return !currentUserTemplates.hasOwnProperty(k);
+            });
+            officialCategories = {};
+            var _srt = r.sfRemoteTemplates || {};
+            Object.keys(_srt).forEach(function (k) {
+                if (_srt[k] && _srt[k].category) officialCategories[k] = String(_srt[k].category);
             });
             var savedMap = r.processMap || {};
 
