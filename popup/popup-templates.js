@@ -10,6 +10,27 @@ var PROCESS_TYPES = [
     'Sense Check', 'Submission'
 ];
 
+// Case-insensitive A→Z — a plain .sort() puts ALL capitals before lowercase
+// ("Zebra" before "apple"), which reads as out-of-order to users.
+function cmpName(a, b) {
+    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+}
+
+// Official templates are stored as rich-text HTML; show them in the popup (preview +
+// read-only editor) as the plain text they become in the Notes box, not raw <font…>
+// markup. Only treats a value as rich text if it actually contains an HTML element, so a
+// plain template that merely mentions "<exhibit ref>" isn't mangled.
+function htmlToText(s) {
+    if (!s) return '';
+    if (!/<(?:p|div|span|font|br|ul|ol|li|h[1-6]|b|i|u|strong|em|a|table|tr|td)\b[^>]*>/i.test(s)) return String(s);
+    var html = String(s)
+        .replace(/<\s*(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr)[^>]*>/gi, '\n')
+        .replace(/<[^>]+>/g, '');
+    var ta = document.createElement('textarea');
+    ta.innerHTML = html;                          // decode &nbsp; &amp; etc.
+    return ta.value.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function initTemplates(savedMap) {
     bindTemplateEvents();
     renderMappings(PROCESS_TYPES, currentMergedTemplates, savedMap || {});
@@ -97,7 +118,7 @@ function bindTemplateEvents() {
     function openEditor(key, content) {
         editingKey = key;
         editorName.textContent = key;
-        editorArea.value = content;
+        editorArea.value = htmlToText(content);
         // Official (Salesforce-synced) templates are read-only here — they're
         // managed centrally in Salesforce and a local edit would be ignored.
         var official = isOfficialTemplate(key);
@@ -162,7 +183,7 @@ function bindTemplateEvents() {
     els.previewBtn.addEventListener('click', function () {
         var text = els.templateSelect.value;
         if (!text) return;
-        els.previewContent.textContent = text;
+        els.previewContent.textContent = htmlToText(text);
         els.previewSection.style.display = '';
         els.previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
@@ -285,7 +306,7 @@ function bindTemplateEvents() {
 
 function renderMappings(types, templates, savedMap) {
     els.mappingList.innerHTML = '';
-    var tplNames = Object.keys(templates).sort();
+    var tplNames = Object.keys(templates).sort(cmpName);
 
     if (tplNames.length === 0) {
         els.mappingList.innerHTML = '<div class="empty-state">Upload templates to configure mappings</div>';
@@ -369,7 +390,7 @@ function populateDropdown(templates) {
 
     if (!templates) return;
 
-    var keys = Object.keys(templates).sort();
+    var keys = Object.keys(templates).sort(cmpName);
     // Pinned templates first (★) — set via the Pin button.
     var pinned = pinnedTemplatesList.filter(function (k) { return templates[k] !== undefined; });
     if (pinned.length) {
@@ -382,7 +403,8 @@ function populateDropdown(templates) {
         var opt = document.createElement('option');
         opt.value = templates[k];
         opt.setAttribute('data-name', k);
-        opt.textContent = (pinned.indexOf(k) !== -1 ? '★ ' : '') + k
+        var catLabel = (typeof officialCategories !== 'undefined' && officialCategories[k]) ? '  ·  ' + officialCategories[k] : '';
+        opt.textContent = (pinned.indexOf(k) !== -1 ? '★ ' : '') + k + catLabel
             + (isOfficialTemplate(k) ? '  ·  Official' : '');
         if (k === keepName) opt.selected = true;
         fragment.appendChild(opt);

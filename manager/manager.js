@@ -7,6 +7,7 @@
 var currentEditId      = null;   // null = creating new, string = updating existing
 var currentEditVersion = null;   // version label of the template being edited
 var editorOriginalContent = ''; // content as opened — used to tell content vs metadata-only edits
+var editorOriginalName    = ''; // name as opened — a rename also requires a reason (audit trail)
 var currentHistoryName = null;   // template name whose history is being viewed
 var allTemplates       = {};     // name → { id, content, category, teamId, teamName, ...fields }
 var currentUser        = {};     // sfOAuthUser
@@ -48,6 +49,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Re-evaluate the version/reason UI live as the body or bump option changes.
     var contentEl = document.getElementById('mgr-content');
     if (contentEl) contentEl.addEventListener('input', function () { updateEditorVersionUI(); updateContentCount(); });
+    var nameEl = document.getElementById('mgr-name');
+    if (nameEl) nameEl.addEventListener('input', updateEditorVersionUI); // a rename needs a reason too
     setupContentToolbar();
     document.querySelectorAll('input[name="version-bump"]').forEach(function (r) {
         r.addEventListener('change', updateEditorVersionUI);
@@ -501,7 +504,7 @@ function renderAckBanner() {
     if (!n) { el.style.display = 'none'; return; }
     el.style.display = '';
     el.textContent = '⚠ ' + n + ' controlled template' + (n === 1 ? '' : 's')
-        + ' need your “read & understood” acknowledgement — open one to read and confirm.';
+        + ' need your “read & understood” acknowledgement — click the Acknowledge button on each to confirm.';
 }
 
 // Acknowledge a template's current version (after the user has opened/read it).
@@ -1714,6 +1717,7 @@ function openEditEditor(name) {
     document.getElementById('mgr-category').value      = t.category      || '';
     setContentHtml(t.content || '');
     editorOriginalContent = getContentHtml();   // normalised baseline for change detection
+    editorOriginalName    = name;               // baseline for rename detection
     renderEditorSuggestions(t.id, null);        // show any pending suggestions for this template
     document.getElementById('mgr-change-reason').value = '';
     var editAck = document.getElementById('mgr-requires-ack'); if (editAck) editAck.checked = !!t.requiresAck;
@@ -1941,7 +1945,12 @@ function setupContentToolbar() {
     var effectiveColor = function (node) {
         var el = nodeOf(node);
         while (el && el !== editor && editor.contains(el)) {
-            if (el.style && el.style.color) return rgbToHex(window.getComputedStyle(el).color) || '#000000';
+            // An explicit colour is either an inline style OR a <font color> attribute —
+            // execCommand('foreColor') emits the latter, so checking only style.color
+            // missed it and the swatch reset to black right after picking a colour.
+            if ((el.style && el.style.color) || (el.tagName === 'FONT' && el.getAttribute('color'))) {
+                return rgbToHex(window.getComputedStyle(el).color) || '#000000';
+            }
             el = el.parentElement;
         }
         return '#000000';
@@ -2001,14 +2010,15 @@ function setupContentToolbar() {
 function updateEditorVersionUI() {
     if (!currentEditId) return;
     var changed     = getContentHtml() !== editorOriginalContent;
+    var nameChanged = ((document.getElementById('mgr-name').value || '').trim() !== editorOriginalName);
     var bumpWrap    = document.getElementById('mgr-version-bump');
     var versionDisp = document.getElementById('mgr-version-display');
     var reasonReq   = document.getElementById('mgr-change-reason-req');
 
-    // The hint text stays constant (set in openEditEditor). Only the required
-    // asterisk and the version preview reflect whether the content has changed.
+    // The version bump is for CONTENT changes only; a reason is ALSO required for a
+    // rename (audit trail), but a rename alone doesn't bump the version number.
     bumpWrap.style.display = changed ? '' : 'none';
-    if (reasonReq) reasonReq.style.display = changed ? '' : 'none';
+    if (reasonReq) reasonReq.style.display = (changed || nameChanged) ? '' : 'none';
 
     if (changed) {
         var bumpInput = document.querySelector('input[name="version-bump"]:checked');
@@ -2130,12 +2140,14 @@ function saveTemplate() {
     // (status/team/dates) with no request decisions save without a bump or reason.
     var isEdit         = !!currentEditId;
     var contentChanged = isEdit ? (content !== editorOriginalContent) : true;
+    var nameChanged    = isEdit && (name !== editorOriginalName);
     var actionedReq    = !!document.querySelector('#mgr-editor-suggestions .mgr-suggest-row[data-disposition="approve"], #mgr-editor-suggestions .mgr-suggest-row[data-disposition="reject"]');
-    if (!changeReason && (!isEdit || contentChanged || actionedReq)) {
+    if (!changeReason && (!isEdit || contentChanged || nameChanged || actionedReq)) {
         setEditorStatus(actionedReq
             ? 'A reason is required when you action a change request (for the audit trail).'
-            : (isEdit ? 'Reason is required when the content changes.'
-                      : 'Reason is required for the audit trail.'), 'error');
+            : (!isEdit ? 'Reason is required for the audit trail.'
+                       : (contentChanged ? 'Reason is required when the content changes.'
+                                         : 'Reason is required when you rename a template (for the audit trail).')), 'error');
         return;
     }
 
@@ -2163,7 +2175,7 @@ function saveTemplate() {
             category:     category,
             versionLabel: newVersion,
             status:       status,
-            changeReason: contentChanged ? changeReason : '',
+            changeReason: (contentChanged || nameChanged) ? changeReason : '',
             effectiveDate: effectiveDate,
             reviewDueDate: reviewDueDate,
             requiresAck:  requiresAck,

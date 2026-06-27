@@ -313,7 +313,7 @@ def sheet_instructions(total):
     R.append(row([cell("Environment (record actuals)", "ce_h2", colspan=2)]))
     for k, v in [("Browser + version","Chrome ____ / Edge ____  (zoom 100%)"),("OS","Windows ____"),
                  ("Salesforce org / sandbox","____"),("Account & role","____ (admin / member / no-team)"),
-                 ("Extension version","3.0.0"),("Tester","____"),("Date","____")]:
+                 ("Extension version","1.0.0"),("Tester","____"),("Date","____")]:
         R.append(row([cell(k, "ce_lbl"), cell(v)]))
     cols = '<table:table-column table:style-name="co_area"/><table:table-column table:style-name="co_wide"/>'
     return f'<table:table table:name="Instructions">{cols}' + "".join(R) + '</table:table>'

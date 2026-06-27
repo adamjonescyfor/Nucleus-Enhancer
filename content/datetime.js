@@ -265,34 +265,31 @@ Cyfor.datetime = {
         const input = host.querySelector('input, textarea');
         if (!input || input.disabled || input.readOnly) return false;
 
-        // Fast path: case background already rendered on the page (case record open behind
-        // the form, on a tab that happens to be loaded).
-        const domPw = this._extractPassword(this._findCaseBackground());
-        if (domPw) {
+        const self = this;
+        const caseId = this._currentCaseId(host);
+
+        // PRIMARY: authoritative SOQL by case id — deterministic, and immune to the
+        // lazy-rendered record-page tabs that made the DOM read flaky ("worked then
+        // randomly stopped"). The page read is only a fallback when there's no case id.
+        if (caseId) {
             e.preventDefault();
-            this._setEncryptionPassword(input, host, domPw);
+            chrome.runtime.sendMessage({ action: 'caseBackground.fetch', caseId: caseId }, function (r) {
+                if (Cyfor.utils.isContextInvalid()) return;
+                let pw = (r && r.ok) ? self._extractPassword(r.text || '') : '';
+                if (!pw) pw = self._extractPassword(self._findCaseBackground()); // page fallback
+                Cyfor.log('rightclick', 'encryption password', { caseId, found: !!pw });
+                if (pw) self._setEncryptionPassword(input, host, pw);
+                else Cyfor.toast.info('No password found in the case background', 2000);
+            });
             return true;
         }
 
-        // Otherwise fetch it from Salesforce by case id. The case page often ISN'T usable
-        // from the DOM here — record-page tabs are lazy-rendered, and the standalone "New"
-        // form has no case page at all — so the id comes from the URL (case record open)
-        // or the form's Forensic Case lookup, and the background queries Case Background.
-        const caseId = this._currentCaseId(host);
-        Cyfor.log('rightclick', 'encryption password', { caseId, domHit: false });
-        if (!caseId) return false; // no case in context — leave the native menu
-
-        e.preventDefault();
-        const self = this;
-        chrome.runtime.sendMessage({ action: 'caseBackground.fetch', caseId: caseId }, function (r) {
-            if (Cyfor.utils.isContextInvalid()) return;
-            if (chrome.runtime.lastError || !r || !r.ok) { Cyfor.toast.info('Could not read the case background', 1800); return; }
-            const pw = self._extractPassword(r.text || '');
-            Cyfor.log('rightclick', 'encryption password (soql)', { caseId, found: !!pw });
-            if (pw) self._setEncryptionPassword(input, host, pw);
-            else Cyfor.toast.info('No password found in the case background', 2000);
-        });
-        return true;
+        // No case id resolvable — last resort: read the case background straight off the
+        // page if it happens to be loaded.
+        const domPw = this._extractPassword(this._findCaseBackground());
+        if (domPw) { e.preventDefault(); this._setEncryptionPassword(input, host, domPw); return true; }
+        Cyfor.log('rightclick', 'encryption password', { caseId: null, found: false });
+        return false;
     },
 
     _setEncryptionPassword(input, host, pw) {
@@ -370,28 +367,36 @@ Cyfor.datetime = {
     // lone token (some examiners note only the password, with no label).
     _extractPassword(text) {
         if (!text) return '';
-        // Rich-text fields come back as HTML — turn block ends into line breaks, drop the
-        // rest of the markup, normalise non-breaking spaces.
         const lines = String(text)
             .replace(/<\s*(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr)[^>]*>/gi, '\n')
             .replace(/<[^>]+>/g, ' ')
             .replace(/&nbsp;/gi, ' ')
             .replace(/[\u00a0\u202f]/g, ' ')
             .split(/\r?\n/);
-        // A line that STARTS with "Password" (optionally a bullet), then an OPTIONAL
-        // connector/separator (": ", "-", "=", " is ", or just a space), then the value.
-        // Line-anchored so a mid-sentence "…password…" isn't mistaken for the value, and
-        // only the first whitespace-delimited token is taken (passwords are single tokens).
+        // Never return the label word itself, or obvious "no value" words.
+        const tokenOf = (s) => {
+            const v = (s || '').trim().split(/\s+/)[0].replace(/[.,;:]+$/, '');
+            return /^(?:passwords?|passcodes?|pass|pwd|unknown|none|n\/?a|tbc|tbd|pending|required|protected)$/i.test(v) ? '' : v;
+        };
+        const KEYWORD = /^[\s>\-*]*(?:passwords?|passcodes?|pass\s*word|pwd)\b/i;
         for (let i = 0; i < lines.length; i++) {
+            if (!KEYWORD.test(lines[i])) continue;
+            // Value on the SAME line, after an optional connector/separator.
             const m = lines[i].match(/^[\s>\-*]*(?:passwords?|passcodes?|pass\s*word|pwd)\b\s*(?:is\b\s*)?[:\-=]?\s*(.+)$/i);
-            if (m && m[1]) {
-                const val = m[1].trim().split(/\s+/)[0].replace(/[.,;:]+$/, '');
-                if (val) return val;
+            if (m && m[1]) { const v = tokenOf(m[1]); if (v) return v; }
+            // Otherwise the value is on the NEXT non-empty line ("Password:\n<value>").
+            for (let j = i + 1; j < lines.length; j++) {
+                if (!lines[j].trim()) continue;
+                const v = tokenOf(lines[j]);
+                if (v) return v;
+                break;
             }
         }
-        // No "Password" label — if the whole field is just a lone token, use it.
+        // No "Password" label anywhere — if the whole field is a lone token use it (but
+        // never the literal word "password").
         const lone = String(text).replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
-        if (lone && !/\s/.test(lone) && lone.length >= 4 && lone.length <= 64) return lone;
+        if (lone && !/\s/.test(lone) && lone.length >= 4 && lone.length <= 64
+            && !/^(?:passwords?|passcodes?|pass|pwd)$/i.test(lone)) return lone;
         return '';
     },
 
