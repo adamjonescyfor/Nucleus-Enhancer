@@ -639,7 +639,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // a Generated Material's Encryption Password from the password noted there. Read-only.
     if (message.action === 'caseBackground.fetch') {
         if (!self.SfCases || !self.SfCases.fetchCaseBackground) { sendResponse({ ok: true, text: '' }); return true; }
-        self.SfCases.fetchCaseBackground(message.caseId || '')
+        self.SfCases.fetchCaseBackground({ caseId: message.caseId || '', recordId: message.recordId || '', object: message.object || '' })
             .then(sendResponse).catch(() => sendResponse({ ok: true, text: '' }));
         return true;
     }
