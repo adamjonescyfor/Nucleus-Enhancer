@@ -547,7 +547,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ ok: false, error: 'PERMISSION_DENIED' });
                 return;
             }
-            self.SfUsage.listOrgUsage(200)
+            self.SfUsage.listOrgUsage(500)
                 .then((r) => sendResponse(r))
                 .catch((e) => sendResponse({ ok: false, error: e.message }));
         })();

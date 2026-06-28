@@ -12,7 +12,8 @@
 
 Cyfor.usage = {
     KEY: 'templateUsageLog',
-    MAX: 500,
+    MAX: 1000,   // ring buffer — oldest entries drop off automatically; never grows past this
+
     _user: null,
     _userLoaded: false,
 
