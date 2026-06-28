@@ -547,7 +547,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ ok: false, error: 'PERMISSION_DENIED' });
                 return;
             }
-            self.SfUsage.listOrgUsage(200)
+            self.SfUsage.listOrgUsage(500)
                 .then((r) => sendResponse(r))
                 .catch((e) => sendResponse({ ok: false, error: e.message }));
         })();
@@ -639,7 +639,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // a Generated Material's Encryption Password from the password noted there. Read-only.
     if (message.action === 'caseBackground.fetch') {
         if (!self.SfCases || !self.SfCases.fetchCaseBackground) { sendResponse({ ok: true, text: '' }); return true; }
-        self.SfCases.fetchCaseBackground(message.caseId || '')
+        self.SfCases.fetchCaseBackground({ caseId: message.caseId || '', recordId: message.recordId || '', object: message.object || '' })
             .then(sendResponse).catch(() => sendResponse({ ok: true, text: '' }));
         return true;
     }

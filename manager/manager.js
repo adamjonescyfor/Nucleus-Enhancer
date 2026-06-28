@@ -2785,8 +2785,9 @@ function openUsage() {
         chrome.runtime.sendMessage({ action: 'usage.listOrg' }, function (r) {
             if (!chrome.runtime.lastError && r && r.ok && r.available) {
                 if (descEl) {
-                    descEl.textContent = 'Org-wide template insertions (newest first, up to 200) — '
-                        + 'recorded in Salesforce from every connected device.';
+                    descEl.textContent = 'Org-wide template insertions (newest first, up to 500) — '
+                        + 'recorded in Salesforce from every connected device. For older or aggregate '
+                        + 'analysis, run a report on NucleusTemplateUsage__c in Salesforce.';
                 }
                 if (clearBtn) clearBtn.style.display = 'none'; // org records aren't clearable here
                 setUsageData(r.entries || []);

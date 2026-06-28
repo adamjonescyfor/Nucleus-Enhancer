@@ -14,15 +14,15 @@ Cyfor.datetime = {
             if (Cyfor.utils.isContextInvalid()) return;
             if (!Cyfor.config.enableDate) return;
 
-            // Resolve the field the cursor is over. PREFER e.target — it's the
-            // browser's accurate hit-test. document.elementFromPoint is coordinate
-            // based and display scaling / page zoom can fool it into returning a
-            // DIFFERENT element (the "only works with DevTools open" symptom), so
-            // use it only as a fallback when e.target is detached (e.g. a re-render
-            // from blurring another field), then a geometric field-box hit-test.
+            // Resolve the field the cursor is over. Use composedPath()[0] — the REAL
+            // element inside open shadow DOM — not e.target: on a record page Lightning
+            // retargets e.target to the outer flexipage host, so e.target.closest() finds
+            // no field (why inline-edit right-clicks did nothing). The coordinate/geometry
+            // fallbacks below cover odd cases (zoom, re-render detaching the target).
             const x = e.clientX, y = e.clientY;
             const inField = (n) => n && typeof n.closest === 'function' && n.isConnected !== false && n.closest('.slds-form-element');
-            let el = e.target;
+            const path = (e.composedPath && e.composedPath()) || [];
+            let el = path[0] || e.target;
             if (!inField(el)) {
                 const atPoint = (x || y) ? document.elementFromPoint(x, y) : null;
                 if (inField(atPoint)) el = atPoint;
@@ -85,7 +85,7 @@ Cyfor.datetime = {
         // (where elementFromPoint / geometry are unreliable).
         Cyfor.cleanup.addEventListener(document, 'mousedown', (e) => {
             if (e.button !== 2) return;
-            const t = e.target;
+            const t = (e.composedPath && e.composedPath()[0]) || e.target; // real target, not the retargeted shadow host
             const host = (t && typeof t.closest === 'function') ? t.closest('.slds-form-element') : null;
             if (!host) { this._downField = null; return; }
             const l = host.querySelector('label, .slds-form-element__label');
@@ -262,39 +262,98 @@ Cyfor.datetime = {
         if (!host) return false;
         const l = host.querySelector('label, .slds-form-element__label');
         if (((l && l.textContent) || '').trim().toLowerCase().indexOf('encryption password') === -1) return false;
-        const input = host.querySelector('input, textarea');
-        if (!input || input.disabled || input.readOnly) return false;
 
-        const self = this;
-        const caseId = this._currentCaseId(host);
-
-        // PRIMARY: authoritative SOQL by case id — deterministic, and immune to the
-        // lazy-rendered record-page tabs that made the DOM read flaky ("worked then
-        // randomly stopped"). The page read is only a fallback when there's no case id.
-        if (caseId) {
+        const self  = this;
+        const input = this._editableInput(host);
+        if (input) {                       // create form, or inline-edit already on → fill now
             e.preventDefault();
-            chrome.runtime.sendMessage({ action: 'caseBackground.fetch', caseId: caseId }, function (r) {
-                if (Cyfor.utils.isContextInvalid()) return;
-                let pw = (r && r.ok) ? self._extractPassword(r.text || '') : '';
-                if (!pw) pw = self._extractPassword(self._findCaseBackground()); // page fallback
-                Cyfor.log('rightclick', 'encryption password', { caseId, found: !!pw });
-                if (pw) self._setEncryptionPassword(input, host, pw);
-                else Cyfor.toast.info('No password found in the case background', 2000);
-            });
+            this._fillEncryptionFromCase(input, host);
             return true;
         }
 
-        // No case id resolvable — last resort: read the case background straight off the
-        // page if it happens to be loaded.
-        const domPw = this._extractPassword(this._findCaseBackground());
-        if (domPw) { e.preventDefault(); this._setEncryptionPassword(input, host, domPw); return true; }
-        Cyfor.log('rightclick', 'encryption password', { caseId: null, found: false });
-        return false;
+        // View mode on an existing record: click the field's inline-edit pencil, then fill
+        // once the edit input renders — so a right-click behaves the same as on a new GM.
+        // No pencil = the field is read-only for this user → leave the native menu.
+        const pencil = host.querySelector('button[title^="Edit" i], .test-id__inline-edit-trigger');
+        if (!pencil) return false;
+        e.preventDefault();
+        try { pencil.click(); } catch (err) { /* ignore */ }
+        let tries = 0;
+        const waitForInput = () => {
+            if (Cyfor.utils.isContextInvalid()) return;
+            const h   = self._encryptionPasswordHost() || host;   // the field can re-render on edit
+            const inp = self._editableInput(h);
+            if (inp) { self._fillEncryptionFromCase(inp, h); return; }
+            if (++tries < 25) Cyfor.cleanup.setTimeout(waitForInput, 120); // ~3s for the input to render
+        };
+        Cyfor.cleanup.setTimeout(waitForInput, 150);
+        return true;
+    },
+
+    // The editable input for a field — SHADOW-PIERCING. On a record page (and in
+    // inline-edit) the real <input> lives inside lightning-input's shadow root, which a
+    // plain host.querySelector can't reach — that's why this worked on the New form but
+    // not when editing an existing record.
+    _editableInput(host) {
+        if (!host) return null;
+        const direct = host.querySelector('input, textarea');
+        if (direct && !direct.disabled && !direct.readOnly && direct.type !== 'hidden') return direct;
+        const deep = Cyfor.utils.querySelectorAllDeep('input, textarea', host, 8);
+        for (let i = 0; i < deep.length; i++) {
+            if (!deep[i].disabled && !deep[i].readOnly && deep[i].type !== 'hidden') return deep[i];
+        }
+        return null;
+    },
+
+    // The Encryption Password field group, found by label across shadow DOM (it can
+    // re-render when it flips into inline-edit, so we re-find rather than hold a ref).
+    _encryptionPasswordHost() {
+        const labels = Cyfor.utils.querySelectorAllDeep('label, .slds-form-element__label', document.body, 14);
+        for (let i = 0; i < labels.length; i++) {
+            if (((labels[i].textContent || '').trim().toLowerCase().indexOf('encryption password')) !== -1) {
+                return labels[i].closest('.slds-form-element') || labels[i].parentElement;
+            }
+        }
+        return null;
+    },
+
+    // Fetch the (parent) case's Case Background and drop the extracted password into the
+    // input. caseId from context (New overlay / case page), else traverse the current
+    // record (an existing GM) up its Forensic Case lookup in the background.
+    _fillEncryptionFromCase(input, host) {
+        const self   = this;
+        const caseId = this._currentCaseId(host);
+        const rec    = caseId ? null : this._currentRecordRef();
+        if (!caseId && !rec) {
+            const domPw = this._extractPassword(this._findCaseBackground());
+            if (domPw) this._setEncryptionPassword(input, host, domPw);
+            else Cyfor.toast.info('Couldn’t work out which case this material belongs to', 1800);
+            return;
+        }
+        const msg = { action: 'caseBackground.fetch', caseId: caseId || '' };
+        if (rec) { msg.recordId = rec.id; msg.object = rec.object; }
+        chrome.runtime.sendMessage(msg, function (r) {
+            if (Cyfor.utils.isContextInvalid()) return;
+            let pw = (r && r.ok) ? self._extractPassword(r.text || '') : '';
+            if (!pw) pw = self._extractPassword(self._findCaseBackground());
+            Cyfor.log('rightclick', 'encryption password', { caseId, rec, found: !!pw });
+            if (pw) self._setEncryptionPassword(input, host, pw);
+            else Cyfor.toast.info('No password found in the case background', 2000);
+        });
+    },
+
+    // The current record from the URL's object-named form (/lightning/r/<Object>/<id>) —
+    // e.g. a Generated Material being edited — so the background can traverse up to its
+    // parent case when no case id is directly in context. Custom objects only (__c).
+    _currentRecordRef() {
+        const m = (location.href || '').match(/\/lightning\/r\/([A-Za-z0-9_]+)\/([a-zA-Z0-9]{15,18})(?:\/|$|\?)/);
+        return (m && /__c$/i.test(m[1])) ? { object: m[1], id: m[2] } : null;
     },
 
     _setEncryptionPassword(input, host, pw) {
-        // Re-find the input if a re-render detached it while the query was in flight.
-        if (!input || !input.isConnected) input = (host && host.isConnected) ? host.querySelector('input, textarea') : null;
+        // Re-find the input if a re-render detached it while the query was in flight
+        // (shadow-piercing — the input is inside lightning-input's shadow root).
+        if (!input || !input.isConnected) input = (host && host.isConnected) ? this._editableInput(host) : null;
         if (!input) return;
         Cyfor.utils.setFieldValue(input, pw);
         Cyfor.utils.flashElement(input);

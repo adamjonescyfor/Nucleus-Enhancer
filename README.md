@@ -26,7 +26,7 @@ Faster casework, consistent reporting, and centrally‑managed templates — rig
 
 ## 🚀 Getting started
 
-1. **Install** the extension.
+1. **Install** the extension in **Microsoft Edge** (load‑unpacked) — follow the step‑by‑step [Getting Started guide](docs/rollout/getting-started-guide.docx). Everyone in **Digital Forensics, Cyber, eDiscovery, Cell Site, Quality** and the **Salesforce** team should install it.
 2. Open the popup and click **Connect Salesforce** — a normal Salesforce login window appears. That's the only setup you'll ever do. Select Remember Password to avoid having to repeatedly log in.
 3. In any **Notes** or **Forensic Strategy** box, click the **📄 button** or **right‑click** to insert a template. 🎉
 

@@ -64,14 +64,25 @@ Cyfor.caseAlias = {
         // The record THIS page is showing (a case's own record page). Skip links that
         // point to it — otherwise we'd annotate the breadcrumb and every related-list
         // quick link (Files, Case Expenses, …), which all reference the current case.
-        var currentId = this._caseId(location.href);
+        var currentId   = this._caseId(location.href);
+        var currentId15 = currentId ? currentId.slice(0, 15) : null; // 15-char base (15/18 id forms)
 
         var toFetch = [], seen = {}, caseLinks = 0;
         for (var i = 0; i < links.length; i++) {
             var a = links[i];
             var id = this._idOf(a);
             if (!id) continue;
-            if (currentId && id === currentId) continue;                       // the page's own record
+            var href = (a.getAttribute && a.getAttribute('href')) || '';
+            // Never annotate the page's OWN record (breadcrumb / highlights) or its
+            // related-list quick-links (Files, Exhibits, … — href carries /related/), and
+            // actively REMOVE any stray span on them. During an SPA navigation the page's
+            // own links briefly look "foreign" (the URL has already moved to the
+            // destination), get annotated, and bfcache preserves that on Back — so cleaning
+            // here lets the next scan self-heal it, and the /related/ test is URL-independent.
+            if (/\/related\//.test(href) || (currentId15 && id.slice(0, 15) === currentId15)) {
+                this._removeAlias(a);
+                continue;
+            }
             if (this._keyPrefix && id.slice(0, 3) !== this._keyPrefix) continue; // not a Forensic Case
             caseLinks++;
             var cached = this._cache[id];
@@ -104,6 +115,14 @@ Cyfor.caseAlias = {
     _caseId(href) {
         var m = (href || '').match(/\/lightning\/r\/(?:Forensic_Case__c\/)?([a-zA-Z0-9]{15,18})(?:\/|$|\?)/);
         return m ? m[1] : null;
+    },
+
+    // Remove any alias we previously added inside a link — used to clean up a stray
+    // annotation on the page's own record or a related-list quick-link (e.g. one left by
+    // an SPA-navigation race and restored from bfcache on Back).
+    _removeAlias(link) {
+        var span = link.querySelector && link.querySelector('.cyfor-case-alias');
+        if (span) span.remove();
     },
 
     // Reconcile the annotation with the CURRENT row state: add the alias when it's

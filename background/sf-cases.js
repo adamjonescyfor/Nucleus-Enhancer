@@ -101,26 +101,56 @@ async function resolveCaseBackgroundField(c) {
     return bgField;
 }
 
-// caseId → { ok, text } with the case's Case Background value (HTML for a rich-text field
-// — the caller strips tags). Read-only; never throws to the caller.
-async function fetchCaseBackground(caseId) {
-    if (!self.SfUtils.isValidSfId(caseId)) return { ok: true, text: '' };
+// Relationship name from <object> to its Forensic Case lookup (e.g. a Generated
+// Material's parent case), describe-discovered + cached per SW lifetime.
+var caseRelByObject = {};
+async function resolveCaseRelationship(c, object) {
+    if (caseRelByObject[object] !== undefined) return caseRelByObject[object];
+    var d   = await self.SfUtils.describeObject(c.base, c.token, object);
+    var ref = self.SfUtils.findReferenceField(d.fields || [], CASE_OBJ);
+    caseRelByObject[object] = ref ? (ref.relationshipName || null) : null;
+    return caseRelByObject[object];
+}
+
+// { caseId } OR { recordId, object } → { ok, text } with the (parent) case's Case
+// Background value (HTML for a rich-text field — the caller strips tags). The recordId
+// form traverses a CHILD record up its Forensic Case lookup — needed when EDITING a
+// Generated Material, whose own URL carries no case id. Read-only; never throws.
+async function fetchCaseBackground(opts) {
+    if (typeof opts === 'string') opts = { caseId: opts };   // backward-compat
+    opts = opts || {};
+    // A record that IS a Forensic Case → treat its id as the case id directly.
+    if (!opts.caseId && opts.object === CASE_OBJ && self.SfUtils.isValidSfId(opts.recordId)) opts.caseId = opts.recordId;
+
     var c;
     try { c = await ctx(); } catch (e) { return { ok: false, error: e.message }; }
     var field;
     try { field = await resolveCaseBackgroundField(c); } catch (e) { return { ok: false, error: e.message }; }
     if (!field) return { ok: true, text: '' };
+    var esc = self.SfUtils.soqlEscape, soql = null, pick = null;
 
-    var soql = 'SELECT ' + field + ' FROM ' + CASE_OBJ
-             + " WHERE Id = '" + self.SfUtils.soqlEscape(caseId) + "' LIMIT 1";
+    if (opts.caseId && self.SfUtils.isValidSfId(opts.caseId)) {
+        soql = 'SELECT ' + field + ' FROM ' + CASE_OBJ + " WHERE Id = '" + esc(opts.caseId) + "' LIMIT 1";
+        pick = function (rec) { return rec[field]; };
+    } else if (opts.recordId && self.SfUtils.isValidSfId(opts.recordId)
+            && /^[A-Za-z][A-Za-z0-9_]*$/.test(opts.object || '')) {
+        var rel;
+        try { rel = await resolveCaseRelationship(c, opts.object); } catch (e) { return { ok: false, error: e.message }; }
+        if (!rel) return { ok: true, text: '' };
+        soql = 'SELECT ' + rel + '.' + field + ' FROM ' + opts.object + " WHERE Id = '" + esc(opts.recordId) + "' LIMIT 1";
+        pick = function (rec) { return rec[rel] ? rec[rel][field] : ''; };
+    } else {
+        return { ok: true, text: '' };
+    }
+
     try {
         var res = await fetch(c.base + '/query?q=' + encodeURIComponent(soql),
             { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/json' } });
         if (!res.ok) return { ok: true, text: '' };
         var data = await res.json();
         var rec  = (data.records || [])[0];
-        if (self.dlog) self.dlog('cases', 'case background', { id: caseId, field: field, hit: !!rec });
-        return { ok: true, text: String((rec && rec[field]) || '') };
+        if (self.dlog) self.dlog('cases', 'case background', { via: opts.caseId ? 'case' : opts.object, field: field, hit: !!rec });
+        return { ok: true, text: String((rec && pick(rec)) || '') };
     } catch (e) {
         return { ok: false, error: e.message };
     }
