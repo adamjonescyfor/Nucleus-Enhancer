@@ -163,7 +163,7 @@ The full, implementable backlog lives in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 **Recently shipped:** **Generated Material right‑click quick‑fill** (status QA cycle · MG22a/MG22B exhibit type · encryption password from Case Background) · org‑wide usage now records **every** user's insertions · case alias on the team‑filtered **Tasks** lists · bulk template operations · multi‑team **assignment** and **membership** · review‑due notifications · **read‑acknowledgement tracking** (controlled‑document "read & understood" sign‑off, with an admin who's‑outstanding matrix) · **suggest‑an‑edit** (analysts propose template changes; admins review with a diff and Apply/Reject).
 
-**Still ahead:** the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · `manager.js` modularisation (internal code tidy‑up, no user‑facing change).
+**Still ahead:** **exhibit template sheets** — a button on an exhibit that generates a print‑ready **PDF** (a true‑to‑scale ruler plus the auto‑filled case & exhibit references) you can print straight from an acquisition PC to photograph the exhibit against · **exhibit document pre‑fill** (continuity / examination record / SFR auto‑filled from the Nucleus record, extending the MG22 docx‑fill engine) · the **MG22A/B Word report generator** (built, feature‑flagged off, owned by Mitul) · `manager.js` modularisation (internal code tidy‑up, no user‑facing change).
 
 ---
 

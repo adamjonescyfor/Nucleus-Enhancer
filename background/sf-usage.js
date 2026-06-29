@@ -23,12 +23,14 @@ var USAGE_CONCEPTS = {
 // lifetime, and creating it in Salesforce gets picked up automatically.
 var resolvedMap = null;
 var unavailable = false;
-// Latched for the SERVICE-WORKER lifetime once a write is rejected for a STRUCTURAL
-// reason (the signed-in user has no Create on the object, or it's still "In Development")
-// — every later insert this session would fail identically, so we stop hammering it.
-// Transient errors (offline, 5xx) do NOT latch. Resets on SW restart, so fixing the
-// Salesforce permission "lights up" by itself without a reconnect.
-var cannotInsert = false;
+// Backoff once a write is rejected for a STRUCTURAL reason (the signed-in user has no
+// Create on the object, or it's still "In Development") — every later insert would fail
+// identically, so we stop hammering Salesforce. TIME-BOXED (not SW-lifetime) so a
+// permission fix "lights up" by itself WITHOUT a worker restart: after the window it
+// retries, and a now-granted permission just succeeds (and clears the backoff). Transient
+// errors (offline, 5xx) do NOT trip it.
+var cannotInsertUntil = 0;                       // epoch ms — suppress org writes until this time
+var CANNOT_INSERT_BACKOFF_MS = 5 * 60 * 1000;    // 5 min, renewed on each structural reject
 
 async function ctx() {
     var stored = await chrome.storage.local.get(['sfOAuthTokens', 'sfOAuthConfig']);
@@ -60,7 +62,7 @@ async function pushUsage(entry) {
         // docs/salesforce-usage-object.md) — that's the whole point of a cross-team
         // adoption log. The write is fire-and-forget and can never affect the insert, so
         // there is no per-user gating here. (The org-wide READ/listing stays admin-only.)
-        if (cannotInsert) return { ok: true, skipped: true };
+        if (Date.now() < cannotInsertUntil) return { ok: true, skipped: true };
 
         var c   = await ctx();
         var map = await resolveUsageFields(c);
@@ -76,19 +78,19 @@ async function pushUsage(entry) {
             headers: { Authorization: 'Bearer ' + c.token, 'Content-Type': 'application/json' },
             body:    JSON.stringify(body)
         });
-        if (res.ok) { noteHealth(null); return { ok: true }; }
+        if (res.ok) { cannotInsertUntil = 0; noteHealth(null); return { ok: true }; }
         // Salesforce ACCEPTED the request but REJECTED the write (no Create permission,
         // object read-only / "In Development", a validation rule, …). Capture a compact
         // diagnostic so the manager can warn admins their org-wide log is silently
-        // dropping, and if the cause is STRUCTURAL (perms / not-insertable) latch
-        // cannotInsert so we don't retry a write that can't succeed this session.
+        // dropping, and if the cause is STRUCTURAL (perms / not-insertable) back off
+        // for a few minutes so we don't retry a write that can't succeed right now.
         var code = '', message = '';
         try {
             var eb = await res.json();
             if (Array.isArray(eb) && eb[0]) { code = eb[0].errorCode || ''; message = eb[0].message || ''; }
         } catch (ignore) { /* non-JSON error body */ }
         if (res.status === 403 || /INSUFFICIENT_ACCESS|CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|NOT_INSERTABLE/i.test(code)) {
-            cannotInsert = true;
+            cannotInsertUntil = Date.now() + CANNOT_INSERT_BACKOFF_MS;
         }
         noteHealth({ status: res.status, code: code, message: message, ts: Date.now() });
         return { ok: true, rejected: true };

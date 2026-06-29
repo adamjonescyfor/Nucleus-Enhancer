@@ -23,6 +23,7 @@ OUT="cyfor-nucleus-enhancer-${VERSION}.zip"
 rm -f "$OUT"
 zip -r -q "$OUT" \
     manifest.json \
+    icons/ \
     config.js \
     background.js \
     background/ \
